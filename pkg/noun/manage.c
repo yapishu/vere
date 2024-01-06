@@ -2039,14 +2039,14 @@ u3m_init(size_t len_i)
 
   //  make sure that [len_i] is a fully-addressible non-zero power of two.
   //
-  if (  !len_i
-     || (len_i & (len_i - 1))
-     || (len_i < (1 << (u3a_page + 2)))
-     || (len_i > u3a_bytes) )
-  {
-    u3l_log("loom: bad size: %zu", len_i);
-    exit(1);
-  }
+  // if (  !len_i
+  //    || (len_i & (len_i - 1))
+  //    || (len_i < (1 << (u3a_page + 2)))
+  //    || (len_i > u3a_bytes) )
+  // {
+  //   u3l_log("loom: bad size: %zu", len_i);
+  //   exit(1);
+  // }
 
   // map at fixed address.
   //
