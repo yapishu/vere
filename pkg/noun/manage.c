@@ -2039,14 +2039,14 @@ u3m_init(size_t len_i)
 
   //  make sure that [len_i] is a fully-addressible non-zero power of two.
   //
-  // if (  !len_i
-  //    || (len_i & (len_i - 1))
-  //    || (len_i < (1 << (u3a_page + 2)))
-  //    || (len_i > u3a_bytes) )
-  // {
-  //   u3l_log("loom: bad size: %zu", len_i);
-  //   exit(1);
-  // }
+  if (  !len_i
+     || (len_i & (len_i - 1))
+     || (len_i < (1 << (u3a_page + 2)))
+     || (len_i > u3a_bytes) )
+  {
+    u3l_log("loom: bad size: %zu", len_i);
+    exit(1);
+  }
 
   // map at fixed address.
   //
@@ -2057,25 +2057,25 @@ u3m_init(size_t len_i)
                        (MAP_ANON | MAP_FIXED | MAP_PRIVATE),
                        -1, 0);
 
-    if ( -1 == (c3_ps)map_v ) {
-      map_v = mmap((void *)0,
-                   len_i,
-                   (PROT_READ | PROT_WRITE),
-                   (MAP_ANON | MAP_PRIVATE),
-                   -1, 0);
+    // if ( -1 == (c3_ps)map_v ) {
+    //   map_v = mmap((void *)0,
+    //                len_i,
+    //                (PROT_READ | PROT_WRITE),
+    //                (MAP_ANON | MAP_PRIVATE),
+    //                -1, 0);
 
-      u3l_log("boot: mapping %zuMB failed", len_i >> 20);
-      u3l_log("see urbit.org/using/install/#about-swap-space"
-              " for adding swap space");
-      if ( -1 != (c3_ps)map_v ) {
-        u3l_log("if porting to a new platform, try U3_OS_LoomBase %p",
-                map_v);
-      }
-      exit(1);
-    }
+    //   u3l_log("boot: mapping %zuMB failed", len_i >> 20);
+    //   u3l_log("see urbit.org/using/install/#about-swap-space"
+    //           " for adding swap space");
+    //   if ( -1 != (c3_ps)map_v ) {
+    //     u3l_log("if porting to a new platform, try U3_OS_LoomBase %p",
+    //             map_v);
+    //   }
+    //   exit(1);
+    // }
 
     u3C.wor_i = len_i >> 2;
-    u3l_log("loom: mapped %zuMB", len_i >> 20);
+    u3l_log("loom: spoofed %zuMB", len_i >> 20);
   }
 }
 
