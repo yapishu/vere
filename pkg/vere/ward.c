@@ -133,6 +133,29 @@ u3_ovum_mark(u3_ovum *egg_u)
   return siz_w;
 }
 
+/* u3_ovum_age_check(): construct an /arvo %what ovum payload.
+*/
+u3_noun
+u3_ovum_age_check(c3_o nuu_o)
+{
+  u3_noun dat, kas, pax, fil, cad, wir;
+
+  u3_assert(c3y == u3_Host.ops_u.cac);
+  u3_assert(0 != u3_Host.ops_u.dob_c);
+
+  dat = u3nt((c3y == nuu_o) ? c3__boot : c3__pier,
+             u3i_string(u3_Host.ops_u.dob_c),
+             u3_Host.ops_u.cab_w);
+  kas = u3nc(c3__noun, dat);
+  pax = u3i_list(u3i_string("meta"), u3i_string("ca.ab1043"), u3_none);
+  fil = u3i_list(u3nc(pax, kas), u3_none);
+
+  cad = u3nc(c3__what, fil);
+  wir = u3nt(u3_blip, c3__arvo, u3_nul);
+
+  return u3nc(wir, cad);
+}
+
 /* u3_pico_init(): initialize a scry request struct
 */
 u3_pico*

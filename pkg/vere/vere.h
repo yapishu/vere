@@ -276,6 +276,9 @@
         c3_c*   gen_c;                      //  -G, czar generator
         c3_o    gab;                        //  -g, test garbage collection
         c3_o    gab_abort;                  //  --gc-abort, abort on leaks
+        c3_o    cac;                        //  --age-check enabled
+        c3_c*   dob_c;                      //  --age-check birthday (YYYY-MM-DD)
+        c3_w    cab_w;                      //  --age-check bracket
         c3_c*   dns_c;                      //  -H, ames bootstrap domain
         c3_c*   jin_c;                      //  -I, inject raw event
         c3_c*   imp_c;                      //  -i, import pier state
@@ -713,6 +716,11 @@
       */
         c3_w
         u3_ovum_mark(u3_ovum *egg_u);
+
+      /* u3_ovum_age_check(): construct an /arvo %what ovum payload.
+      */
+        u3_noun
+        u3_ovum_age_check(c3_o nuu_o);
 
       /* u3_pico_init(): initialize a scry request struct
       */

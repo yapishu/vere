@@ -194,6 +194,15 @@ u3_noun
 _king_prop()
 {
   u3_noun mor = u3_nul;
+
+  if ( c3y == u3_Host.ops_u.cac ) {
+    u3_noun pro = u3nq(c3__prop,
+                       c3__boot,
+                       c3__hind,
+                       u3i_list(u3_ovum_age_check(c3y), u3_none));
+    mor = u3nc(pro, mor);
+  }
+
   while ( 0 != u3_Host.ops_u.vex_u ) {
     u3_even* vex_u = u3_Host.ops_u.vex_u;
     switch ( vex_u->kin_i ) {

@@ -23,6 +23,7 @@
 #include "getopt.h"
 #include "libgen.h"
 #include "pthread.h"
+#include "time.h"
 
 #include "ca_bundle.h"
 #include "pace.h"
@@ -93,6 +94,143 @@ _main_read_loom(const c3_c* nam_c, const c3_c* arg_c, c3_y* out_y)
   return 0;
 }
 
+enum {
+  _ca_none = 0,
+  _ca_lt13,
+  _ca_lt16,
+  _ca_lt18,
+  _ca_gt18,
+};
+
+/* _main_age_check_name(): bracket label from parsed value.
+*/
+static const c3_c*
+_main_age_check_name(c3_w cab_w)
+{
+  switch ( cab_w ) {
+    default:
+    case _ca_none: return "unknown";
+    case _ca_lt13: return "lt13";
+    case _ca_lt16: return "lt16";
+    case _ca_lt18: return "lt18";
+    case _ca_gt18: return "gt18";
+  }
+}
+
+/* _main_age_check_birthday(): parse birthday and determine bracket.
+*/
+static c3_o
+_main_age_check_birthday(const c3_c* txt_c, c3_w* cab_w, c3_c* dob_c)
+{
+  c3_i yea_i, mon_i, day_i;
+  c3_c rem_c;
+  c3_i age_i;
+
+  if ( 3 != sscanf(txt_c, "%d-%d-%d%c", &yea_i, &mon_i, &day_i, &rem_c) ) {
+    return c3n;
+  }
+  if ( mon_i < 1 || mon_i > 12 ) {
+    return c3n;
+  }
+  if ( yea_i < 0 || yea_i > 9999 ) {
+    return c3n;
+  }
+
+  {
+    c3_i max_d = 31;
+
+    switch ( mon_i ) {
+      case 4: case 6: case 9: case 11: {
+        max_d = 30;
+        break;
+      }
+      case 2: {
+        c3_o leap_o = ( 0 == (yea_i % 4) )
+                      && ( (0 != (yea_i % 100)) || (0 == (yea_i % 400)) );
+        max_d = (c3y == leap_o) ? 29 : 28;
+        break;
+      }
+      default: break;
+    }
+
+    if ( day_i < 1 || day_i > max_d ) {
+      return c3n;
+    }
+  }
+
+  {
+    time_t    now_t = time(0);
+    struct tm* now_u = localtime(&now_t);
+    if ( 0 == now_u ) {
+      return c3n;
+    }
+
+    c3_i yea_n = now_u->tm_year + 1900;
+    c3_i mon_n = now_u->tm_mon + 1;
+    c3_i day_n = now_u->tm_mday;
+
+    age_i = yea_n - yea_i;
+    if (  (mon_n < mon_i)
+       || ( (mon_n == mon_i) && (day_n < day_i) ) )
+    {
+      age_i--;
+    }
+  }
+
+  if ( age_i < 0 ) {
+    return c3n;
+  }
+  else if ( age_i < 13 ) {
+    *cab_w = _ca_lt13;
+  }
+  else if ( age_i < 16 ) {
+    *cab_w = _ca_lt16;
+  }
+  else if ( age_i < 18 ) {
+    *cab_w = _ca_lt18;
+  }
+  else {
+    *cab_w = _ca_gt18;
+  }
+
+  if ( 0 != dob_c ) {
+    c3_i siz_i = snprintf(dob_c, 11, "%04d-%02d-%02d", yea_i, mon_i, day_i);
+    if ( (siz_i < 0) || (11 <= siz_i) ) {
+      return c3n;
+    }
+  }
+
+  return c3y;
+}
+
+/* _main_age_check_prompt(): interactively read birthday.
+*/
+static c3_o
+_main_age_check_prompt(c3_w* cab_w, c3_c* dob_c)
+{
+  c3_c lin_c[64];
+
+  while ( c3y ) {
+    fprintf(stderr,
+            "Online safety compliance (CA AB1043): enter birthday (YYYY-MM-DD): ");
+
+    if ( NULL == fgets(lin_c, sizeof(lin_c), stdin) ) {
+      fprintf(stderr, "age-check: failed to read input\n");
+      return c3n;
+    }
+
+    lin_c[strcspn(lin_c, "\r\n")] = 0;
+
+    if ( c3y == _main_age_check_birthday(lin_c, cab_w, dob_c) ) {
+      return c3y;
+    }
+
+    fprintf(stderr, "age-check: invalid birthday '%s'\n", lin_c);
+  }
+
+  return c3n;
+}
+
 /* _main_presig(): prefix optional sig.
 */
 c3_c*
@@ -160,6 +298,9 @@ _main_init(void)
   u3_Host.ops_u.dry = c3n;
   u3_Host.ops_u.gab = c3n;
   u3_Host.ops_u.gab_abort = c3n;
+  u3_Host.ops_u.cac = c3n;
+  u3_Host.ops_u.cab_w = _ca_none;
+  u3_Host.ops_u.dob_c = 0;
   u3_Host.ops_u.git = c3n;
 
   //  always disable hashboard
@@ -262,6 +403,7 @@ _main_getopt(c3_i argc, c3_c** argv)
     { "bootstrap",           required_argument, NULL, 'B' },
     { "http-ip",             required_argument, NULL, 'b' },
     { "memo-cache-limit",    required_argument, NULL, 'C' },
+    { "age-check",           optional_argument, NULL, 14  },
     { "pier",                required_argument, NULL, 'c' },
     { "replay",              no_argument,       NULL, 'D' },
     { "daemon",              no_argument,       NULL, 'd' },
@@ -372,6 +514,35 @@ _main_getopt(c3_i argc, c3_c** argv)
       case 13: {
         u3_Host.ops_u.gab_abort = c3y;
         u3_Host.ops_u.gab = c3y;
+        break;
+      }
+      case 14: { //  age-check
+        c3_w cab_w;
+        c3_c dob_c[11];
+        u3_Host.ops_u.cac = c3y;
+
+        if ( 0 != optarg ) {
+          if ( c3n == _main_age_check_birthday(optarg, &cab_w, dob_c) ) {
+            fprintf(stderr,
+                    "invalid --age-check birthday '%s' (expected YYYY-MM-DD)\n",
+                    optarg);
+            return c3n;
+          }
+          u3_Host.ops_u.cab_w = cab_w;
+          c3_free(u3_Host.ops_u.dob_c);
+          u3_Host.ops_u.dob_c = strdup(dob_c);
+        }
+        //  Support optional value in space form: '--age-check YYYY-MM-DD'.
+        else if (  (optind < argc)
+                && ('-' != argv[optind][0]) )
+        {
+          if ( c3y == _main_age_check_birthday(argv[optind], &cab_w, dob_c) ) {
+            u3_Host.ops_u.cab_w = cab_w;
+            c3_free(u3_Host.ops_u.dob_c);
+            u3_Host.ops_u.dob_c = strdup(dob_c);
+            optind++;
+          }
+        }
         break;
       }
       //  special args
@@ -687,6 +858,36 @@ _main_getopt(c3_i argc, c3_c** argv)
     return c3n;
   }
 
+  //  AB1043 account-setup age assurance for real-key boot path:
+  //  if creating a new ship with -w and -k/-G, require age-check.
+  //
+  if (  (u3_Host.ops_u.nuu == c3y)
+     && (0 != u3_Host.ops_u.who_c)
+     && (  (0 != u3_Host.ops_u.key_c)
+        || (0 != u3_Host.ops_u.gen_c) ) )
+  {
+    u3_Host.ops_u.cac = c3y;
+  }
+
+  if ( c3y == u3_Host.ops_u.cac ) {
+    if ( _ca_none == u3_Host.ops_u.cab_w ) {
+      c3_c dob_c[11];
+
+      if (  (c3y == u3_Host.ops_u.tem)
+         || (c3y == u3_Host.ops_u.dem) )
+      {
+        fprintf(stderr,
+                "--age-check requires a birthday value (YYYY-MM-DD) with -t/--no-tty or -d\n");
+        return c3n;
+      }
+      if ( c3n == _main_age_check_prompt(&u3_Host.ops_u.cab_w, dob_c) ) {
+        return c3n;
+      }
+      c3_free(u3_Host.ops_u.dob_c);
+      u3_Host.ops_u.dob_c = strdup(dob_c);
+    }
+  }
+
   if ( u3_Host.ops_u.pil_c != 0 ) {
     struct stat s;
     if ( stat(u3_Host.ops_u.pil_c, &s) != 0 ) {
@@ -899,6 +1100,7 @@ u3_ve_usage(c3_i argc, c3_c** argv)
     "    --prop-url URL            Download a prop into the boot sequence\n",
     "    --prop-name NAME          Download a prop from bootstrap.urbit.org\n",
     "    --gc-abort                Abort the process on leaks, implies -g\n",
+    "    --age-check [YYYY-MM-DD]  CA AB1043 compliance (prompts if omitted)\n",
     "\n",
     "Development Usage:\n",
     "   To create a development ship, use a fakezod:\n",
@@ -3255,6 +3457,11 @@ main(c3_i   argc,
 
   if ( c3y == u3_Host.ops_u.dem ) {
     printf("boot: running as daemon\n");
+  }
+  if ( c3y == u3_Host.ops_u.cac ) {
+    printf("boot: age-check (CA AB1043) %s (%s)\n",
+           _main_age_check_name(u3_Host.ops_u.cab_w),
+           (c3y == u3_Host.ops_u.nuu) ? "new-ship" : "resume");
   }
 
   //  Instantiate process globals.

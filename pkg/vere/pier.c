@@ -499,6 +499,20 @@ _pier_work_init(u3_pier* pir_u)
     //  initialize i/o drivers
     //
     wok_u->car_u = u3_auto_init(pir_u);
+
+    //  age-check metadata is inserted during bootstrap for new ships.
+    //  on pier resume, inject it as a one-shot /arvo %what event.
+    //
+    if (  (c3y == u3_Host.ops_u.cac)
+       && (c3n == u3_Host.ops_u.nuu) )
+    {
+      u3_noun ove = u3_ovum_age_check(c3n);
+
+      u3_auto_plan(wok_u->car_u,
+                   u3_ovum_init(0, u3_blip, u3k(u3h(ove)), u3k(u3t(ove))));
+      u3z(ove);
+    }
+
     u3_auto_talk(wok_u->car_u);
     _pier_work(wok_u);
   }
