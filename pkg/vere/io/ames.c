@@ -1940,6 +1940,53 @@ _fine_hear_response(u3_pact* pac_u, c3_w cur_w)
   _ames_pact_free(pac_u);
 }
 
+/* _ames_is_our_moon(): check if recipient is a moon (earl) of our planet.
+**
+**   moon (earl) = 5-8 byte @p, parent planet = low 32 bits.
+**   we must be a planet (3-4 bytes, fits in 32 bits).
+*/
+static c3_o
+_ames_is_our_moon(c3_d our_d[2], c3_d rec_d[2])
+{
+  //  we must be a planet: fits in 32 bits (who_d[1] == 0, who_d[0] <= 0xFFFFFFFF)
+  //
+  if ( (0 != our_d[1]) || (our_d[0] > 0xFFFFFFFF) ) {
+    return c3n;
+  }
+
+  //  recipient must be a moon: > 32 bits but <= 64 bits
+  //  (rec_d[1] == 0 rules out comets, rec_d[0] > 0xFFFFFFFF rules out planets/stars/galaxies)
+  //
+  if ( (0 != rec_d[1]) || (rec_d[0] <= 0xFFFFFFFF) ) {
+    return c3n;
+  }
+
+  //  low 32 bits of moon must equal our planet address
+  //
+  return ( (rec_d[0] & 0xFFFFFFFF) == our_d[0] ) ? c3y : c3n;
+}
+
+/* _ames_put_moon_packet(): inject endomoon packet into arvo as %moon-hear.
+**
+**   like _ames_put_packet() but uses %moon-hear task instead of %hear,
+**   so ames routes it to the %endomoon gall agent.
+*/
+static void
+_ames_put_moon_packet(u3_ames* sam_u, u3_noun msg, u3_lane lan_u)
+{
+  u3_noun wir = u3nc(c3__ames, u3_nul);
+  u3_noun cad = u3nt(c3__mohr,
+                     u3nc(c3n, u3_ames_encode_lane(lan_u)),
+                     msg);
+
+  u3_auto_peer(
+    u3_auto_plan(&sam_u->car_u,
+                 u3_ovum_init(0, c3__a, wir, cad)),
+    0, 0, _ames_hear_bail);
+
+  _ames_cap_queue(sam_u);
+}
+
 /* _ames_hear_ames(): hear ames packet.
 */
 static void
@@ -2130,7 +2177,18 @@ _ames_hear(u3_ames* sam_u,
       && (  (pac_u->pre_u.rec_d[0] != sam_u->pir_u->who_d[0])
           || (pac_u->pre_u.rec_d[1] != sam_u->pir_u->who_d[1]) ) )
     {
-      if ( c3y == sam_u->sat_u.for_o ) {
+      //  endomoon: if recipient is our moon (earl), pass to arvo
+      //  as %moon-hear instead of dropping/forwarding.
+      //  moon (earl) = 5-8 byte address, parent = low 32 bits.
+      //
+      if ( _ames_is_our_moon(sam_u->pir_u->who_d,
+                             pac_u->pre_u.rec_d) )
+      {
+        u3_noun msg = u3i_bytes(pac_u->len_w, pac_u->hun_y);
+        _ames_put_moon_packet(pac_u->sam_u, msg, pac_u->lan_u);
+        _ames_pact_free(pac_u);
+      }
+      else if ( c3y == sam_u->sat_u.for_o ) {
         _ames_try_forward(pac_u);
       }
     }
@@ -2660,6 +2718,15 @@ _ames_kick_newt(u3_ames* sam_u, u3_noun tag, u3_noun dat)
     } break;
 
     case c3__send: {
+      u3_noun lan = u3k(u3h(dat));
+      u3_noun pac = u3k(u3t(dat));
+      _ames_ef_send(sam_u, lan, pac);
+      ret_o = c3y;
+    } break;
+
+    //  endomoon: send raw blob from moon identity
+    //
+    case c3__mosd: {
       u3_noun lan = u3k(u3h(dat));
       u3_noun pac = u3k(u3t(dat));
       _ames_ef_send(sam_u, lan, pac);
