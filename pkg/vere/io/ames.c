@@ -1596,6 +1596,18 @@ _ames_try_send(u3_pact* pac_u, c3_o for_o)
   else {
     u3_noun key = u3i_chubs(2, pac_u->pre_u.rec_d);
     lac = _ames_lane_from_cache(sam_u->lax_p, key, sam_u->nal_o);
+    //
+    //  endomoon: if no lane for a moon, try the parent planet's lane
+    //
+    if ( u3_nul == lac ) {
+      c3_d rec_d[2] = { pac_u->pre_u.rec_d[0], pac_u->pre_u.rec_d[1] };
+      if ( (0 == rec_d[1]) && (rec_d[0] > 0xFFFFFFFF) ) {
+        //  moon: parent = low 32 bits
+        c3_d par_d[2] = { rec_d[0] & 0xFFFFFFFF, 0 };
+        u3_noun par = u3i_chubs(2, par_d);
+        lac = _ames_lane_from_cache(sam_u->lax_p, par, sam_u->nal_o);
+      }
+    }
   }
 
   //  if we know there's no lane, drop the packet
@@ -2181,8 +2193,8 @@ _ames_hear(u3_ames* sam_u,
       //  as %moon-hear instead of dropping/forwarding.
       //  moon (earl) = 5-8 byte address, parent = low 32 bits.
       //
-      if ( _ames_is_our_moon(sam_u->pir_u->who_d,
-                             pac_u->pre_u.rec_d) )
+      if ( c3y == _ames_is_our_moon(sam_u->pir_u->who_d,
+                                      pac_u->pre_u.rec_d) )
       {
         u3_noun msg = u3i_bytes(pac_u->len_w, pac_u->hun_y);
         _ames_put_moon_packet(pac_u->sam_u, msg, pac_u->lan_u);
