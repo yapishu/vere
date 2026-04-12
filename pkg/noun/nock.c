@@ -1908,16 +1908,48 @@ _cn_etch_bytecode(u3_noun fol) {
 static c3_o
 _cn_uridian_capture_enabled(void)
 {
-  static c3_o ini_o = c3n;
-  static c3_o cap_o = c3n;
+  c3_c* env_c = getenv("URIDIAN_CAPTURE");
+  return ( env_c && ( '0' != env_c[0] ) ) ? c3y : c3n;
+}
 
-  if ( c3n == ini_o ) {
-    c3_c* env_c = getenv("URIDIAN_CAPTURE");
-    cap_o = ( env_c && ( '0' != env_c[0] ) ) ? c3y : c3n;
-    ini_o = c3y;
+static c3_d
+_cn_uridian_capture_rate(void)
+{
+  c3_c* env_c = getenv("URIDIAN_CAPTURE_RATE");
+
+  if ( 0 == env_c || 0 == env_c[0] ) {
+    return 1024;
+  }
+  else {
+    c3_c* end_c;
+    c3_d rat_d = strtoull(env_c, &end_c, 10);
+
+    if ( ('\0' != *end_c) || (0 == rat_d) ) {
+      return 1024;
+    }
+    return rat_d;
+  }
+}
+
+static c3_o
+_cn_uridian_capture_subject_enabled(void)
+{
+  c3_c* env_c = getenv("URIDIAN_CAPTURE_SUBJECT");
+  return ( env_c && ( '0' != env_c[0] ) ) ? c3y : c3n;
+}
+
+static c3_o
+_cn_should_log_runtime_capture(void)
+{
+  static c3_d seq_d = 0;
+  c3_d rat_d;
+
+  if ( c3n == _cn_uridian_capture_enabled() ) {
+    return c3n;
   }
 
-  return cap_o;
+  rat_d = _cn_uridian_capture_rate();
+  return (0 == (seq_d++ % rat_d)) ? c3y : c3n;
 }
 
 static u3_noun
@@ -1933,6 +1965,28 @@ _cn_uridian_capture_memo_kind(u3z_cid cid)
 
 static u3_noun
 _cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o);
+
+static void
+_cn_log_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o)
+{
+  if ( c3y == _cn_uridian_capture_enabled() ) {
+    u3_noun cap = _cn_etch_capture_prog(pog_u, bus, sub_o, dee_o);
+    u3m_p("uridian-capture", cap);
+    u3z(cap);
+  }
+}
+
+static void
+_cn_log_runtime_capture_prog(u3n_prog* pog_u, u3_noun bus)
+{
+  if ( c3y == _cn_should_log_runtime_capture() ) {
+    _cn_log_capture_prog(
+        pog_u,
+        bus,
+        _cn_uridian_capture_subject_enabled(),
+        c3n);
+  }
+}
 
 static void
 _cn_log_jet_event(c3_w dex_w, u3j_site* sit_u, u3_weak pro)
@@ -2089,11 +2143,7 @@ _n_hilt_fore(u3_noun hin, u3_noun bus, u3_noun* out, u3n_prog* pog_u)
 
     case c3__xray : {
       u3t_slog(u3nc(0, _cn_etch_bytecode(fol)));
-      if ( c3y == _cn_uridian_capture_enabled() ) {
-        u3_noun cap = _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
-        u3m_p("uridian-capture", cap);
-        u3z(cap);
-      }
+      _cn_log_capture_prog(pog_u, bus, c3y, c3y);
       *out = u3_nul;
     } break;
 
@@ -2232,11 +2282,7 @@ _n_hint_fore(u3_cell hin, u3_noun bus, u3_noun* clu, u3n_prog* pog_u)
         c3_l pri_l = c3y == u3a_is_cat(pri) ? pri : 0;
         u3t_slog_cap(pri_l, u3k(tan), _cn_etch_bytecode(fol));
       }
-      if ( c3y == _cn_uridian_capture_enabled() ) {
-        u3_noun cap = _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
-        u3m_p("uridian-capture", cap);
-        u3z(cap);
-      }
+      _cn_log_capture_prog(pog_u, bus, c3y, c3y);
       u3z(*clu);
       *clu = u3_nul;
     } break;
@@ -3107,6 +3153,9 @@ static u3_noun
 _n_burn_out(u3_noun bus, u3n_prog* pog_u)
 {
   c3_ys mov, off;
+
+  _cn_log_runtime_capture_prog(pog_u, bus);
+
   if ( c3y == u3a_is_north(u3R) ) {
     mov = -1;
     off = 0;

@@ -2,6 +2,7 @@
 
 #include "noun.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 /* _setup(): prepare for tests.
@@ -16,6 +17,19 @@ static u3_noun
 _nock_fol(u3_noun fol)
 {
   return u3n_nock_on(u3_nul, fol);
+}
+
+static c3_w _capture_log_count_w;
+static c3_c _capture_log_last_c[4096];
+
+static void
+_capture_log_sink(c3_c* msg_c)
+{
+  if ( 0 == strncmp(msg_c, "uridian-capture:", 16) ) {
+    _capture_log_count_w += 1;
+    strncpy(_capture_log_last_c, msg_c, sizeof(_capture_log_last_c) - 1);
+    _capture_log_last_c[sizeof(_capture_log_last_c) - 1] = '\0';
+  }
 }
 
 static c3_i
@@ -115,12 +129,82 @@ _test_uridian_prog_capture(void)
   return ret_i;
 }
 
+static c3_i
+_test_uridian_runtime_capture(void)
+{
+  u3_noun fol = u3nc(4, u3nc(0, 1));
+  void (*old_log_f)(c3_c*) = u3C.stderr_log_f;
+  c3_i ret_i = 1;
+  u3_noun pro;
+
+  setenv("URIDIAN_CAPTURE", "1", 1);
+  setenv("URIDIAN_CAPTURE_RATE", "1", 1);
+  unsetenv("URIDIAN_CAPTURE_SUBJECT");
+
+  _capture_log_count_w = 0;
+  _capture_log_last_c[0] = '\0';
+  u3C.stderr_log_f = _capture_log_sink;
+
+  pro = u3n_nock_on(42, u3k(fol));
+  if ( 43 != pro ) {
+    fprintf(stderr, "test uridian runtime capture: unexpected product (no subject)\r\n");
+    ret_i = 0;
+  }
+  else if ( 0 == _capture_log_count_w ) {
+    fprintf(stderr, "test uridian runtime capture: no sampled capture logged\r\n");
+    ret_i = 0;
+  }
+  else if ( 0 == strstr(_capture_log_last_c, "%uridian-capture") ) {
+    fprintf(stderr, "test uridian runtime capture: bad capture line\r\n");
+    fprintf(stderr, "have: %s\r\n", _capture_log_last_c);
+    ret_i = 0;
+  }
+  else if ( 0 != strstr(_capture_log_last_c, "[1 42]") ) {
+    fprintf(stderr, "test uridian runtime capture: subject should be omitted by default\r\n");
+    fprintf(stderr, "have: %s\r\n", _capture_log_last_c);
+    ret_i = 0;
+  }
+  u3z(pro);
+
+  setenv("URIDIAN_CAPTURE_SUBJECT", "1", 1);
+  _capture_log_count_w = 0;
+  _capture_log_last_c[0] = '\0';
+
+  pro = u3n_nock_on(42, u3k(fol));
+  if ( 43 != pro ) {
+    fprintf(stderr, "test uridian runtime capture: unexpected product (with subject)\r\n");
+    ret_i = 0;
+  }
+  else if ( 0 == _capture_log_count_w ) {
+    fprintf(stderr, "test uridian runtime capture: no sampled capture logged with subject\r\n");
+    ret_i = 0;
+  }
+  else if ( 0 == strstr(_capture_log_last_c, "[1 42]") ) {
+    fprintf(stderr, "test uridian runtime capture: subject missing when requested\r\n");
+    fprintf(stderr, "have: %s\r\n", _capture_log_last_c);
+    ret_i = 0;
+  }
+  u3z(pro);
+
+  unsetenv("URIDIAN_CAPTURE");
+  unsetenv("URIDIAN_CAPTURE_RATE");
+  unsetenv("URIDIAN_CAPTURE_SUBJECT");
+  u3C.stderr_log_f = old_log_f;
+  u3z(fol);
+  return ret_i;
+}
+
 /* main(): run all test cases.
 */
 int
 main(int argc, char* argv[])
 {
   _setup();
+
+  if ( !_test_uridian_runtime_capture() ) {
+    fprintf(stderr, "test uridian runtime capture: failed\r\n");
+    exit(1);
+  }
 
   if ( !_test_meme() ) {
     fprintf(stderr, "test meme: failed\r\n");
