@@ -2,6 +2,7 @@
 
 #include "noun.h"
 
+#include <dirent.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -30,6 +31,26 @@ _capture_log_sink(c3_c* msg_c)
     strncpy(_capture_log_last_c, msg_c, sizeof(_capture_log_last_c) - 1);
     _capture_log_last_c[sizeof(_capture_log_last_c) - 1] = '\0';
   }
+}
+
+static c3_w
+_capture_store_file_count(const c3_c* dir_c)
+{
+  DIR* dir_u = opendir(dir_c);
+  struct dirent* ent_u;
+  c3_w count_w = 0;
+
+  if ( 0 == dir_u ) {
+    return 0;
+  }
+  while ( 0 != (ent_u = readdir(dir_u)) ) {
+    if ( 0 == strcmp(ent_u->d_name, ".") || 0 == strcmp(ent_u->d_name, "..") ) {
+      continue;
+    }
+    count_w += 1;
+  }
+  closedir(dir_u);
+  return count_w;
 }
 
 static c3_i
@@ -134,9 +155,16 @@ _test_uridian_runtime_capture(void)
 {
   u3_noun fol = u3nc(4, u3nc(0, 1));
   u3_noun gat = u3nt(9, 2, u3nc(1, u3nc(u3nc(0, 3), u3nc(123, 456))));
+  c3_c tem_c[] = "/tmp/uridian-store-XXXXXX";
+  c3_c* sto_c = mkdtemp(tem_c);
   void (*old_log_f)(c3_c*) = u3C.stderr_log_f;
   c3_i ret_i = 1;
   u3_noun pro;
+
+  if ( 0 == sto_c ) {
+    fprintf(stderr, "test uridian runtime capture: could not make temp dir\r\n");
+    return 0;
+  }
 
   setenv("URIDIAN_CAPTURE", "1", 1);
   setenv("URIDIAN_CAPTURE_RATE", "1", 1);
@@ -184,6 +212,36 @@ _test_uridian_runtime_capture(void)
   }
   u3z(pro);
 
+  setenv("URIDIAN_CAPTURE_STORE", sto_c, 1);
+  unsetenv("URIDIAN_CAPTURE_SUBJECT");
+  _capture_log_count_w = 0;
+  _capture_log_last_c[0] = '\0';
+
+  pro = u3n_nock_on(42, u3k(fol));
+  if ( 43 != pro ) {
+    fprintf(stderr, "test uridian runtime capture: unexpected product (with subject store)\r\n");
+    ret_i = 0;
+  }
+  else if ( 0 == _capture_log_count_w ) {
+    fprintf(stderr, "test uridian runtime capture: no sampled capture logged with subject store\r\n");
+    ret_i = 0;
+  }
+  else if ( 0 == strstr(_capture_log_last_c, "textref-") ) {
+    fprintf(stderr, "test uridian runtime capture: subject ref missing from capture line\r\n");
+    fprintf(stderr, "have: %s\r\n", _capture_log_last_c);
+    ret_i = 0;
+  }
+  else if ( 0 == _capture_store_file_count(sto_c) ) {
+    fprintf(stderr, "test uridian runtime capture: subject store should contain at least one file\r\n");
+    ret_i = 0;
+  }
+  else if ( 0 != strstr(_capture_log_last_c, "[1 42]") ) {
+    fprintf(stderr, "test uridian runtime capture: inline subject should still be omitted by default with store\r\n");
+    fprintf(stderr, "have: %s\r\n", _capture_log_last_c);
+    ret_i = 0;
+  }
+  u3z(pro);
+
   setenv("URIDIAN_CAPTURE_SUBJECT", "1", 1);
   _capture_log_count_w = 0;
   _capture_log_last_c[0] = '\0';
@@ -207,6 +265,7 @@ _test_uridian_runtime_capture(void)
   unsetenv("URIDIAN_CAPTURE");
   unsetenv("URIDIAN_CAPTURE_RATE");
   unsetenv("URIDIAN_CAPTURE_SUBJECT");
+  unsetenv("URIDIAN_CAPTURE_STORE");
   u3C.stderr_log_f = old_log_f;
   u3z(fol);
   u3z(gat);

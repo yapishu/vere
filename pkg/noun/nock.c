@@ -2,7 +2,11 @@
 
 #include "nock.h"
 
+#include <errno.h>
+#include <inttypes.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #include "allocate.h"
 #include "hashtable.h"
@@ -1938,6 +1942,13 @@ _cn_uridian_capture_subject_enabled(void)
   return ( env_c && ( '0' != env_c[0] ) ) ? c3y : c3n;
 }
 
+static c3_c*
+_cn_uridian_capture_store_path(void)
+{
+  c3_c* env_c = getenv("URIDIAN_CAPTURE_STORE");
+  return ( env_c && env_c[0] ) ? env_c : 0;
+}
+
 static c3_o
 _cn_should_log_runtime_capture(void)
 {
@@ -1964,13 +1975,93 @@ _cn_uridian_capture_memo_kind(u3z_cid cid)
 }
 
 static u3_noun
-_cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o);
+_cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o, c3_o ref_o);
+
+static void
+_cn_hash_capture_text(const c3_c* txt_c, c3_d* a_d, c3_d* b_d)
+{
+  c3_d fnv_d = 1469598103934665603ULL;
+  c3_d djb_d = 5381ULL;
+
+  while ( 0 != *txt_c ) {
+    c3_y byt_y = (c3_y)(*txt_c++);
+    fnv_d ^= byt_y;
+    fnv_d *= 1099511628211ULL;
+    djb_d = ((djb_d << 5) + djb_d) ^ byt_y;
+  }
+
+  *a_d = fnv_d;
+  *b_d = djb_d;
+}
+
+static u3_noun
+_cn_store_capture_subject(u3_noun bus)
+{
+  c3_c* dir_c = _cn_uridian_capture_store_path();
+
+  if ( 0 == dir_c ) {
+    return 0;
+  }
+  else {
+    c3_c* pre_c = u3m_pretty(bus);
+    c3_d a_d;
+    c3_d b_d;
+    c3_w ref_w;
+    c3_w pax_w;
+    c3_c* ref_c;
+    c3_c* pax_c;
+    FILE* fil_u;
+    u3_noun ref = 0;
+
+    _cn_hash_capture_text(pre_c, &a_d, &b_d);
+    ref_w = 1 + snprintf(
+        0,
+        0,
+        "textref-%zu-%016" PRIx64 "%016" PRIx64,
+        strlen(pre_c),
+        (uint64_t)a_d,
+        (uint64_t)b_d);
+    ref_c = c3_malloc(ref_w);
+    snprintf(
+        ref_c,
+        ref_w,
+        "textref-%zu-%016" PRIx64 "%016" PRIx64,
+        strlen(pre_c),
+        (uint64_t)a_d,
+        (uint64_t)b_d);
+
+    c3_mkdir(dir_c, 0700);
+
+    pax_w = 1 + snprintf(0, 0, "%s/%s.noun", dir_c, ref_c);
+    pax_c = c3_malloc(pax_w);
+    snprintf(pax_c, pax_w, "%s/%s.noun", dir_c, ref_c);
+
+    fil_u = c3_fopen(pax_c, "r");
+    if ( 0 != fil_u ) {
+      fclose(fil_u);
+      ref = u3i_string(ref_c);
+    }
+    else {
+      fil_u = c3_fopen(pax_c, "w");
+      if ( 0 != fil_u ) {
+        fprintf(fil_u, "%s\n", pre_c);
+        fclose(fil_u);
+        ref = u3i_string(ref_c);
+      }
+    }
+
+    c3_free(pax_c);
+    c3_free(ref_c);
+    c3_free(pre_c);
+    return ref;
+  }
+}
 
 static void
 _cn_log_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o)
 {
   if ( c3y == _cn_uridian_capture_enabled() ) {
-    u3_noun cap = _cn_etch_capture_prog(pog_u, bus, sub_o, dee_o);
+    u3_noun cap = _cn_etch_capture_prog(pog_u, bus, sub_o, dee_o, c3y);
     u3m_p("uridian-capture", cap);
     u3z(cap);
   }
@@ -2018,7 +2109,7 @@ _cn_etch_callsite(u3j_site* sit_u, c3_o dee_o)
     lab = u3k(sit_u->lab);
   }
   if ( (c3y == dee_o) && (0 != sit_u->pog_p) ) {
-    cap = _cn_etch_capture_prog(u3to(u3n_prog, sit_u->pog_p), u3_nul, c3n, c3n);
+    cap = _cn_etch_capture_prog(u3to(u3n_prog, sit_u->pog_p), u3_nul, c3n, c3n, c3n);
   }
 
   if ( (0 == cap) && (0 == lab) ) {
@@ -2029,13 +2120,14 @@ _cn_etch_callsite(u3j_site* sit_u, c3_o dee_o)
 }
 
 static u3_noun
-_cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o)
+_cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o, c3_o ref_o)
 {
   u3_noun lit = u3_nul;
   u3_noun cal = u3_nul;
   u3_noun mem = u3_nul;
   u3_noun reg = u3_nul;
   u3_noun sub = ( c3y == sub_o ) ? u3nc(1, u3k(bus)) : 0;
+  u3_noun ref = ( c3y == ref_o ) ? _cn_store_capture_subject(bus) : 0;
   u3_noun xra = _cn_etch_bytecode_prog(pog_u);
   u3_noun tag = u3i_string("uridian-capture");
   c3_w i_w;
@@ -2065,13 +2157,24 @@ _cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o)
         reg);
   }
 
+  if ( 0 == ref ) {
+    return u3nc(tag,
+           u3nc(xra,
+           u3nc(lit,
+           u3nc(cal,
+           u3nc(mem,
+           u3nc(reg,
+           u3nc(sub, 0)))))));
+  }
+
   return u3nc(tag,
          u3nc(xra,
          u3nc(lit,
          u3nc(cal,
          u3nc(mem,
          u3nc(reg,
-         u3nc(sub, 0)))))));
+         u3nc(sub,
+         u3nc(ref, 0))))))));
 }
 
 u3_noun
@@ -2081,7 +2184,7 @@ u3n_etch_capture(u3_noun bus, u3_noun fol)
   u3n_prog* pog_u;
 
   pog_u = _n_bite(fol);
-  cap = _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
+  cap = _cn_etch_capture_prog(pog_u, bus, c3y, c3y, c3y);
   _cn_prog_free(pog_u);
   return cap;
 }
@@ -2090,7 +2193,7 @@ u3_noun
 u3n_etch_prog_capture(u3_noun bus, u3p(u3n_prog) pog_p)
 {
   u3n_prog* pog_u = u3to(u3n_prog, pog_p);
-  return _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
+  return _cn_etch_capture_prog(pog_u, bus, c3y, c3y, c3y);
 }
 
 
