@@ -61,6 +61,20 @@
       u3p(u3n_prog)
       u3n_find(u3_noun key, u3_noun fol);
 
+    /* u3n_etch_capture(): render [fol] as a %uridian-capture noun,
+     *                     optionally including [bus] as the execution subject.
+     *                     RETAIN.
+     */
+      u3_noun
+      u3n_etch_capture(u3_noun bus, u3_noun fol);
+
+    /* u3n_etch_prog_capture(): render an existing bytecode program as a
+     *                          %uridian-capture noun, preserving runtime
+     *                          callsite metadata. RETAIN.
+     */
+      u3_noun
+      u3n_etch_prog_capture(u3_noun bus, u3p(u3n_prog) pog_p);
+
     /* u3n_burn(): execute u3n_prog with bus as subject.
      */
       u3_noun

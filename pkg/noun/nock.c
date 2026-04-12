@@ -2,6 +2,8 @@
 
 #include "nock.h"
 
+#include <stdlib.h>
+
 #include "allocate.h"
 #include "hashtable.h"
 #include "imprison.h"
@@ -1831,9 +1833,9 @@ _cn_is_indexed(c3_w bop_w)
 **                 fol: a nock formula to compile and render
 **             returns: a u3i_string noun of the rendered bytecode
 */
-u3_noun
-_cn_etch_bytecode(u3_noun fol) {
-  u3n_prog* pog_u = _n_bite(fol);
+static u3_noun
+_cn_etch_bytecode_prog(u3n_prog* pog_u)
+{
   c3_y* pog_y = pog_u->byc_u.ops_y;
   c3_w len_w = pog_u->byc_u.len_w;
   c3_w ip_w=0, num_w=0, bop_w=0, dex_w=0;
@@ -1892,8 +1894,149 @@ _cn_etch_bytecode(u3_noun fol) {
   // replace the first leading space and append the last char to the string
   str_c[0] = '{';
   strcat(str_c, "}");
-  _cn_prog_free(pog_u);
   return u3i_string(str_c);
+}
+
+u3_noun
+_cn_etch_bytecode(u3_noun fol) {
+  u3n_prog* pog_u = _n_bite(fol);
+  u3_noun cap = _cn_etch_bytecode_prog(pog_u);
+  _cn_prog_free(pog_u);
+  return cap;
+}
+
+static c3_o
+_cn_uridian_capture_enabled(void)
+{
+  static c3_o ini_o = c3n;
+  static c3_o cap_o = c3n;
+
+  if ( c3n == ini_o ) {
+    c3_c* env_c = getenv("URIDIAN_CAPTURE");
+    cap_o = ( env_c && ( '0' != env_c[0] ) ) ? c3y : c3n;
+    ini_o = c3y;
+  }
+
+  return cap_o;
+}
+
+static u3_noun
+_cn_uridian_capture_memo_kind(u3z_cid cid)
+{
+  switch ( cid ) {
+    case u3z_memo_toss: return u3i_string("toss");
+    case u3z_memo_keep: return u3i_string("keep");
+    case u3z_memo_ford: return u3i_string("ford");
+    default:            return u3i_string("memo");
+  }
+}
+
+static u3_noun
+_cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o);
+
+static void
+_cn_log_jet_event(c3_w dex_w, u3j_site* sit_u, u3_weak pro)
+{
+  if ( c3y == _cn_uridian_capture_enabled() ) {
+    u3_noun eve = u3nc(
+        u3i_string("uridian-jet"),
+        u3nc(
+            u3i_word(dex_w),
+            u3nq(
+                u3k(sit_u->axe),
+                u3i_string((u3_none == pro) ? "bytecode" : "jet"),
+                (u3_none == sit_u->lab) ? 0 : u3k(sit_u->lab),
+                (u3_none == pro) ? 0 : u3k(pro))));
+    u3m_p("uridian-jet", eve);
+    u3z(eve);
+  }
+}
+
+static u3_noun
+_cn_etch_callsite(u3j_site* sit_u, c3_o dee_o)
+{
+  u3_noun axe = u3k(sit_u->axe);
+  u3_noun nam = 0;
+  u3_noun cap = 0;
+  u3_noun lab = 0;
+
+  if ( u3_none != sit_u->lab ) {
+    lab = u3k(sit_u->lab);
+  }
+  if ( (c3y == dee_o) && (0 != sit_u->pog_p) ) {
+    cap = _cn_etch_capture_prog(u3to(u3n_prog, sit_u->pog_p), u3_nul, c3n, c3n);
+  }
+
+  if ( (0 == cap) && (0 == lab) ) {
+    return u3nc(axe, nam);
+  }
+
+  return u3nc(u3i_string("uridian-callsite"), u3nq(axe, nam, cap, lab));
+}
+
+static u3_noun
+_cn_etch_capture_prog(u3n_prog* pog_u, u3_noun bus, c3_o sub_o, c3_o dee_o)
+{
+  u3_noun lit = u3_nul;
+  u3_noun cal = u3_nul;
+  u3_noun mem = u3_nul;
+  u3_noun reg = u3_nul;
+  u3_noun sub = ( c3y == sub_o ) ? u3nc(1, u3k(bus)) : 0;
+  u3_noun xra = _cn_etch_bytecode_prog(pog_u);
+  u3_noun tag = u3i_string("uridian-capture");
+  c3_w i_w;
+
+  for ( i_w = pog_u->lit_u.len_w; i_w > 0; --i_w ) {
+    lit = u3nc(u3k(pog_u->lit_u.non[i_w - 1]), lit);
+  }
+  for ( i_w = pog_u->cal_u.len_w; i_w > 0; --i_w ) {
+    u3j_site* sit_u = &(pog_u->cal_u.sit_u[i_w - 1]);
+    cal = u3nc(_cn_etch_callsite(sit_u, dee_o), cal);
+  }
+  for ( i_w = pog_u->mem_u.len_w; i_w > 0; --i_w ) {
+    u3n_memo* mem_u = &(pog_u->mem_u.sot_u[i_w - 1]);
+    mem = u3nc(
+        u3nq(_cn_uridian_capture_memo_kind(mem_u->cid),
+             u3k(mem_u->key),
+             u3i_word(mem_u->sip_l),
+             0),
+        mem);
+  }
+  for ( i_w = pog_u->reg_u.len_w; i_w > 0; --i_w ) {
+    u3j_rite* rit_u = &(pog_u->reg_u.rit_u[i_w - 1]);
+    reg = u3nc(
+        (u3_none == rit_u->clu)
+          ? u3_nul
+          : u3nc(1, u3k(rit_u->clu)),
+        reg);
+  }
+
+  return u3nc(tag,
+         u3nc(xra,
+         u3nc(lit,
+         u3nc(cal,
+         u3nc(mem,
+         u3nc(reg,
+         u3nc(sub, 0)))))));
+}
+
+u3_noun
+u3n_etch_capture(u3_noun bus, u3_noun fol)
+{
+  u3_noun cap;
+  u3n_prog* pog_u;
+
+  pog_u = _n_bite(fol);
+  cap = _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
+  _cn_prog_free(pog_u);
+  return cap;
+}
+
+u3_noun
+u3n_etch_prog_capture(u3_noun bus, u3p(u3n_prog) pog_p)
+{
+  u3n_prog* pog_u = u3to(u3n_prog, pog_p);
+  return _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
 }
 
 
@@ -1906,7 +2049,7 @@ _cn_etch_bytecode(u3_noun fol) {
 **                 any hints herein must be whitelisted in _n_burn().
 */
 static c3_o
-_n_hilt_fore(u3_noun hin, u3_noun bus, u3_noun* out)
+_n_hilt_fore(u3_noun hin, u3_noun bus, u3_noun* out, u3n_prog* pog_u)
 {
   u3_noun tag, fol;
   u3x_cell(hin, &tag, &fol);
@@ -1946,6 +2089,11 @@ _n_hilt_fore(u3_noun hin, u3_noun bus, u3_noun* out)
 
     case c3__xray : {
       u3t_slog(u3nc(0, _cn_etch_bytecode(fol)));
+      if ( c3y == _cn_uridian_capture_enabled() ) {
+        u3_noun cap = _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
+        u3m_p("uridian-capture", cap);
+        u3z(cap);
+      }
       *out = u3_nul;
     } break;
 
@@ -2019,7 +2167,7 @@ _n_hilt_hind(u3_noun tok, u3_noun pro)
 **                 any hints herein must be whitelisted in _n_burn().
 */
 static c3_o
-_n_hint_fore(u3_cell hin, u3_noun bus, u3_noun* clu)
+_n_hint_fore(u3_cell hin, u3_noun bus, u3_noun* clu, u3n_prog* pog_u)
 {
   u3_noun tag, fol;
   u3x_cell(hin, &tag, &fol);
@@ -2083,6 +2231,11 @@ _n_hint_fore(u3_cell hin, u3_noun bus, u3_noun* clu)
       if ( c3y == u3r_cell(*clu, &pri, &tan) ) {
         c3_l pri_l = c3y == u3a_is_cat(pri) ? pri : 0;
         u3t_slog_cap(pri_l, u3k(tan), _cn_etch_bytecode(fol));
+      }
+      if ( c3y == _cn_uridian_capture_enabled() ) {
+        u3_noun cap = _cn_etch_capture_prog(pog_u, bus, c3y, c3y);
+        u3m_p("uridian-capture", cap);
+        u3z(cap);
       }
       u3z(*clu);
       *clu = u3_nul;
@@ -2214,6 +2367,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
   c3_w sip_w, ip_w = 0;
   u3_noun* top;
   u3_noun x, o;
+  u3_weak pro;
   u3p(void) empty;
   burnframe* fam;
 
@@ -2579,8 +2733,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       sit_u = &(pog_u->cal_u.sit_u[x]);
       top   = _n_peek(off);
       o     = *top;
-      *top = _n_kick(o, sit_u);
-      if ( u3_none == *top ) {
+      pro   = _n_kick(o, sit_u);
+      *top  = pro;
+      _cn_log_jet_event(x, sit_u, pro);
+      if ( u3_none == pro ) {
         _n_pop(mov);
 
         fam         = u3to(burnframe, u3R->cap_p) + off + mov;
@@ -2617,8 +2773,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       sit_u = &(pog_u->cal_u.sit_u[x]);
       top   = _n_peek(off);
       o     = *top;
-      *top = _n_kick(o, sit_u);
-      if ( u3_none == *top ) {
+      pro   = _n_kick(o, sit_u);
+      *top  = pro;
+      _cn_log_jet_event(x, sit_u, pro);
+      if ( u3_none == pro ) {
         *top  = o;
         pog_u = u3to(u3n_prog, sit_u->pog_p);
         pog   = pog_u->byc_u.ops_y;
@@ -2810,7 +2968,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
     hilt_fore_in:
       x   = u3k(pog_u->lit_u.non[x]);
       top = _n_peek(off);   // bus
-      x   = _n_hilt_fore(x, *top, &o);
+      x   = _n_hilt_fore(x, *top, &o, pog_u);
       _n_push(mov, off, o);
       _n_swap(mov, off);    // bus
       _n_push(mov, off, x); // shortcircuit if c3n
@@ -2826,7 +2984,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       x   = u3k(pog_u->lit_u.non[x]);
       o   = _n_pep(mov, off);   //  [bus]
       top = _n_peek(off);
-      x   = _n_hint_fore(x, *top, &o);
+      x   = _n_hint_fore(x, *top, &o, pog_u);
       _n_push(mov, off, o);     //  [tok bus]
       _n_swap(mov, off);        //  [bus tok]
       _n_push(mov, off, x);     //  [kip bus tok]
@@ -3334,5 +3492,3 @@ u3n_nock_an(u3_noun bus, u3_noun fol)
   u3_noun gul = u3nt(u3nc(1, 0), u3nc(0, 0), 0);  //  |~(^ ~)
   return u3n_nock_et(gul, bus, fol);
 }
-
-

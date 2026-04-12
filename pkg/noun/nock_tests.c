@@ -2,6 +2,8 @@
 
 #include "noun.h"
 
+#include <string.h>
+
 /* _setup(): prepare for tests.
 */
 static void
@@ -62,6 +64,57 @@ _test_meme(void)
   return ret_i;
 }
 
+static c3_i
+_test_uridian_capture(void)
+{
+  u3_noun fol = u3nt(9, 2, u3nc(1, u3nc(u3nc(0, 3), u3nc(123, 456))));
+  u3_noun cap = u3n_etch_capture(0, fol);
+  c3_c* pre_c = u3m_pretty(cap);
+  c3_i ret_i = 1;
+  const c3_c* wan_c =
+    "[%uridian-capture '{[libl i:0] [ticb 0] halt}' [[[0 3] 123 456] 0] [[2 0] 0] 0 0 [1 0] 0]";
+
+  if ( 0 != strcmp(pre_c, wan_c) ) {
+    fprintf(stderr, "test uridian capture: unexpected output\r\n");
+    fprintf(stderr, "want: %s\r\n", wan_c);
+    fprintf(stderr, "have: %s\r\n", pre_c);
+    ret_i = 0;
+  }
+
+  c3_free(pre_c);
+  u3z(cap);
+  u3z(fol);
+  return ret_i;
+}
+
+static c3_i
+_test_uridian_prog_capture(void)
+{
+  u3_noun fol = u3nt(9, 2, u3nc(1, u3nc(u3nc(0, 3), u3nc(123, 456))));
+  u3p(u3n_prog) pog_p = u3n_find(u3_nul, fol);
+  u3_noun pro = u3n_burn(pog_p, 0);
+  u3_noun cap = u3n_etch_prog_capture(0, pog_p);
+  c3_c* pre_c = u3m_pretty(cap);
+  c3_i ret_i = 1;
+
+  if ( 0 == strstr(pre_c, "%uridian-callsite") ) {
+    fprintf(stderr, "test uridian prog capture: missing rich callsite\r\n");
+    fprintf(stderr, "have: %s\r\n", pre_c);
+    ret_i = 0;
+  }
+  else if ( 0 == strstr(pre_c, "%uridian-capture") ) {
+    fprintf(stderr, "test uridian prog capture: missing nested capture\r\n");
+    fprintf(stderr, "have: %s\r\n", pre_c);
+    ret_i = 0;
+  }
+
+  c3_free(pre_c);
+  u3z(cap);
+  u3z(pro);
+  u3z(fol);
+  return ret_i;
+}
+
 /* main(): run all test cases.
 */
 int
@@ -74,10 +127,20 @@ main(int argc, char* argv[])
     exit(1);
   }
 
+  if ( !_test_uridian_capture() ) {
+    fprintf(stderr, "test uridian capture: failed\r\n");
+    exit(1);
+  }
+
+  if ( !_test_uridian_prog_capture() ) {
+    fprintf(stderr, "test uridian prog capture: failed\r\n");
+    exit(1);
+  }
+
   //  GC
   //
   u3m_grab(u3_none);
 
-  fprintf(stderr, "test meme: ok\r\n");
+  fprintf(stderr, "test nock: ok\r\n");
   return 0;
 }
