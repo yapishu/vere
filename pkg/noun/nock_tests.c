@@ -133,6 +133,7 @@ static c3_i
 _test_uridian_runtime_capture(void)
 {
   u3_noun fol = u3nc(4, u3nc(0, 1));
+  u3_noun gat = u3nt(9, 2, u3nc(1, u3nc(u3nc(0, 3), u3nc(123, 456))));
   void (*old_log_f)(c3_c*) = u3C.stderr_log_f;
   c3_i ret_i = 1;
   u3_noun pro;
@@ -166,6 +167,23 @@ _test_uridian_runtime_capture(void)
   }
   u3z(pro);
 
+  _capture_log_count_w = 0;
+  _capture_log_last_c[0] = '\0';
+  pro = u3n_nock_on(0, u3k(gat));
+  {
+    u3_noun wan = u3nc(123, 456);
+    if ( c3n == u3r_sing(pro, wan) ) {
+      fprintf(stderr, "test uridian runtime capture: unexpected product (kick fallback)\r\n");
+      ret_i = 0;
+    }
+    u3z(wan);
+  }
+  if ( _capture_log_count_w < 2 ) {
+    fprintf(stderr, "test uridian runtime capture: kick fallback should log multiple captures\r\n");
+    ret_i = 0;
+  }
+  u3z(pro);
+
   setenv("URIDIAN_CAPTURE_SUBJECT", "1", 1);
   _capture_log_count_w = 0;
   _capture_log_last_c[0] = '\0';
@@ -191,6 +209,7 @@ _test_uridian_runtime_capture(void)
   unsetenv("URIDIAN_CAPTURE_SUBJECT");
   u3C.stderr_log_f = old_log_f;
   u3z(fol);
+  u3z(gat);
   return ret_i;
 }
 

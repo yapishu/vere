@@ -2631,6 +2631,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       pog_u = _n_find(u3_nul, o);
       pog   = pog_u->byc_u.ops_y;
       ip_w  = 0;
+      _cn_log_runtime_capture_prog(pog_u, *_n_peek(off));
 #ifdef U3_CPU_DEBUG
     u3R->pro.nox_d += 1;
 #endif
@@ -2793,6 +2794,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
         pog_u = u3to(u3n_prog, sit_u->pog_p);
         pog   = pog_u->byc_u.ops_y;
         ip_w  = 0;
+        _cn_log_runtime_capture_prog(pog_u, o);
 #ifdef U3_CPU_DEBUG
     u3R->pro.nox_d += 1;
 #endif
@@ -2827,6 +2829,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
         pog_u = u3to(u3n_prog, sit_u->pog_p);
         pog   = pog_u->byc_u.ops_y;
         ip_w  = 0;
+        _cn_log_runtime_capture_prog(pog_u, o);
 #ifdef U3_CPU_DEBUG
     u3R->pro.nox_d += 1;
 #endif
