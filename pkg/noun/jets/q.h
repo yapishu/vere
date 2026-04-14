@@ -261,8 +261,13 @@
     u3_noun u3qfp_nepo(u3_noun, u3_noun);
     u3_noun u3qfp_rake(u3_noun);
 
-    //  /lib/math jets
+    //  /lib/maroon jets
+    u3_noun u3qi_maroon_dequant_q8(u3_noun, u3_atom, u3_atom);
+
+    //  /lib/math jets — deterministic (SoftFloat only)
     u3_noun u3qe_math_rs_eml(u3_atom, u3_atom, u3_atom);
+    u3_noun u3qe_math_rs_exp(u3_atom, u3_atom);
+    u3_noun u3qe_math_rs_log(u3_atom, u3_atom);
 
     u3_noun u3qi_la_add_i754(u3_noun, u3_noun, u3_noun, u3_noun);
     u3_noun u3qi_la_sub_i754(u3_noun, u3_noun, u3_noun, u3_noun);

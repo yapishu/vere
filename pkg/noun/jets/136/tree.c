@@ -951,12 +951,25 @@ static u3j_core _136_non_d[] =
     {}
   };
 
-/* /lib/math jets
+/* /lib/maroon jets
+*/
+static u3j_harm _136_maroon_dequant_q8_a[] = {{".2", u3wi_maroon_dequant_q8}, {}};
+
+static u3j_core _136_maroon_d[] =
+  { { "dequant-q8", 7, _136_maroon_dequant_q8_a, 0, no_hashes },
+    {}
+  };
+
+/* /lib/math jets — deterministic (SoftFloat only, match Hoon bit-for-bit)
 */
 static u3j_harm _136_math__rs_eml_a[] = {{".2", u3we_math_rs_eml}, {}};
+static u3j_harm _136_math__rs_exp_a[] = {{".2", u3we_math_rs_exp}, {}};
+static u3j_harm _136_math__rs_log_a[] = {{".2", u3we_math_rs_log}, {}};
 
 static u3j_core _136_math__rs_d[] =
   { { "eml", 7, _136_math__rs_eml_a, 0, no_hashes },
+    { "exp", 7, _136_math__rs_exp_a, 0, no_hashes },
+    { "log", 7, _136_math__rs_log_a, 0, no_hashes },
     {}
   };
 
@@ -1017,7 +1030,8 @@ static u3j_core _136_hex_wasm_sur_d[] = {
 
 static u3j_core _136_hex_d[] =
   { { "non", 7, 0, _136_non_d, no_hashes },
-    { "math", 31, 0, _136_math_d, no_hashes },
+    { "math", 7, 0, _136_math_d, no_hashes },
+    { "maroon", 31, 0, _136_maroon_d, no_hashes },
 
     { "lull",   3, 0, _136_lull_d, no_hashes },
 
