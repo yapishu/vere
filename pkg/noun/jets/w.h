@@ -399,6 +399,9 @@
   **/
     u3_noun u3wg_plot_fax(u3_noun);
     u3_noun u3wg_plot_met(u3_noun);
+    //  /lib/math jets
+    u3_noun u3we_math_rs_eml(u3_noun);
+
     u3_noun u3wi_la_add(u3_noun);
     u3_noun u3wi_la_sub(u3_noun);
     u3_noun u3wi_la_mul(u3_noun);

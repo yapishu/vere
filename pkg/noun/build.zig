@@ -352,6 +352,7 @@ const c_source_files = [_][]const u8{
     "jets/e/ripe.c",
     "jets/e/rq.c",
     "jets/e/rs.c",
+    "jets/e/math_rs.c",
     "jets/e/rub.c",
     "jets/e/scot.c",
     "jets/e/scow.c",

@@ -951,6 +951,19 @@ static u3j_core _136_non_d[] =
     {}
   };
 
+/* /lib/math jets
+*/
+static u3j_harm _136_math__rs_eml_a[] = {{".2", u3we_math_rs_eml}, {}};
+
+static u3j_core _136_math__rs_d[] =
+  { { "eml", 7, _136_math__rs_eml_a, 0, no_hashes },
+    {}
+  };
+
+static u3j_core _136_math_d[] =
+  { { "rs", 7, 0, _136_math__rs_d, no_hashes },
+    {}
+  };
 
 static u3j_harm _136_hex_lia_run_v1_a[] = {{".2", u3we_lia_run_v1, c3y}, {}};
 
@@ -1004,6 +1017,7 @@ static u3j_core _136_hex_wasm_sur_d[] = {
 
 static u3j_core _136_hex_d[] =
   { { "non", 7, 0, _136_non_d, no_hashes },
+    { "math", 31, 0, _136_math_d, no_hashes },
 
     { "lull",   3, 0, _136_lull_d, no_hashes },
 
