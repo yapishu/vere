@@ -277,6 +277,8 @@
     u3_noun u3qi_la_cumsum_i754(u3_noun, u3_noun, u3_noun);
     u3_noun u3qi_la_argmin_i754(u3_noun, u3_noun, u3_noun);
     u3_noun u3qi_la_argmax_i754(u3_noun, u3_noun, u3_noun);
+    u3_noun u3qi_la_dequant_mlx2(u3_noun, u3_noun, u3_noun, u3_noun, u3_noun);
+    u3_noun u3qi_la_logits_tied_mlx2(u3_noun, u3_noun, u3_noun, u3_noun, u3_noun, u3_noun, u3_noun);
     u3_noun u3qi_la_ravel_i754(u3_noun, u3_noun, u3_noun);
     u3_noun u3qi_la_min_i754(u3_noun, u3_noun, u3_noun);
     u3_noun u3qi_la_max_i754(u3_noun, u3_noun, u3_noun);

@@ -950,6 +950,18 @@ static u3j_core _136_non_d[] =
     {}
   };
 
+/* /lib jets in maroon core (transformer-inference primitives) */
+static u3j_harm _136_maroon_dequant_mlx2_a[] =
+  {{".2", u3wi_la_dequant_mlx2}, {}};
+static u3j_harm _136_maroon_logits_tied_mlx2_a[] =
+  {{".2", u3wi_la_logits_tied_mlx2}, {}};
+
+static u3j_core _136_maroon_d[] =
+  { { "dequant-mlx2", 7, _136_maroon_dequant_mlx2_a, 0, no_hashes },
+    { "logits-tied-mlx2", 7, _136_maroon_logits_tied_mlx2_a, 0, no_hashes },
+    {}
+  };
+
 
 static u3j_harm _136_hex_lia_run_v1_a[] = {{".2", u3we_lia_run_v1, c3y}, {}};
 
@@ -1003,6 +1015,8 @@ static u3j_core _136_hex_wasm_sur_d[] = {
 
 static u3j_core _136_hex_d[] =
   { { "non", 7, 0, _136_non_d, no_hashes },
+
+    { "maroon", 7, 0, _136_maroon_d, no_hashes },
 
     { "lull",   3, 0, _136_lull_d, no_hashes },
 

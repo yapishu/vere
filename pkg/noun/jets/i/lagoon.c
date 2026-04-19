@@ -215,19 +215,19 @@
     //  Switch on the block size.
     switch (u3x_atom(bloq)) {
       case 4:
-        haxpy(len_x, (float16_t){SB_REAL16_NEGONE}, (float16_t*)x_bytes, 1, (float16_t*)y_bytes, 1);
+        haxpy(len_x, (float16_t){SB_REAL16_NEGONE}, (float16_t*)y_bytes, 1, (float16_t*)x_bytes, 1);
         break;
 
       case 5:
-        saxpy(len_x, (float32_t){SB_REAL32_NEGONE}, (float32_t*)x_bytes, 1, (float32_t*)y_bytes, 1);
+        saxpy(len_x, (float32_t){SB_REAL32_NEGONE}, (float32_t*)y_bytes, 1, (float32_t*)x_bytes, 1);
         break;
 
       case 6:
-        daxpy(len_x, (float64_t){SB_REAL64_NEGONE}, (float64_t*)x_bytes, 1, (float64_t*)y_bytes, 1);
+        daxpy(len_x, (float64_t){SB_REAL64_NEGONE}, (float64_t*)y_bytes, 1, (float64_t*)x_bytes, 1);
         break;
 
       case 7:
-        qaxpy(len_x, (float128_t){SB_REAL128L_NEGONE,SB_REAL128U_NEGONE}, (float128_t*)x_bytes, 1, (float128_t*)y_bytes, 1);
+        qaxpy(len_x, (float128_t){SB_REAL128L_NEGONE,SB_REAL128U_NEGONE}, (float128_t*)y_bytes, 1, (float128_t*)x_bytes, 1);
         break;
     }
 
@@ -589,7 +589,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f16_lt(((float16_t*)x_bytes)[i], min_val16)) {
              min_val16 = ((float16_t*)x_bytes)[i];
-             min_idx = (len_x - i - 1);
+             min_idx = i;
            }
         }
         break;}
@@ -599,7 +599,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f32_lt(((float32_t*)x_bytes)[i], min_val32)) {
              min_val32 = ((float32_t*)x_bytes)[i];
-             min_idx = (len_x - i - 1);
+             min_idx = i;
            }
         }
         break;}
@@ -609,7 +609,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f64_lt(((float64_t*)x_bytes)[i], min_val64)) {
              min_val64 = ((float64_t*)x_bytes)[i];
-             min_idx = (len_x - i - 1);
+             min_idx = i;
            }
         }
         break;}
@@ -619,7 +619,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f128M_lt(&(((float128_t*)x_bytes)[i]), &min_val128)) {
              min_val128 = *f128M_min(&min_val128, &((float128_t*)x_bytes)[i]);
-             min_idx = (len_x - i - 1);
+             min_idx = i;
            }
         }
         break;}
@@ -662,7 +662,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f16_gt(((float16_t*)x_bytes)[i], max_val16)) {
              max_val16 = ((float16_t*)x_bytes)[i];
-             max_idx = (len_x - i - 1);
+             max_idx = i;
            }
         }
         break;}
@@ -672,7 +672,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f32_gt(((float32_t*)x_bytes)[i], max_val32)) {
              max_val32 = ((float32_t*)x_bytes)[i];
-             max_idx = (len_x - i - 1);
+             max_idx = i;
            }
         }
         break;}
@@ -682,7 +682,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f64_gt(((float64_t*)x_bytes)[i], max_val64)) {
              max_val64 = ((float64_t*)x_bytes)[i];
-             max_idx = (len_x - i - 1);
+             max_idx = i;
            }
         }
         break;}
@@ -692,7 +692,7 @@
         for (c3_d i = 0; i < len_x; i++) {
            if(f128M_gt(&(((float128_t*)x_bytes)[i]), &max_val128)) {
              max_val128 = *f128M_max(&max_val128, &((float128_t*)x_bytes)[i]);
-             max_idx = (len_x - i - 1);
+             max_idx = i;
            }
         }
         break;}
@@ -2532,6 +2532,234 @@
         }
       }
     }
+  }
+
+/* dequant-mlx2 - MLX 2-bit packed weight -> fp32 ray (produces
+   [in, out] shape, i.e. already transposed for mmul).
+   Pure-C dequant for the maroon Qwen3 / Llama family loader.
+
+     w shape:       [out, in/16]   uint32 (16 int2 per word, LSB-first)
+     scales/biases: [out, in/G]    fp32 (gguf2jam promotes from fp16)
+     out shape:     [in, out]      fp32   <-- transposed
+   Per-element: fp[i, o] = scales[o, i/G] * ((w[o, i/16] >> ((i%16)*2)) & 3)
+                           + biases[o, i/G]
+*/
+  u3_noun
+  u3qi_la_dequant_mlx2(u3_noun w_data,
+                       u3_noun w_shape,
+                       u3_noun s_data,
+                       u3_noun b_data,
+                       u3_noun grp_atom)
+  {
+    if ( c3n == u3a_is_cat(grp_atom) ) {
+      return u3m_bail(c3__exit);
+    }
+    c3_w group = u3x_atom(grp_atom);
+    if ( group == 0 ) return u3m_bail(c3__exit);
+
+    //  w_shape is [out, packed_cols, ~]. Read first two dims.
+    u3_noun out_atom = u3h(w_shape);
+    u3_noun rest1    = u3t(w_shape);
+    u3_noun pcols_atom = u3h(rest1);
+    if ( c3n == u3a_is_cat(out_atom) || c3n == u3a_is_cat(pcols_atom) ) {
+      return u3m_bail(c3__exit);
+    }
+    c3_w out_features = u3x_atom(out_atom);
+    c3_w packed_cols  = u3x_atom(pcols_atom);
+    c3_w in_features  = packed_cols * 16;
+    c3_w groups_per_row = in_features / group;
+    c3_d total = (c3_d)out_features * (c3_d)in_features;
+
+    //  Materialize input bytes off-loom. MLX2 data is always 4-byte words
+    //  (packed uint32 for w, fp32 for s/b), so use c3_h (uint32_t) rather
+    //  than c3_w — which is 8 bytes in VERE64 and would stride wrong.
+    c3_d w_bytes = (c3_d)out_features * (c3_d)packed_cols * 4;
+    c3_d s_bytes = (c3_d)out_features * (c3_d)groups_per_row * 4;
+    c3_h* w_buf = (c3_h*)u3a_malloc(w_bytes);
+    c3_h* s_buf = (c3_h*)u3a_malloc(s_bytes);
+    c3_h* b_buf = (c3_h*)u3a_malloc(s_bytes);
+    u3r_bytes(0, w_bytes, (c3_y*)w_buf, w_data);
+    u3r_bytes(0, s_bytes, (c3_y*)s_buf, s_data);
+    u3r_bytes(0, s_bytes, (c3_y*)b_buf, b_data);
+
+    //  Output: total fp32 vals in [in, out] layout (row = input idx i,
+    //  col = output neuron o). +1 byte MSB pin.
+    c3_d out_bytes = total * 4;
+    c3_y* out_buf = (c3_y*)u3a_malloc(out_bytes + 1);
+
+    for ( c3_w o = 0; o < out_features; o++ ) {
+      c3_w gpr_offset = o * groups_per_row;
+      for ( c3_w wc = 0; wc < packed_cols; wc++ ) {
+        c3_h word = w_buf[o * packed_cols + wc];
+        c3_w i_base = wc * 16;
+        for ( c3_w k = 0; k < 16; k++ ) {
+          c3_w i = i_base + k;
+          c3_w grp = i / group;
+          float scale = ((float*)s_buf)[gpr_offset + grp];
+          float bias  = ((float*)b_buf)[gpr_offset + grp];
+          c3_h q = (word >> (k * 2)) & 0x3;
+          float val = scale * (float)q + bias;
+          //  Emit at transposed position: row=i, col=o in [in_features, out_features].
+          ((float*)out_buf)[(c3_d)i * out_features + o] = val;
+        }
+      }
+    }
+
+    out_buf[out_bytes] = 0x01;
+
+    u3_noun r_data = u3i_bytes(out_bytes + 1, out_buf);
+
+    u3a_free(w_buf);
+    u3a_free(s_buf);
+    u3a_free(b_buf);
+    u3a_free(out_buf);
+    return r_data;
+  }
+
+/* logits-tied-mlx2 - [1, vocab] = x @ dequant(wte).T, where wte is mlx2-packed.
+   Streams over vocab dequanting one row at a time, computing dot(x, wte[v])
+   and writing scalar to output. Avoids materializing the full fp32 wte tensor.
+   Produces [vocab] fp32 atom (~600 KB for Qwen3 1.7B instead of 1.2 GB).
+*/
+  u3_noun
+  u3qi_la_logits_tied_mlx2(u3_noun x_data,      //  [d_model] fp32 (the last row's embedding)
+                           u3_noun x_shape,
+                           u3_noun w_data,      //  [vocab, d_model/16] uint32
+                           u3_noun w_shape,
+                           u3_noun s_data,      //  [vocab, d_model/G] fp32
+                           u3_noun b_data,      //  [vocab, d_model/G] fp32
+                           u3_noun grp_atom)
+  {
+    if ( c3n == u3a_is_cat(grp_atom) ) return u3m_bail(c3__exit);
+    c3_w group = u3x_atom(grp_atom);
+    if ( group == 0 ) return u3m_bail(c3__exit);
+
+    u3_noun vocab_atom = u3h(w_shape);
+    u3_noun pcols_atom = u3h(u3t(w_shape));
+    c3_w vocab       = u3x_atom(vocab_atom);
+    c3_w packed_cols = u3x_atom(pcols_atom);
+    c3_w d_model     = packed_cols * 16;
+    c3_w groups_per_row = d_model / group;
+
+    c3_d w_bytes = (c3_d)vocab * (c3_d)packed_cols * 4;
+    c3_d s_bytes = (c3_d)vocab * (c3_d)groups_per_row * 4;
+    c3_d x_bytes = (c3_d)d_model * 4;
+
+    //  Use c3_h (uint32_t) for packed-word buffer; c3_w would stride wrong on VERE64.
+    c3_h* w_buf = (c3_h*)u3a_malloc(w_bytes);
+    c3_h* s_buf = (c3_h*)u3a_malloc(s_bytes);
+    c3_h* b_buf = (c3_h*)u3a_malloc(s_bytes);
+    float* x_buf = (float*)u3a_malloc(x_bytes);
+
+    u3r_bytes(0, w_bytes, (c3_y*)w_buf, w_data);
+    u3r_bytes(0, s_bytes, (c3_y*)s_buf, s_data);
+    u3r_bytes(0, s_bytes, (c3_y*)b_buf, b_data);
+    u3r_bytes(0, x_bytes, (c3_y*)x_buf, x_data);
+
+    //  Output: [vocab] fp32 + 1 byte pin.
+    c3_d out_bytes = (c3_d)vocab * 4;
+    c3_y* out_buf = (c3_y*)u3a_malloc(out_bytes + 1);
+
+    for ( c3_w v = 0; v < vocab; v++ ) {
+      c3_w gpr_offset = v * groups_per_row;
+      float acc = 0.0f;
+      for ( c3_w wc = 0; wc < packed_cols; wc++ ) {
+        c3_h word = w_buf[v * packed_cols + wc];
+        c3_w i_base = wc * 16;
+        for ( c3_w k = 0; k < 16; k++ ) {
+          c3_w i = i_base + k;
+          c3_w grp = i / group;
+          float scale = ((float*)s_buf)[gpr_offset + grp];
+          float bias  = ((float*)b_buf)[gpr_offset + grp];
+          c3_h q = (word >> (k * 2)) & 0x3;
+          float w_fp = scale * (float)q + bias;
+          acc += x_buf[i] * w_fp;
+        }
+      }
+      ((float*)out_buf)[v] = acc;
+    }
+
+    out_buf[out_bytes] = 0x01;
+    u3_noun r_data = u3i_bytes(out_bytes + 1, out_buf);
+
+    u3a_free(w_buf);
+    u3a_free(s_buf);
+    u3a_free(b_buf);
+    u3a_free(x_buf);
+    u3a_free(out_buf);
+    return r_data;
+  }
+
+  u3_noun
+  u3wi_la_logits_tied_mlx2(u3_noun cor)
+  {
+    //  Sample = [x=ray wte-w=ray wte-s=ray wte-b=ray group-size=@]
+    //  Axes (see dequant_mlx2 for derivation):
+    //    x:         +12 (sam_2)       x_meta = +24 (sam_4)   x_data = +25 (sam_5)
+    //    rest:      +13
+    //    wte-w:     +26               wm = +52 (sam_12)      wd = +53 (sam_13)
+    //    rest2:     +27
+    //    wte-s:     +54               sm = +108              sd = +109
+    //    rest3:     +55
+    //    wte-b:     +110              bm = +220              bd = +221
+    //    gsz:       +111
+    u3_noun x_meta, x_data, w_meta, w_data, s_data, b_data, grp;
+    if ( c3n == u3r_mean(cor,
+                         u3x_sam_4,    &x_meta,
+                         u3x_sam_5,    &x_data,
+                         u3x_sam_12,   &w_meta,
+                         u3x_sam_13,   &w_data,
+                         (c3_w)109,    &s_data,
+                         (c3_w)221,    &b_data,
+                         (c3_w)111,    &grp,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+    u3_noun x_shape = u3h(x_meta);
+    u3_noun w_shape = u3h(w_meta);
+    u3_noun out_data = u3qi_la_logits_tied_mlx2(x_data, x_shape, w_data, w_shape, s_data, b_data, grp);
+    if ( out_data == u3_none ) return u3_none;
+
+    //  Output shape [1, vocab] — match existing logits convention.
+    u3_noun vocab_atom = u3h(w_shape);
+    u3_noun out_shape  = u3nt(u3i_word(1), u3k(vocab_atom), u3_nul);
+    u3_noun out_meta   = u3nq(out_shape, u3i_word(5), c3__i754, 0);
+    return u3nc(out_meta, out_data);
+  }
+
+  u3_noun
+  u3wi_la_dequant_mlx2(u3_noun cor)
+  {
+    //  Sample = [w=ray scales=ray biases=ray group-size=@]
+    //    w        = +12 (sam_2)   w_meta = +24 (sam_4)   w_data = +25 (sam_5)
+    //    bcd      = +13 (sam_3)
+    //    b        = +26 (sam_6)   s_meta = +52 (sam_12)  s_data = +53 (sam_13)
+    //    cd       = +27 (sam_7)
+    //    c        = +54 (sam_14)  b_meta = +108           b_data = +109
+    //    group    = +55 (sam_15)
+    u3_noun w_meta, w_data, s_data, b_data, grp;
+    if ( c3n == u3r_mean(cor,
+                         u3x_sam_4,    &w_meta,
+                         u3x_sam_5,    &w_data,
+                         u3x_sam_13,   &s_data,
+                         (c3_w)109,    &b_data,
+                         u3x_sam_15,   &grp,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+    u3_noun w_shape = u3h(w_meta);
+    u3_noun out_data = u3qi_la_dequant_mlx2(w_data, w_shape, s_data, b_data, grp);
+    if ( out_data == u3_none ) return u3_none;
+
+    //  Output shape is [in_features, out_features] (transposed).
+    u3_noun out_atom   = u3h(w_shape);
+    u3_noun pcols_atom = u3h(u3t(w_shape));
+    c3_w in_features = u3x_atom(pcols_atom) * 16;
+    u3_noun out_shape = u3nt(u3i_word(in_features), u3k(out_atom), u3_nul);
+    u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
+    return u3nc(out_meta, out_data);
   }
 
   u3_noun
