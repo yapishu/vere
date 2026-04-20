@@ -2790,12 +2790,6 @@
   u3_noun
   u3wi_la_mmul_mlx2(u3_noun cor)
   {
-    static int _dbg_printed = 0;
-    if ( !_dbg_printed ) {
-      fprintf(stderr, "[mmul-mlx2 jet] first dispatch\n");
-      fflush(stderr);
-      _dbg_printed = 1;
-    }
     u3_noun x_meta, x_data, w_meta, w_data, s_data, b_data, grp;
     if ( c3n == u3r_mean(cor,
                          (c3_w)24,    &x_meta,
@@ -2942,6 +2936,183 @@
     u3a_free(y_buf);
 
     u3_noun out_shape = u3nt(u3k(S_atom), u3k(D_atom), u3_nul);
+    u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
+    return u3nc(out_meta, r_data);
+  }
+
+  /* +rope-apply-row jet.  Sample = [x=ray cos=ray sin=ray].
+     3-tuple axes: x=+12 (meta=24 data=25), cos=+26 (52/53),
+                   sin=+27 (54/55).
+     x: [S, H, Dh] fp32; cos/sin: [S, Dh] fp32; out: [S, H, Dh] fp32.
+     Dh must be even (half-rotated convention). */
+  u3_noun
+  u3wi_la_rope_apply(u3_noun cor)
+  {
+    u3_noun x_meta, x_data, c_meta, c_data, s_meta, s_data;
+    if ( c3n == u3r_mean(cor,
+                         (c3_w)24, &x_meta,
+                         (c3_w)25, &x_data,
+                         (c3_w)52, &c_meta,
+                         (c3_w)53, &c_data,
+                         (c3_w)54, &s_meta,
+                         (c3_w)55, &s_data,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+
+    u3_noun x_shape = u3h(x_meta);
+    u3_noun S_a  = u3h(x_shape);
+    u3_noun H_a  = u3h(u3t(x_shape));
+    u3_noun Dh_a = u3h(u3t(u3t(x_shape)));
+    if ( c3n == u3a_is_cat(S_a) || c3n == u3a_is_cat(H_a) ||
+         c3n == u3a_is_cat(Dh_a) ) return u3_none;
+
+    c3_w S  = u3x_atom(S_a);
+    c3_w H  = u3x_atom(H_a);
+    c3_w Dh = u3x_atom(Dh_a);
+    if ( S == 0 || H == 0 || Dh == 0 || (Dh & 1) ) return u3_none;
+
+    c3_d x_bytes  = (c3_d)S * (c3_d)H * (c3_d)Dh * 4;
+    c3_d cs_bytes = (c3_d)S * (c3_d)Dh * 4;
+
+    c3_y* x_buf = (c3_y*)u3a_malloc(x_bytes);
+    c3_y* c_buf = (c3_y*)u3a_malloc(cs_bytes);
+    c3_y* s_buf = (c3_y*)u3a_malloc(cs_bytes);
+    c3_y* y_buf = (c3_y*)u3a_malloc(x_bytes + 1);
+    u3r_bytes(0, (c3_w)x_bytes,  x_buf, x_data);
+    u3r_bytes(0, (c3_w)cs_bytes, c_buf, c_data);
+    u3r_bytes(0, (c3_w)cs_bytes, s_buf, s_data);
+
+    backend_status bs = backend_rope_apply_fp32(
+      x_buf, c_buf, s_buf, y_buf, S, H, Dh);
+
+    u3a_free(x_buf);
+    u3a_free(c_buf);
+    u3a_free(s_buf);
+
+    if ( bs != BACKEND_OK ) {
+      u3a_free(y_buf);
+      return u3_none;
+    }
+
+    y_buf[x_bytes] = 0x01;
+    u3_noun r_data = u3i_bytes((c3_w)(x_bytes + 1), y_buf);
+    u3a_free(y_buf);
+
+    u3_noun out_shape = u3nq(u3k(S_a), u3k(H_a), u3k(Dh_a), u3_nul);
+    u3_noun out_meta = u3nq(out_shape, u3i_word(5), c3__i754, 0);
+    return u3nc(out_meta, r_data);
+  }
+
+  /* +silu-mul-ray jet.  Sample = [a=ray b=ray].
+     2-tuple axes: a=+12 (meta=24 data=25), b=+13 (meta=26 data=27).
+     a and b are any matching-shape fp32 tensors; output shape = a's. */
+  u3_noun
+  u3wi_la_silu_mul(u3_noun cor)
+  {
+    u3_noun a_meta, a_data, b_meta, b_data;
+    if ( c3n == u3r_mean(cor,
+                         (c3_w)24, &a_meta,
+                         (c3_w)25, &a_data,
+                         (c3_w)26, &b_meta,
+                         (c3_w)27, &b_data,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+    /* Count total elements from a's shape (list @). */
+    u3_noun shape = u3h(a_meta);
+    c3_d N = 1;
+    u3_noun cur = shape;
+    while ( u3_nul != cur ) {
+      u3_noun dim = u3h(cur);
+      if ( c3n == u3a_is_cat(dim) ) return u3_none;
+      N *= u3x_atom(dim);
+      cur = u3t(cur);
+    }
+    if ( N == 0 ) return u3_none;
+
+    c3_d bytes = N * 4;
+    c3_y* a_buf = (c3_y*)u3a_malloc(bytes);
+    c3_y* b_buf = (c3_y*)u3a_malloc(bytes);
+    c3_y* y_buf = (c3_y*)u3a_malloc(bytes + 1);
+    u3r_bytes(0, (c3_w)bytes, a_buf, a_data);
+    u3r_bytes(0, (c3_w)bytes, b_buf, b_data);
+
+    backend_status bs = backend_silu_mul_fp32(a_buf, b_buf, y_buf, N);
+
+    u3a_free(a_buf);
+    u3a_free(b_buf);
+    if ( bs != BACKEND_OK ) { u3a_free(y_buf); return u3_none; }
+
+    y_buf[bytes] = 0x01;
+    u3_noun r_data = u3i_bytes((c3_w)(bytes + 1), y_buf);
+    u3a_free(y_buf);
+    /* preserve a_meta exactly (shape, bloq, kind, tail) */
+    return u3nc(u3k(a_meta), r_data);
+  }
+
+  /* +gqa-attention-ray jet.  Sample = [q=ray k=ray v=ray].
+     3-tuple axes: q=+12 (24/25), k=+26 (52/53), v=+27 (54/55).
+     q: [S, H, Dh]; k, v: [S, KH, Dh].  Output: [S, H*Dh] fp32. */
+  u3_noun
+  u3wi_la_gqa_attention(u3_noun cor)
+  {
+    u3_noun q_meta, q_data, k_meta, k_data, v_meta, v_data;
+    if ( c3n == u3r_mean(cor,
+                         (c3_w)24, &q_meta,
+                         (c3_w)25, &q_data,
+                         (c3_w)52, &k_meta,
+                         (c3_w)53, &k_data,
+                         (c3_w)54, &v_meta,
+                         (c3_w)55, &v_data,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+
+    u3_noun q_shape = u3h(q_meta);
+    u3_noun k_shape = u3h(k_meta);
+    u3_noun S_a  = u3h(q_shape);
+    u3_noun H_a  = u3h(u3t(q_shape));
+    u3_noun Dh_a = u3h(u3t(u3t(q_shape)));
+    u3_noun KH_a = u3h(u3t(k_shape));
+    if ( c3n == u3a_is_cat(S_a)  || c3n == u3a_is_cat(H_a)  ||
+         c3n == u3a_is_cat(Dh_a) || c3n == u3a_is_cat(KH_a) ) {
+      return u3_none;
+    }
+    c3_w S  = u3x_atom(S_a);
+    c3_w H  = u3x_atom(H_a);
+    c3_w Dh = u3x_atom(Dh_a);
+    c3_w KH = u3x_atom(KH_a);
+    if ( S == 0 || H == 0 || KH == 0 || Dh == 0 || (H % KH) ) return u3_none;
+
+    c3_d q_bytes  = (c3_d)S * (c3_d)H  * (c3_d)Dh * 4;
+    c3_d kv_bytes = (c3_d)S * (c3_d)KH * (c3_d)Dh * 4;
+
+    c3_y* q_buf = (c3_y*)u3a_malloc(q_bytes);
+    c3_y* k_buf = (c3_y*)u3a_malloc(kv_bytes);
+    c3_y* v_buf = (c3_y*)u3a_malloc(kv_bytes);
+    c3_y* y_buf = (c3_y*)u3a_malloc(q_bytes + 1);
+    u3r_bytes(0, (c3_w)q_bytes,  q_buf, q_data);
+    u3r_bytes(0, (c3_w)kv_bytes, k_buf, k_data);
+    u3r_bytes(0, (c3_w)kv_bytes, v_buf, v_data);
+
+    backend_status bs = backend_gqa_attention_fp32(
+      q_buf, k_buf, v_buf, y_buf, S, H, KH, Dh);
+
+    u3a_free(q_buf);
+    u3a_free(k_buf);
+    u3a_free(v_buf);
+    if ( bs != BACKEND_OK ) { u3a_free(y_buf); return u3_none; }
+
+    y_buf[q_bytes] = 0x01;
+    u3_noun r_data = u3i_bytes((c3_w)(q_bytes + 1), y_buf);
+    u3a_free(y_buf);
+
+    /* Output shape: [S, H*Dh]. */
+    u3_noun out_shape = u3nt(u3k(S_a), u3i_word(H * Dh), u3_nul);
     u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
     return u3nc(out_meta, r_data);
   }

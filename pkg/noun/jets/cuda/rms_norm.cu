@@ -37,8 +37,10 @@ rms_norm_kernel(const float* __restrict__ x,
 
   if ( threadIdx.x == 0 ) {
     float sumsq = 0.0f;
+    /* Explicit mul+add (two IEEE roundings) to match Hoon's softfloat
+     * (add sumsq (mul v v)) byte-for-byte — not fused. */
     for ( size_t d = 0; d < D; d++ ) {
-      sumsq = fmaf(x_row[d], x_row[d], sumsq);
+      sumsq = sumsq + x_row[d] * x_row[d];
     }
     float mean_sq = sumsq / (float)D;
     s_rms = sqrtf(mean_sq + eps);

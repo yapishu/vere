@@ -569,6 +569,9 @@ fn buildBinary(
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/sgemm_det.o"));
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/mlx2_matmul.o"));
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/rms_norm.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/rope_apply.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/silu_mul.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/gqa_attention.o"));
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/vram_cache.o"));
         urbit.addLibraryPath(.{ .cwd_relative = cfg.cuda_lib_path });
         urbit.linkSystemLibrary("cudart");

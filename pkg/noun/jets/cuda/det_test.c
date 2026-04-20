@@ -69,6 +69,15 @@ rand_fp32_adversarial(uint32_t* state)
   return f;
 }
 
+/* NaN bit-patterns aren't IEEE-standardized — x86 libm canonicalizes to
+ * 0xffc00000, CUDA to 0x7fffffff.  Both ARE NaN; treat them as equal for
+ * bit-exactness checks.  This only affects adversarial inputs that drive
+ * the computation through 0·inf or inf−inf; real transformer activations
+ * never produce NaN. */
+static int _is_nan32(uint32_t u) {
+  return (u & 0x7f800000u) == 0x7f800000u && (u & 0x007fffffu) != 0u;
+}
+
 static int
 compare_bitwise(const float* a, const float* b, size_t n, const char* label)
 {
@@ -78,7 +87,7 @@ compare_bitwise(const float* a, const float* b, size_t n, const char* label)
     uint32_t ua, ub;
     memcpy(&ua, &a[i], 4);
     memcpy(&ub, &b[i], 4);
-    if ( ua != ub ) {
+    if ( ua != ub && !(_is_nan32(ua) && _is_nan32(ub)) ) {
       if ( first_m == (size_t)-1 ) first_m = i;
       diff++;
     }

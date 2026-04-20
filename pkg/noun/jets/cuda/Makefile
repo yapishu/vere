@@ -18,7 +18,7 @@ GENCODES    := \
   -gencode arch=compute_89,code=sm_89 \
   -gencode arch=compute_90,code=sm_90
 
-OBJS := sgemm_det.o mlx2_matmul.o rms_norm.o vram_cache.o backend.o sgemm_ref.o
+OBJS := sgemm_det.o mlx2_matmul.o rms_norm.o rope_apply.o silu_mul.o gqa_attention.o vram_cache.o backend.o sgemm_ref.o
 
 LIB  := libvere_cuda.a
 
@@ -42,10 +42,22 @@ mlx2_test: mlx2_matmul.o vram_cache.o mlx2_test.c
 rms_norm_test: rms_norm.o rms_norm_test.c
 	$(NVCC) $(CFLAGS) $^ -o $@ -lm
 
-test: det_test mlx2_test rms_norm_test
+rope_apply_test: rope_apply.o rope_apply_test.c
+	$(NVCC) $(CFLAGS) $^ -o $@ -lm
+
+silu_mul_test: silu_mul.o silu_mul_test.c
+	$(NVCC) $(CFLAGS) $^ -o $@ -lm
+
+gqa_attention_test: gqa_attention.o gqa_attention_test.c
+	$(NVCC) $(CFLAGS) $^ -o $@ -lm
+
+test: det_test mlx2_test rms_norm_test rope_apply_test silu_mul_test gqa_attention_test
 	./det_test
 	./mlx2_test
 	./rms_norm_test
+	./rope_apply_test
+	./silu_mul_test
+	./gqa_attention_test
 
 clean:
 	rm -f $(OBJS) $(LIB) det_test mlx2_test

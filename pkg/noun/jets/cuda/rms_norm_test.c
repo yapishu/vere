@@ -49,11 +49,12 @@ static void
 rms_norm_ref(const float* x, const float* g, float eps, float* y,
              size_t S, size_t D)
 {
+  /* Reference mirrors Hoon: explicit mul+add, IEEE sqrt/div. */
   for ( size_t s = 0; s < S; s++ ) {
     const float* xr = x + s * D;
     float* yr = y + s * D;
     float sumsq = 0.0f;
-    for ( size_t d = 0; d < D; d++ ) sumsq = fmaf(xr[d], xr[d], sumsq);
+    for ( size_t d = 0; d < D; d++ ) sumsq = sumsq + xr[d] * xr[d];
     float rms = sqrtf(sumsq / (float)D + eps);
     for ( size_t d = 0; d < D; d++ ) yr[d] = (xr[d] / rms) * g[d];
   }

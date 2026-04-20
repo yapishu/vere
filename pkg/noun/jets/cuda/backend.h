@@ -81,6 +81,35 @@ backend_rms_norm_fp32(const void* x_bytes,
                       size_t      S,
                       size_t      D);
 
+/* RoPE (half-rotated) on an [S, H, Dh] fp32 tensor with cos/sin [S, Dh]. */
+backend_status
+backend_rope_apply_fp32(const void* x_bytes,
+                        const void* cos_bytes,
+                        const void* sin_bytes,
+                        void*       y_bytes,
+                        size_t      S,
+                        size_t      H,
+                        size_t      Dh);
+
+/* Fused SiLU(a) * b elementwise, same-shape inputs, N total elements. */
+backend_status
+backend_silu_mul_fp32(const void* a_bytes,
+                      const void* b_bytes,
+                      void*       y_bytes,
+                      size_t      N);
+
+/* Fused causal GQA attention.  q: [S, H, Dh]; k/v: [S, KH, Dh]; out:
+ * [S, H*Dh] (heads concatenated in last dim). */
+backend_status
+backend_gqa_attention_fp32(const void* q_bytes,
+                           const void* k_bytes,
+                           const void* v_bytes,
+                           void*       y_bytes,
+                           size_t      S,
+                           size_t      H,
+                           size_t      KH,
+                           size_t      Dh);
+
 backend_status
 backend_mmul_mlx2(const void* x_bytes,
                   const void* w_packed_bytes,

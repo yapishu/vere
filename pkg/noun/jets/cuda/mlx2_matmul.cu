@@ -61,9 +61,10 @@ mlx2_matmul_kernel(const float*    __restrict__ x,
       float scale = scales[gpr_offset + grp];
       float bias  = biases[gpr_offset + grp];
       uint32_t q  = (word >> (k * 2)) & 0x3u;
-      /* round once for w_fp, then fmaf for the outer reduction */
-      float w_fp  = fmaf(scale, (float)q, bias);
-      acc = fmaf(x_row[i], w_fp, acc);
+      /* Explicit mul+add (two IEEE roundings) — byte-exact against
+       * Hoon's softfloat (add (mul scale qf) bias) / (add (mul xi w) acc). */
+      float w_fp  = (scale * (float)q) + bias;
+      acc = acc + x_row[i] * w_fp;
     }
   }
   y[s * out_features + o] = acc;

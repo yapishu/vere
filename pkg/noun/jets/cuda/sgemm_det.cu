@@ -52,9 +52,11 @@ sgemm_det_kernel(const float* __restrict__ a,
   if ( row >= M || col >= N ) return;
 
   float acc = 0.0f;
-  /* strictly sequential accumulation in k -> bit-deterministic per output. */
+  /* Strictly sequential accumulation.  Explicit mul then add (two
+   * IEEE roundings) rather than fmaf's one rounding — this matches
+   * Hoon's softfloat `(add (mul a b) c)` byte-exactly. */
   for ( size_t k = 0; k < K; k++ ) {
-    acc = fmaf(a[row * K + k], b[k * N + col], acc);
+    acc = acc + a[row * K + k] * b[k * N + col];
   }
   c[row * N + col] = acc;
 }

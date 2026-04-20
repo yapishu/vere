@@ -58,8 +58,9 @@ mlx2_ref(const float*    x,
           float scale = scales[gpr_offset + grp];
           float bias  = biases[gpr_offset + grp];
           uint32_t q  = (word >> (k * 2)) & 0x3u;
-          float w_fp  = fmaf(scale, (float)q, bias);
-          acc = fmaf(x_row[i], w_fp, acc);
+          /* Separate mul+add (two IEEE roundings) to match Hoon. */
+          float w_fp  = (scale * (float)q) + bias;
+          acc = acc + x_row[i] * w_fp;
         }
       }
       y[s * out_f + o] = acc;

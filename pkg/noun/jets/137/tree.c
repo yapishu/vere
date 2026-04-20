@@ -884,12 +884,21 @@ static u3j_harm _137_maroon_mmul_mlx2_a[] =
   {{".2", u3wi_la_mmul_mlx2}, {}};
 static u3j_harm _137_maroon_rms_norm_a[] =
   {{".2", u3wi_la_rms_norm}, {}};
+static u3j_harm _137_maroon_rope_apply_a[] =
+  {{".2", u3wi_la_rope_apply}, {}};
+static u3j_harm _137_maroon_silu_mul_a[] =
+  {{".2", u3wi_la_silu_mul}, {}};
+static u3j_harm _137_maroon_gqa_attention_a[] =
+  {{".2", u3wi_la_gqa_attention}, {}};
 
 static u3j_core _137_maroon_d[] =
   { { "dequant-mlx2", 7, _137_maroon_dequant_mlx2_a, 0, no_hashes },
     { "logits-tied-mlx2", 7, _137_maroon_logits_tied_mlx2_a, 0, no_hashes },
     { "mmul-mlx2", 7, _137_maroon_mmul_mlx2_a, 0, no_hashes },
     { "rms-norm-row", 7, _137_maroon_rms_norm_a, 0, no_hashes },
+    { "rope-apply-row", 7, _137_maroon_rope_apply_a, 0, no_hashes },
+    { "silu-mul-ray", 7, _137_maroon_silu_mul_a, 0, no_hashes },
+    { "gqa-attention-ray", 7, _137_maroon_gqa_attention_a, 0, no_hashes },
     {}
   };
 
