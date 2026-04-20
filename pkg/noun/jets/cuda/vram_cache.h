@@ -120,11 +120,17 @@ vram_cache_drop_by_mask(uint64_t mask_bits);
 
 /*
  * Drop one specific key (if resident).  Returns 1 on hit, 0 on miss.
- * Used by decode to free the prev-step's KV tensor immediately after
- * the memcpy into curr, so live KV footprint stays O(1) in seq length.
  */
 int
 vram_cache_drop(uint64_t key);
+
+/*
+ * Drop every entry whose key satisfies (key & mask) == expect.  Used
+ * by the app to clear a whole session's KV buffers on generation
+ * completion with one call.  Returns the number of entries dropped.
+ */
+size_t
+vram_cache_drop_if(uint64_t mask, uint64_t expect);
 
 /*
  * Diagnostics: total bytes resident, entry count, hit/miss counters.

@@ -326,14 +326,20 @@ backend_kv_drop(uint64_t key)
   return vram_cache_drop(key);
 }
 
+extern "C" size_t
+backend_kv_drop_if(uint64_t mask, uint64_t expect)
+{
+  if ( !backend_available() ) return 0;
+  return vram_cache_drop_if(mask, expect);
+}
+
 extern "C" backend_status
 backend_run_qwen3_decode_fp32(
     const void* x_bytes, void* y_bytes,
     const qw3_block_dptrs* blocks, size_t n_blocks,
     uintptr_t cos_dptr, uintptr_t sin_dptr,
     size_t position,
-    const uintptr_t* kv_k_prev, const uintptr_t* kv_v_prev,
-    const uintptr_t* kv_k_curr, const uintptr_t* kv_v_curr,
+    const uintptr_t* kv_k_dptrs, const uintptr_t* kv_v_dptrs,
     size_t D, size_t D_ff,
     size_t H, size_t KH, size_t Dh,
     size_t group_size, float rms_eps)
@@ -343,7 +349,7 @@ backend_run_qwen3_decode_fp32(
     (const float*)x_bytes, (float*)y_bytes,
     blocks, n_blocks,
     cos_dptr, sin_dptr, position,
-    kv_k_prev, kv_v_prev, kv_k_curr, kv_v_curr,
+    kv_k_dptrs, kv_v_dptrs,
     D, D_ff, H, KH, Dh, group_size, rms_eps);
   if ( r == QW3_OK )         return BACKEND_OK;
   if ( r == QW3_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;

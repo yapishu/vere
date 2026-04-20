@@ -188,7 +188,10 @@ vram_cache_init(size_t budget_bytes)
       fprintf(stderr, "[vram-cache] cudaMemGetInfo failed; using 4 GiB default\n");
     }
   }
-  g_cap = 16;
+  /* Pre-size: Qwen3 has 588 weight entries + up to 28×2=56 persistent
+   * KV entries per active generation + misc.  Starting at 4096 avoids
+   * a dozen power-of-two grows during warmup and keeps load factor low. */
+  g_cap = 4096;
   g_table = (Entry**)calloc(g_cap, sizeof(Entry*));
   g_init = 1;
   return VRAM_CACHE_OK;
@@ -375,6 +378,28 @@ vram_cache_drop(uint64_t key)
   if ( e == NULL ) return 0;
   _remove_entry(e);
   return 1;
+}
+
+extern "C" size_t
+vram_cache_drop_if(uint64_t mask, uint64_t expect)
+{
+  if ( !g_init || mask == 0 ) return 0;
+  size_t dropped = 0;
+  size_t cap = g_cap;
+  Entry** victims = (Entry**)calloc(cap, sizeof(Entry*));
+  size_t nv = 0;
+  for ( size_t i = 0; i < cap; i++ ) {
+    Entry* e = g_table[i];
+    if ( e && (e->key & mask) == (expect & mask) ) {
+      victims[nv++] = e;
+    }
+  }
+  for ( size_t i = 0; i < nv; i++ ) {
+    _remove_entry(victims[i]);
+    dropped++;
+  }
+  free(victims);
+  return dropped;
 }
 
 extern "C" size_t

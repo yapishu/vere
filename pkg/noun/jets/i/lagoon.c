@@ -3839,20 +3839,20 @@
   /* +run-blocks-qwen3 jet.  Sample = [x=tensor blocks=(list block)
    *                                   cfg=model-config cos=tensor sin=tensor]
    * 5-tuple axes:
-   *   x:        +12 → meta +24,  data +25
-   *   blocks:   +26 (a list of block-weights-qwen3)
-   *   cfg:      +54
-   *   cos:      +110 → meta +220, data +221
-   *   sin:      +222 → meta +444, data +445
-   *   seq-hash: +223  (mug of the full token sequence covered by x;
-   *                     0 disables KV-cache emission — pure recompute)
+   *   x:          +12 → meta +24,  data +25
+   *   blocks:     +26 (a list of block-weights-qwen3)
+   *   cfg:        +54
+   *   cos:        +110 → meta +220, data +221
+   *   sin:        +222 → meta +444, data +445
+   *   session-id: +446  (unique per generation; 0 disables KV emission)
+   *   max-seq:    +447  (size of the persistent per-session KV buffers)
    * Collapses the entire per-block loop into one GPU kernel.  All 28
    * blocks run with x resident in VRAM; one HtoD + one DtoH + one sync
    * barrier, instead of one set per block. */
   u3_noun
   u3wi_la_run_qwen3_forward(u3_noun cor)
   {
-    u3_noun x_meta, x_data, blocks, cfg, cos_data, sin_data, seq_hash_atom;
+    u3_noun x_meta, x_data, blocks, cfg, cos_data, sin_data, session_atom, maxseq_atom;
     if ( c3n == u3r_mean(cor,
                          (c3_w)24,  &x_meta,
                          (c3_w)25,  &x_data,
@@ -3860,7 +3860,8 @@
                          (c3_w)54,  &cfg,
                          (c3_w)221, &cos_data,
                          (c3_w)445, &sin_data,
-                         (c3_w)223, &seq_hash_atom,
+                         (c3_w)446, &session_atom,
+                         (c3_w)447, &maxseq_atom,
                          u3_nul) ) {
       return u3m_bail(c3__exit);
     }
@@ -4061,30 +4062,30 @@
     c3_y* y_buf = (c3_y*)u3a_malloc(y_bytes + 1);
     u3r_bytes(0, (c3_w)x_bytes, x_buf, x_data);
 
-    /* KV cache emission: if caller supplied a non-zero seq-hash, allocate
-     * per-layer K/V dptrs and pass them to prefill.  The kernel memcpy's
-     * K (post-RoPE) and V into these slots.  Decode then reads them. */
+    /* KV buffers: if caller supplied non-zero session-id and max-seq,
+     * allocate one persistent [max-seq, KV_D] buffer per (layer, kind)
+     * keyed on (session, layer, kind).  Prefill kernel writes positions
+     * 0..S-1 here; subsequent decode steps extend it in place.  Same
+     * allocation reused for the entire generation — no alloc churn. */
     uintptr_t* kv_k_dptrs = NULL;
     uintptr_t* kv_v_dptrs = NULL;
-    c3_d kv_row_bytes = (c3_d)S * (c3_d)(KH * Dh) * 4;
-    c3_w seq_hash = 0;
-    if ( c3y == u3a_is_cat(seq_hash_atom) ) {
-      seq_hash = u3x_atom(seq_hash_atom);
-    }
-    if ( seq_hash != 0 ) {
+    c3_w session_id = 0;
+    c3_w max_seq    = 0;
+    if ( c3y == u3a_is_cat(session_atom) ) session_id = u3x_atom(session_atom);
+    if ( c3y == u3a_is_cat(maxseq_atom)  ) max_seq    = u3x_atom(maxseq_atom);
+    if ( session_id != 0 && max_seq >= S ) {
+      c3_d kv_buf_bytes = (c3_d)max_seq * (c3_d)(KH * Dh) * 4;
       kv_k_dptrs = (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
       kv_v_dptrs = (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
       for ( size_t li = 0; li < n_blocks; li++ ) {
-        /* key layout: top bit = kv marker; then seq_hash<<16, layer<<4, kind */
+        /* key layout: top bit = kv marker; then session<<16, layer<<4, kind. */
         uint64_t key_k = (1ULL << 63)
-                       | ((uint64_t)seq_hash << 16)
-                       | ((uint64_t)li       << 4)
+                       | ((uint64_t)session_id << 16)
+                       | ((uint64_t)li         << 4)
                        | 0ULL;
         uint64_t key_v = key_k | 1ULL;
-        if ( backend_kv_alloc(key_k, kv_row_bytes, &kv_k_dptrs[li]) != BACKEND_OK ||
-             backend_kv_alloc(key_v, kv_row_bytes, &kv_v_dptrs[li]) != BACKEND_OK ) {
-          /* Alloc failed — disable KV emission for this call and fall
-           * back to pure recompute.  Not an error at the API level. */
+        if ( backend_kv_alloc(key_k, kv_buf_bytes, &kv_k_dptrs[li]) != BACKEND_OK ||
+             backend_kv_alloc(key_v, kv_buf_bytes, &kv_v_dptrs[li]) != BACKEND_OK ) {
           u3a_free(kv_k_dptrs); u3a_free(kv_v_dptrs);
           kv_k_dptrs = kv_v_dptrs = NULL;
           break;
@@ -4117,25 +4118,25 @@
     return u3nc(out_meta, r_data);
   }
 
-  /* +run-decode-qwen3 jet.  Sample = 8-tuple
+  /* +run-decode-qwen3 jet.  Sample = 7-tuple
    *   [x=tensor blocks=(list block) cfg=model-config cos=tensor sin=tensor
-   *    position=@ud prev-seq-hash=@ud curr-seq-hash=@ud]
+   *    position=@ud session-id=@ud]
    * Axes:
-   *   x:        +12 → meta +24,  data +25
-   *   blocks:   +26
-   *   cfg:      +54
-   *   cos:      +110 → meta +220, data +221
-   *   sin:      +222 → meta +444, data +445
-   *   position: +446
-   *   prev-seq-hash: +894
-   *   curr-seq-hash: +895
-   * Returns `(unit tensor)` — `[~ new-activation-at-position]` on the
-   * fast path, `~` if KV cache misses (caller must fall back). */
+   *   x:          +12 → meta +24,  data +25
+   *   blocks:     +26
+   *   cfg:        +54
+   *   cos:        +110 → meta +220, data +221
+   *   sin:        +222 → meta +444, data +445
+   *   position:   +446
+   *   session-id: +447
+   * KV buffers are session-scoped: probe by session_id + layer + kind;
+   * write K/V at `position` slot; attend 0..position.  Returns
+   * `[~ tensor]` on success, `~` on cache miss (→ caller falls back). */
   u3_noun
   u3wi_la_run_qwen3_decode(u3_noun cor)
   {
     u3_noun x_meta, x_data, blocks, cfg, cos_data, sin_data;
-    u3_noun pos_atom, prev_hash_atom, curr_hash_atom;
+    u3_noun pos_atom, session_atom;
     if ( c3n == u3r_mean(cor,
                          (c3_w)24,  &x_meta,
                          (c3_w)25,  &x_data,
@@ -4144,20 +4145,17 @@
                          (c3_w)221, &cos_data,
                          (c3_w)445, &sin_data,
                          (c3_w)446, &pos_atom,
-                         (c3_w)894, &prev_hash_atom,
-                         (c3_w)895, &curr_hash_atom,
+                         (c3_w)447, &session_atom,
                          u3_nul) ) {
       return u3m_bail(c3__exit);
     }
     if ( c3n == u3a_is_cat(pos_atom) ||
-         c3n == u3a_is_cat(prev_hash_atom) ||
-         c3n == u3a_is_cat(curr_hash_atom) ) {
+         c3n == u3a_is_cat(session_atom) ) {
       return u3_none;
     }
-    c3_w position  = u3x_atom(pos_atom);
-    c3_w prev_hash = u3x_atom(prev_hash_atom);
-    c3_w curr_hash = u3x_atom(curr_hash_atom);
-    if ( prev_hash == 0 || curr_hash == 0 ) return u3_none;
+    c3_w position   = u3x_atom(pos_atom);
+    c3_w session_id = u3x_atom(session_atom);
+    if ( session_id == 0 ) return u3_none;
 
     u3_noun x_shape = u3h(x_meta);
     u3_noun S_atom  = u3h(x_shape);
@@ -4210,19 +4208,14 @@
     if ( !arr ) return u3_none;
     memset(arr, 0, n_blocks * sizeof(qw3_block_dptrs));
 
-    uintptr_t* kv_k_prev =
+    uintptr_t* kv_k_dptrs =
       (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
-    uintptr_t* kv_v_prev =
-      (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
-    uintptr_t* kv_k_curr =
-      (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
-    uintptr_t* kv_v_curr =
+    uintptr_t* kv_v_dptrs =
       (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
 
     #define DEC_FAIL() do {                                         \
         u3a_free(arr);                                              \
-        u3a_free(kv_k_prev); u3a_free(kv_v_prev);                   \
-        u3a_free(kv_k_curr); u3a_free(kv_v_curr);                   \
+        u3a_free(kv_k_dptrs); u3a_free(kv_v_dptrs);                 \
         return u3_none;                                             \
       } while (0)
 
@@ -4264,8 +4257,6 @@
       } while (0)
 
     c3_w group_size = 0;
-    c3_d kv_prev_bytes = (c3_d)position * (KH * Dh) * 4;
-    c3_d kv_curr_bytes = (c3_d)(position + 1) * (KH * Dh) * 4;
 
     u3_noun tl = blocks;
     for ( size_t i = 0; i < n_blocks; i++ ) {
@@ -4341,23 +4332,15 @@
       PROBE_OR_UP_DEC(arr[i].q_norm,   qn_data,  gamma_Dh);
       PROBE_OR_UP_DEC(arr[i].k_norm,   kn_data,  gamma_Dh);
 
-      /* KV cache: probe prev (must hit) and alloc curr. */
-      uint64_t key_k_prev = (1ULL << 63) | ((uint64_t)prev_hash << 16)
-                          | ((uint64_t)i << 4) | 0ULL;
-      uint64_t key_v_prev = key_k_prev | 1ULL;
-      uint64_t key_k_curr = (1ULL << 63) | ((uint64_t)curr_hash << 16)
-                          | ((uint64_t)i << 4) | 0ULL;
-      uint64_t key_v_curr = key_k_curr | 1ULL;
-
-      size_t prev_b_out = 0, unused = 0;
-      if ( !backend_kv_probe(key_k_prev, &kv_k_prev[i], &prev_b_out) ) DEC_FAIL();
-      if ( prev_b_out != kv_prev_bytes ) DEC_FAIL();
-      if ( !backend_kv_probe(key_v_prev, &kv_v_prev[i], &unused) ) DEC_FAIL();
-
-      if ( backend_kv_alloc(key_k_curr, kv_curr_bytes, &kv_k_curr[i]) != BACKEND_OK )
-        DEC_FAIL();
-      if ( backend_kv_alloc(key_v_curr, kv_curr_bytes, &kv_v_curr[i]) != BACKEND_OK )
-        DEC_FAIL();
+      /* KV buffer: probe the persistent per-session [max-seq, KV_D]
+       * tensors.  Miss = caller hasn't prefilled (or LRU evicted it);
+       * return `~` so the Hoon layer falls back to a fresh prefill. */
+      uint64_t key_k = (1ULL << 63) | ((uint64_t)session_id << 16)
+                     | ((uint64_t)i << 4) | 0ULL;
+      uint64_t key_v = key_k | 1ULL;
+      size_t unused_bytes = 0;
+      if ( !backend_kv_probe(key_k, &kv_k_dptrs[i], &unused_bytes) ) DEC_FAIL();
+      if ( !backend_kv_probe(key_v, &kv_v_dptrs[i], &unused_bytes) ) DEC_FAIL();
     }
     #undef PROBE_REQ_DEC
     #undef PROBE_OR_UP_DEC
@@ -4405,25 +4388,11 @@
       arr, n_blocks,
       d_cos, d_sin,
       position,
-      kv_k_prev, kv_v_prev, kv_k_curr, kv_v_curr,
+      kv_k_dptrs, kv_v_dptrs,
       D, D_ff, H, KH, Dh, group_size, rms_eps);
 
-    /* Drop prev KV entries — their contents have now been copied into
-     * curr.  Keeps live KV VRAM footprint O(1) in sequence length
-     * rather than O(N²) accumulation that triggers LRU churn. */
-    if ( bs == BACKEND_OK ) {
-      for ( size_t i = 0; i < n_blocks; i++ ) {
-        uint64_t key_k_prev = (1ULL << 63) | ((uint64_t)prev_hash << 16)
-                            | ((uint64_t)i << 4) | 0ULL;
-        uint64_t key_v_prev = key_k_prev | 1ULL;
-        backend_kv_drop(key_k_prev);
-        backend_kv_drop(key_v_prev);
-      }
-    }
-
     u3a_free(arr);
-    u3a_free(kv_k_prev); u3a_free(kv_v_prev);
-    u3a_free(kv_k_curr); u3a_free(kv_v_curr);
+    u3a_free(kv_k_dptrs); u3a_free(kv_v_dptrs);
     u3a_free(x_buf);
 
     #undef DEC_FAIL

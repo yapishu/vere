@@ -111,19 +111,25 @@ backend_kv_drop(uint64_t key)
   return 0;
 }
 
+size_t
+backend_kv_drop_if(uint64_t mask, uint64_t expect)
+{
+  (void)mask; (void)expect;
+  return 0;
+}
+
 backend_status
 backend_run_qwen3_decode_fp32(
     const void* x, void* y,
     const qw3_block_dptrs* blocks, size_t n_blocks,
     uintptr_t cos_dptr, uintptr_t sin_dptr, size_t position,
-    const uintptr_t* kp, const uintptr_t* vp,
-    const uintptr_t* kc, const uintptr_t* vc,
+    const uintptr_t* kk, const uintptr_t* vv,
     size_t D, size_t Dff, size_t H, size_t KH, size_t Dh,
     size_t gs, float eps)
 {
   (void)x; (void)y; (void)blocks; (void)n_blocks;
   (void)cos_dptr; (void)sin_dptr; (void)position;
-  (void)kp; (void)vp; (void)kc; (void)vc;
+  (void)kk; (void)vv;
   (void)D; (void)Dff; (void)H; (void)KH; (void)Dh;
   (void)gs; (void)eps;
   return BACKEND_NO_CUDA;

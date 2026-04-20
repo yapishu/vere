@@ -79,10 +79,8 @@ qw3_decode_fp32(const float* x_host,
                 uintptr_t    cos_dptr,
                 uintptr_t    sin_dptr,
                 size_t       position,
-                const uintptr_t* kv_k_prev_dptrs,
-                const uintptr_t* kv_v_prev_dptrs,
-                const uintptr_t* kv_k_curr_dptrs,
-                const uintptr_t* kv_v_curr_dptrs,
+                const uintptr_t* kv_k_dptrs,
+                const uintptr_t* kv_v_dptrs,
                 size_t D, size_t D_ff,
                 size_t H, size_t KH, size_t Dh,
                 size_t group_size,
@@ -90,8 +88,7 @@ qw3_decode_fp32(const float* x_host,
 {
   if ( !x_host || !y_host || !blocks || n_blocks == 0 ||
        cos_dptr == 0 || sin_dptr == 0 ||
-       !kv_k_prev_dptrs || !kv_v_prev_dptrs ||
-       !kv_k_curr_dptrs || !kv_v_curr_dptrs ||
+       !kv_k_dptrs || !kv_v_dptrs ||
        D == 0 || D_ff == 0 || H == 0 || KH == 0 || Dh == 0 ||
        group_size == 0 || (H % KH) != 0 || H * Dh != D ) {
     return QW3_INVALID_ARG;
@@ -164,25 +161,9 @@ qw3_decode_fp32(const float* x_host,
 
   for ( size_t i = 0; i < n_blocks; i++ ) {
     const qw3_block_dptrs* bw = &blocks[i];
-    uintptr_t prev_k = kv_k_prev_dptrs[i];
-    uintptr_t prev_v = kv_v_prev_dptrs[i];
-    uintptr_t curr_k = kv_k_curr_dptrs[i];
-    uintptr_t curr_v = kv_v_curr_dptrs[i];
-    if ( curr_k == 0 || curr_v == 0 ) goto fail;
-
-    /* Copy the previous (N-1) positions' K/V into the freshly-allocated
-     * curr buffers.  If prev_k/prev_v is 0 we'd be at position 0 with no
-     * prior — but that case is a prefill, handled separately. */
-    if ( position > 0 ) {
-      if ( prev_k == 0 || prev_v == 0 ) goto fail;
-      size_t prev_bytes = position * KV_D * sizeof(float);
-      if ( cudaMemcpyAsync((void*)curr_k, (const void*)prev_k, prev_bytes,
-                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
-        goto fail;
-      if ( cudaMemcpyAsync((void*)curr_v, (const void*)prev_v, prev_bytes,
-                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
-        goto fail;
-    }
+    uintptr_t kv_k = kv_k_dptrs[i];
+    uintptr_t kv_v = kv_v_dptrs[i];
+    if ( kv_k == 0 || kv_v == 0 ) goto fail;
 
     rms_norm_kernel<<<(unsigned)S, 256>>>(
       d_x_in, (const float*)(void*)bw->input_ln, rms_eps, d_x1, S, D);
@@ -218,22 +199,22 @@ qw3_decode_fp32(const float* x_host,
       d_k_new, d_cos_pos, d_sin_pos, d_k2_new, S, KH, Dh, half);
     LAUNCH_CHECK();
 
-    /* Append new K/V (post-rope for K, plain for V) to the curr cache
-     * at slot `position`. */
+    /* Write new K/V (post-rope for K, plain for V) into the session
+     * buffer at slot `position`.  In-place append — no prev→curr copy. */
     {
-      void* dst_k = (void*)(curr_k + position * KV_D * sizeof(float));
+      void* dst_k = (void*)(kv_k + position * KV_D * sizeof(float));
       if ( cudaMemcpyAsync(dst_k, d_k2_new, kv_row_bts,
                            cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
         goto fail;
-      void* dst_v = (void*)(curr_v + position * KV_D * sizeof(float));
+      void* dst_v = (void*)(kv_v + position * KV_D * sizeof(float));
       if ( cudaMemcpyAsync(dst_v, d_v_new, kv_row_bts,
                            cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
         goto fail;
     }
 
-    /* Attention: 1 query × N cached K/V. */
+    /* Attention: 1 query × N in-buffer K/V. */
     gqa_attention_decode_kernel<<<gqa_grid, 128, attn_shared>>>(
-      d_q2, (const float*)(void*)curr_k, (const float*)(void*)curr_v,
+      d_q2, (const float*)(void*)kv_k, (const float*)(void*)kv_v,
       d_attn, N, H, KH, Dh, inv_sqrt_dh, group);
     LAUNCH_CHECK();
 

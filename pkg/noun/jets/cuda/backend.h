@@ -224,12 +224,15 @@ backend_kv_alloc(uint64_t    key,
 size_t
 backend_kv_drop_by_mask(uint64_t mask_bits);
 
-/* Drop a single KV cache entry by its exact key.  Used by decode to
- * free the previous step's per-layer tensor immediately after its
- * contents have been copied into the new step's curr tensor — keeps
- * the live KV footprint O(1) in sequence length. */
+/* Drop a single KV cache entry by its exact key. */
 int
 backend_kv_drop(uint64_t key);
+
+/* Drop every KV entry whose key matches a (mask, expect) pattern.
+ * Used to clear a whole session's buffers in one call when the
+ * generation completes. */
+size_t
+backend_kv_drop_if(uint64_t mask, uint64_t expect);
 
 /* Fused whole-forward Qwen3 kernel.  Runs all `n_blocks` transformer
  * blocks on GPU, keeping x resident in VRAM across blocks.  Requires
@@ -268,10 +271,8 @@ backend_run_qwen3_decode_fp32(
     uintptr_t          cos_dptr,
     uintptr_t          sin_dptr,
     size_t             position,
-    const uintptr_t*   kv_k_prev_dptrs,
-    const uintptr_t*   kv_v_prev_dptrs,
-    const uintptr_t*   kv_k_curr_dptrs,
-    const uintptr_t*   kv_v_curr_dptrs,
+    const uintptr_t*   kv_k_dptrs,   /* n_blocks, persistent [max_seq, KV_D] */
+    const uintptr_t*   kv_v_dptrs,
     size_t D,   size_t D_ff,
     size_t H,   size_t KH,   size_t Dh,
     size_t group_size,
