@@ -880,10 +880,16 @@ static u3j_harm _137_maroon_dequant_mlx2_a[] =
   {{".2", u3wi_la_dequant_mlx2}, {}};
 static u3j_harm _137_maroon_logits_tied_mlx2_a[] =
   {{".2", u3wi_la_logits_tied_mlx2}, {}};
+static u3j_harm _137_maroon_mmul_mlx2_a[] =
+  {{".2", u3wi_la_mmul_mlx2}, {}};
+static u3j_harm _137_maroon_rms_norm_a[] =
+  {{".2", u3wi_la_rms_norm}, {}};
 
 static u3j_core _137_maroon_d[] =
   { { "dequant-mlx2", 7, _137_maroon_dequant_mlx2_a, 0, no_hashes },
     { "logits-tied-mlx2", 7, _137_maroon_logits_tied_mlx2_a, 0, no_hashes },
+    { "mmul-mlx2", 7, _137_maroon_mmul_mlx2_a, 0, no_hashes },
+    { "rms-norm-row", 7, _137_maroon_rms_norm_a, 0, no_hashes },
     {}
   };
 

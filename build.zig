@@ -112,6 +112,8 @@ const BuildCfg = struct {
     tracy_callstack: bool = false,
     tracy_no_exit: bool = false,
     gen_cdb: bool = false,
+    cuda: bool = false,
+    cuda_lib_path: []const u8 = "/usr/local/cuda/lib64",
 };
 
 pub fn build(b: *std.Build) !void {
@@ -204,6 +206,10 @@ pub fn build(b: *std.Build) !void {
     const tracy_callstack = b.option(bool, "tracy-callstack", "Enable Tracy callstack capture") orelse false;
     const tracy_no_exit = b.option(bool, "tracy-no-exit", "Wait for profiler connection before exiting") orelse false;
 
+    const cuda = b.option(bool, "cuda", "Enable CUDA backend for lagoon matmul jets") orelse false;
+    const cuda_lib_path = b.option([]const u8, "cuda-lib-path",
+        "Path to CUDA runtime library dir") orelse "/usr/local/cuda/lib64";
+
     // Parse short git rev
     var file = try std.fs.cwd().openFile(".git/logs/HEAD", .{});
     defer file.close();
@@ -246,6 +252,8 @@ pub fn build(b: *std.Build) !void {
         .tracy_no_exit = tracy_no_exit,
         .include_test_steps = !all,
         .gen_cdb = gen_cdb,
+        .cuda = cuda,
+        .cuda_lib_path = cuda_lib_path,
     };
 
     if (all) {
@@ -254,11 +262,13 @@ pub fn build(b: *std.Build) !void {
         }
     } else {
         const t = target.result;
+        // CUDA's libcudart.so is compiled against glibc; musl static-linking
+        // is incompatible.  Use the native (glibc) target when -Dcuda=true.
         try buildBinary(
             b,
             if (t.os.tag == .linux and
                 target.query.isNative() and
-                !asan and !ubsan)
+                !asan and !ubsan and !cuda)
                 b.resolveTargetQuery(.{ .abi = .musl })
             else
                 target,
@@ -443,6 +453,8 @@ fn buildBinary(
         .target = target,
         .optimize = optimize,
         .copt = copts,
+        .cuda = cfg.cuda,
+        .@"cuda-lib-path" = cfg.cuda_lib_path,
     });
 
     // XX re-enable for migration work
@@ -544,6 +556,23 @@ fn buildBinary(
 
     if (t.os.tag == .windows) {
         urbit.linkSystemLibrary("ws2_32"); // WSA*, socket, htons, inet_*, gethostbyname, etc.
+    }
+
+    if (cfg.cuda) {
+        // Ensure nvcc-produced .o files are fresh.
+        const mk = b.addSystemCommand(&.{ "make", "-C", "pkg/noun/jets/cuda" });
+        urbit.step.dependOn(&mk.step);
+        // nvcc-compiled .o files (C++ + CUDA).  Added to the final exe link
+        // so they get pulled in properly (libvere_cuda.a is a nested archive
+        // which lld won't unwrap from inside libnoun.a).
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/backend.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/sgemm_det.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/mlx2_matmul.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/rms_norm.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/vram_cache.o"));
+        urbit.addLibraryPath(.{ .cwd_relative = cfg.cuda_lib_path });
+        urbit.linkSystemLibrary("cudart");
+        urbit.linkSystemLibrary("stdc++");
     }
 
     const target_query: std.Target.Query = .{

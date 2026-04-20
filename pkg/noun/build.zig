@@ -8,6 +8,18 @@ pub fn build(b: *std.Build) !void {
     const copts: []const []const u8 =
         b.option([]const []const u8, "copt", "") orelse &.{};
 
+    // -Dcuda=true enables the CUDA backend for lagoon jets.
+    //
+    // Build contract: libvere_cuda.a and the CUDA runtime are expected to
+    // be available.  Prebuild the static lib via `make -C pkg/noun/jets/cuda`
+    // before running zig build, or call zig build with -Dcuda-prebuild=true
+    // to have zig invoke nvcc itself.
+    const cuda_enabled = b.option(bool, "cuda", "Enable CUDA backend for lagoon matmul jets") orelse false;
+    const cuda_prebuild = b.option(bool, "cuda-prebuild",
+        "Run `make` in pkg/noun/jets/cuda before linking") orelse true;
+    const cuda_lib_path = b.option([]const u8, "cuda-lib-path",
+        "Path to CUDA runtime library dir") orelse "/usr/local/cuda/lib64";
+
     // Parse Tracy-related compiler options from copts to determine if Tracy is enabled
     var tracy_enabled = false;
     var tracy_callstack = false;
@@ -179,6 +191,20 @@ pub fn build(b: *std.Build) !void {
         .files = &c_source_files,
         .flags = flags.items,
     });
+
+    // CUDA backend: when disabled, compile a no-op stub that satisfies
+    // the symbols lagoon.c references.  When enabled, the real .o files
+    // are added to the final executable link in the top-level build.zig
+    // (they come from `make -C pkg/noun/jets/cuda`).
+    _ = cuda_prebuild;
+    _ = cuda_lib_path;
+    if (!cuda_enabled) {
+        pkg_noun.addCSourceFiles(.{
+            .root = b.path("jets/cuda"),
+            .files = &.{"backend_stub.c"},
+            .flags = flags.items,
+        });
+    }
 
     if (t.os.tag == .windows) {
         pkg_noun.addCSourceFiles(.{

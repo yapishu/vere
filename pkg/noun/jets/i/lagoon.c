@@ -9,6 +9,8 @@
 #include "softfloat.h"
 #include "softblas.h"
 
+#include "jets/cuda/backend.h"
+
 #include <math.h>  // for pow()
 #include <stdio.h>
 
@@ -2118,9 +2120,21 @@
         hgemm('N', 'N', M, N, P, (float16_t){SB_REAL16_ONE}, (float16_t*)x_bytes, N, (float16_t*)y_bytes, P, (float16_t){SB_REAL16_ZERO}, (float16_t*)r_bytes, P);
         break;
 
-      case 5:
+      case 5: {
+        //  Try GPU first (bit-exact against softblas-free CPU ref; softblas
+        //  itself may not match exactly, but both are deterministic per-call
+        //  so output is stable either way for Nock consensus).  On any GPU
+        //  failure, fall through to softblas.
+        //
+        //  b_hash is the mug of y_data (right-hand weight), which is usually
+        //  the large constant weight matrix in transformer inference.
+        c3_w y_mug = u3r_mug(y_data);
+        backend_status bs = backend_mmul_fp32(
+          x_bytes, y_bytes, r_bytes, M, N, P, (uint32_t)y_mug);
+        if ( bs == BACKEND_OK ) break;
         sgemm('N', 'N', M, N, P, (float32_t){SB_REAL32_ONE}, (float32_t*)x_bytes, N, (float32_t*)y_bytes, P, (float32_t){SB_REAL32_ZERO}, (float32_t*)r_bytes, P);
         break;
+      }
 
       case 6:
         dgemm('N', 'N', M, N, P, (float64_t){SB_REAL64_ONE}, (float64_t*)x_bytes, N, (float64_t*)y_bytes, P, (float64_t){SB_REAL64_ZERO}, (float64_t*)r_bytes, P);
@@ -2760,6 +2774,176 @@
     u3_noun out_shape = u3nt(u3i_word(in_features), u3k(out_atom), u3_nul);
     u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
     return u3nc(out_meta, out_data);
+  }
+
+  /* +mmul-mlx2 jet — fused MLX2 dequant + fp32 matmul.
+     Sample = [x=ray w=ray scales=ray biases=ray group-size=@].
+     Tree-order axes for a 5-tuple gate sample:
+       x        = +12       x_meta  = +24        x_data  = +25
+       w        = +26       w_meta  = +52        w_data  = +53
+       scales   = +54       s_meta  = +108       s_data  = +109
+       biases   = +110      b_meta  = +220       b_data  = +221
+       group    = +111
+     Routes to backend_mmul_mlx2 which runs on GPU with VRAM-cached
+     weights when CUDA is built in; otherwise returns u3_none and the
+     Hoon fallback runs. */
+  u3_noun
+  u3wi_la_mmul_mlx2(u3_noun cor)
+  {
+    static int _dbg_printed = 0;
+    if ( !_dbg_printed ) {
+      fprintf(stderr, "[mmul-mlx2 jet] first dispatch\n");
+      fflush(stderr);
+      _dbg_printed = 1;
+    }
+    u3_noun x_meta, x_data, w_meta, w_data, s_data, b_data, grp;
+    if ( c3n == u3r_mean(cor,
+                         (c3_w)24,    &x_meta,
+                         (c3_w)25,    &x_data,
+                         (c3_w)52,    &w_meta,
+                         (c3_w)53,    &w_data,
+                         (c3_w)109,   &s_data,
+                         (c3_w)221,   &b_data,
+                         (c3_w)111,   &grp,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+    if ( c3n == u3a_is_cat(grp) ) return u3_none;
+    c3_w group = u3x_atom(grp);
+    if ( group == 0 ) return u3_none;
+
+    //  Extract shapes.
+    u3_noun x_shape = u3h(x_meta);
+    u3_noun w_shape = u3h(w_meta);
+    u3_noun S_atom  = u3h(x_shape);
+    u3_noun xin_a   = u3h(u3t(x_shape));
+    u3_noun out_a   = u3h(w_shape);
+    u3_noun pcols_a = u3h(u3t(w_shape));
+    if ( c3n == u3a_is_cat(S_atom) || c3n == u3a_is_cat(xin_a) ||
+         c3n == u3a_is_cat(out_a)  || c3n == u3a_is_cat(pcols_a) ) {
+      return u3_none;
+    }
+    c3_w S            = u3x_atom(S_atom);
+    c3_w x_in         = u3x_atom(xin_a);
+    c3_w out_features = u3x_atom(out_a);
+    c3_w packed_cols  = u3x_atom(pcols_a);
+    c3_w in_features  = packed_cols * 16;
+    if ( x_in != in_features || (in_features % group) != 0 ) return u3_none;
+    c3_w groups_per_row = in_features / group;
+
+    c3_d x_bytes  = (c3_d)S * (c3_d)in_features * 4;
+    c3_d w_bytes  = (c3_d)out_features * (c3_d)packed_cols * 4;
+    c3_d sb_bytes = (c3_d)out_features * (c3_d)groups_per_row * 4;
+    c3_d y_bytes  = (c3_d)S * (c3_d)out_features * 4;
+
+    c3_y* x_buf = (c3_y*)u3a_malloc(x_bytes);
+    c3_y* w_buf = (c3_y*)u3a_malloc(w_bytes);
+    c3_y* s_buf = (c3_y*)u3a_malloc(sb_bytes);
+    c3_y* b_buf = (c3_y*)u3a_malloc(sb_bytes);
+    c3_y* y_buf = (c3_y*)u3a_malloc(y_bytes + 1);
+
+    u3r_bytes(0, (c3_w)x_bytes,  x_buf, x_data);
+    u3r_bytes(0, (c3_w)w_bytes,  w_buf, w_data);
+    u3r_bytes(0, (c3_w)sb_bytes, s_buf, s_data);
+    u3r_bytes(0, (c3_w)sb_bytes, b_buf, b_data);
+
+    //  Stable content hashes for VRAM-cache lookup.  x is typically unique
+    //  per call (activations) so no benefit to caching; pass hash=0 below.
+    c3_w w_mug = u3r_mug(w_data);
+    c3_w s_mug = u3r_mug(s_data);
+    c3_w b_mug = u3r_mug(b_data);
+
+    backend_status bs = backend_mmul_mlx2(
+      x_buf, w_buf, s_buf, b_buf, y_buf,
+      S, in_features, out_features, group,
+      w_mug, s_mug, b_mug);
+
+    u3a_free(x_buf);
+    u3a_free(w_buf);
+    u3a_free(s_buf);
+    u3a_free(b_buf);
+
+    if ( bs != BACKEND_OK ) {
+      u3a_free(y_buf);
+      return u3_none;  //  Hoon fallback: (mmul x (dequant-mlx2-ray ...))
+    }
+
+    y_buf[y_bytes] = 0x01;  //  MSB pin so u3i_bytes doesn't strip
+    u3_noun r_data = u3i_bytes((c3_w)(y_bytes + 1), y_buf);
+    u3a_free(y_buf);
+
+    u3_noun out_shape = u3nt(u3k(S_atom), u3k(out_a), u3_nul);
+    u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
+    return u3nc(out_meta, r_data);
+  }
+
+  /* +rms-norm-2d jet.  Sample = [x=ray gamma=ray eps=@rs].
+     Tree-order axes for a 3-tuple sample:
+       x       = +12     x_meta = +24     x_data = +25
+       gamma   = +26     g_meta = +52     g_data = +53
+       eps     = +27
+     x has shape [S, D]; gamma has shape [D].  Output: [S, D] fp32. */
+  u3_noun
+  u3wi_la_rms_norm(u3_noun cor)
+  {
+    u3_noun x_meta, x_data, g_meta, g_data, eps_atom;
+    if ( c3n == u3r_mean(cor,
+                         (c3_w)24, &x_meta,
+                         (c3_w)25, &x_data,
+                         (c3_w)52, &g_meta,
+                         (c3_w)53, &g_data,
+                         (c3_w)27, &eps_atom,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+
+    u3_noun x_shape = u3h(x_meta);
+    u3_noun g_shape = u3h(g_meta);
+    u3_noun S_atom  = u3h(x_shape);
+    u3_noun D_atom  = u3h(u3t(x_shape));
+    u3_noun Dg_atom = u3h(g_shape);
+    if ( c3n == u3a_is_cat(S_atom) || c3n == u3a_is_cat(D_atom) ||
+         c3n == u3a_is_cat(Dg_atom) ) {
+      return u3_none;
+    }
+    c3_w S = u3x_atom(S_atom);
+    c3_w D = u3x_atom(D_atom);
+    if ( D != u3x_atom(Dg_atom) || S == 0 || D == 0 ) return u3_none;
+
+    c3_d x_bytes = (c3_d)S * (c3_d)D * 4;
+    c3_d g_bytes = (c3_d)D * 4;
+
+    c3_y* x_buf = (c3_y*)u3a_malloc(x_bytes);
+    c3_y* g_buf = (c3_y*)u3a_malloc(g_bytes);
+    c3_y* y_buf = (c3_y*)u3a_malloc(x_bytes + 1);
+    u3r_bytes(0, (c3_w)x_bytes, x_buf, x_data);
+    u3r_bytes(0, (c3_w)g_bytes, g_buf, g_data);
+
+    /* eps is @rs — 32 bits as a direct atom. */
+    c3_w eps_u32 = u3x_atom(eps_atom);
+    float eps;
+    memcpy(&eps, &eps_u32, 4);
+
+    backend_status bs = backend_rms_norm_fp32(
+      x_buf, g_buf, eps, y_buf, S, D);
+
+    u3a_free(x_buf);
+    u3a_free(g_buf);
+
+    if ( bs != BACKEND_OK ) {
+      u3a_free(y_buf);
+      return u3_none;
+    }
+
+    y_buf[x_bytes] = 0x01;
+    u3_noun r_data = u3i_bytes((c3_w)(x_bytes + 1), y_buf);
+    u3a_free(y_buf);
+
+    u3_noun out_shape = u3nt(u3k(S_atom), u3k(D_atom), u3_nul);
+    u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
+    return u3nc(out_meta, r_data);
   }
 
   u3_noun

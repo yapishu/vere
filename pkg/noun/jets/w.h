@@ -417,6 +417,8 @@
     u3_noun u3wi_la_argmax(u3_noun);
     u3_noun u3wi_la_dequant_mlx2(u3_noun);
     u3_noun u3wi_la_logits_tied_mlx2(u3_noun);
+    u3_noun u3wi_la_mmul_mlx2(u3_noun);
+    u3_noun u3wi_la_rms_norm(u3_noun);
     u3_noun u3wi_la_ravel(u3_noun);
     u3_noun u3wi_la_min(u3_noun);
     u3_noun u3wi_la_max(u3_noun);
