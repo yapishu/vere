@@ -4038,10 +4038,21 @@
       PROBE_OR_UP(arr[i].k_norm,   kn_data,  gamma_Dh);
     }
 
-    /* cos/sin shared across all blocks. */
+    /* cos/sin shared across all blocks.  Use the atom's actual byte
+     * count (minus the MSB-pin sentinel) for the cache size so one
+     * precomputed-at-chat-start rope table can be reused across ticks
+     * even when S varies — the kernel still only reads first S rows. */
     uintptr_t d_cos = 0, d_sin = 0;
-    PROBE_OR_UP(d_cos, cos_data, cs_bytes);
-    PROBE_OR_UP(d_sin, sin_data, cs_bytes);
+    c3_d cos_atom_bytes = u3r_met(3, cos_data);
+    c3_d sin_atom_bytes = u3r_met(3, sin_data);
+    if ( cos_atom_bytes > 0 ) cos_atom_bytes--;
+    if ( sin_atom_bytes > 0 ) sin_atom_bytes--;
+    if ( cos_atom_bytes < cs_bytes || sin_atom_bytes < cs_bytes ) {
+      u3a_free(arr);
+      return u3_none;
+    }
+    PROBE_OR_UP(d_cos, cos_data, cos_atom_bytes);
+    PROBE_OR_UP(d_sin, sin_data, sin_atom_bytes);
     #undef PROBE_REQ
     #undef PROBE_OR_UP
     #undef MLX2_PROJ
@@ -4352,27 +4363,36 @@
     #undef PROBE_OR_UP_DEC
     #undef MLX2_PROJ_DEC
 
-    /* cos/sin for this sequence length — probe-or-upload like prefill. */
+    /* cos/sin for this sequence length — probe-or-upload like prefill.
+     * Use the atom's actual byte count (minus the MSB sentinel) so a
+     * single precomputed rope table can be reused across ticks; the
+     * kernel only reads the first (position+1) rows regardless. */
     uintptr_t d_cos = 0, d_sin = 0;
     {
+      c3_d cos_atom_bytes = u3r_met(3, cos_data);
+      c3_d sin_atom_bytes = u3r_met(3, sin_data);
+      if ( cos_atom_bytes > 0 ) cos_atom_bytes--;
+      if ( sin_atom_bytes > 0 ) sin_atom_bytes--;
+      if ( cos_atom_bytes < cs_bytes || sin_atom_bytes < cs_bytes ) DEC_FAIL();
+
       c3_w _mug;
       uint8_t _sent[16];
       size_t _spot;
-      #define POU_CS(dst, data_atom) do {                             \
+      #define POU_CS(dst, data_atom, atom_bytes) do {                 \
           _mug = u3r_mug(data_atom);                                  \
-          _spot = cs_bytes < 16 ? (size_t)cs_bytes : 16;              \
+          _spot = atom_bytes < 16 ? (size_t)atom_bytes : 16;          \
           u3r_bytes(0, (c3_w)_spot, _sent, data_atom);                \
-          if ( !backend_vram_probe((uint32_t)_mug, cs_bytes, _sent, &dst) ) { \
-            c3_y* _tmp = (c3_y*)u3a_malloc(cs_bytes);                 \
-            u3r_bytes(0, (c3_w)cs_bytes, _tmp, data_atom);            \
+          if ( !backend_vram_probe((uint32_t)_mug, atom_bytes, _sent, &dst) ) { \
+            c3_y* _tmp = (c3_y*)u3a_malloc(atom_bytes);               \
+            u3r_bytes(0, (c3_w)atom_bytes, _tmp, data_atom);          \
             backend_status _bs = backend_vram_upload(                 \
-              _tmp, cs_bytes, (uint32_t)_mug, &dst);                  \
+              _tmp, atom_bytes, (uint32_t)_mug, &dst);                \
             u3a_free(_tmp);                                           \
             if ( _bs != BACKEND_OK ) DEC_FAIL();                      \
           }                                                           \
         } while (0)
-      POU_CS(d_cos, cos_data);
-      POU_CS(d_sin, sin_data);
+      POU_CS(d_cos, cos_data, cos_atom_bytes);
+      POU_CS(d_sin, sin_data, sin_atom_bytes);
       #undef POU_CS
     }
 
