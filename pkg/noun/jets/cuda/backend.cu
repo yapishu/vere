@@ -9,6 +9,7 @@
 #include "rope_apply.h"
 #include "silu_mul.h"
 #include "gqa_attention.h"
+#include "qwen3_block.h"
 #include "vram_cache.h"
 
 #include <cuda_runtime.h>
@@ -46,9 +47,6 @@ backend_init(void)
   if ( sgemm_det_init() != SGEMM_DET_OK ) {
     return BACKEND_NO_CUDA;
   }
-
-  fprintf(stderr, "[cuda-backend] initialized (%d device%s)\n",
-          dev_count, dev_count == 1 ? "" : "s");
 
   g_backend_ok = 1;
   return BACKEND_OK;
@@ -201,6 +199,97 @@ backend_gqa_attention_fp32(const void* q_bytes,
   if ( r == GQA_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
   if ( r == GQA_INVALID_ARG )return BACKEND_INVALID_ARG;
   return BACKEND_LAUNCH_FAIL;
+}
+
+extern "C" backend_status
+backend_mmul_mlx2_cached(const void* x_bytes,
+                         uintptr_t   w_dptr,
+                         uintptr_t   s_dptr,
+                         uintptr_t   b_dptr,
+                         void*       y_bytes,
+                         size_t      S,
+                         size_t      in_features,
+                         size_t      out_features,
+                         size_t      group_size)
+{
+  if ( !backend_available() ) return BACKEND_NO_CUDA;
+  if ( w_dptr == 0 || s_dptr == 0 || b_dptr == 0 ) return BACKEND_INVALID_ARG;
+  mlx2_matmul_status r = mlx2_matmul_cached(
+    (const float*)x_bytes, w_dptr, s_dptr, b_dptr, (float*)y_bytes,
+    S, in_features, out_features, group_size);
+  return r == MLX2_MATMUL_OK ? BACKEND_OK : BACKEND_LAUNCH_FAIL;
+}
+
+extern "C" backend_status
+backend_run_qwen3_block_fp32(
+    const void* x_bytes, void* y_bytes,
+    uintptr_t q_w,  uintptr_t q_s,  uintptr_t q_b,
+    uintptr_t k_w,  uintptr_t k_s,  uintptr_t k_b,
+    uintptr_t v_w,  uintptr_t v_s,  uintptr_t v_b,
+    uintptr_t o_w,  uintptr_t o_s,  uintptr_t o_b,
+    uintptr_t gate_w, uintptr_t gate_s, uintptr_t gate_b,
+    uintptr_t up_w,   uintptr_t up_s,   uintptr_t up_b,
+    uintptr_t down_w, uintptr_t down_s, uintptr_t down_b,
+    uintptr_t input_ln_dptr, uintptr_t post_ln_dptr,
+    uintptr_t q_norm_dptr,   uintptr_t k_norm_dptr,
+    uintptr_t cos_dptr,      uintptr_t sin_dptr,
+    size_t S, size_t D, size_t D_ff,
+    size_t H, size_t KH, size_t Dh,
+    size_t group_size, float rms_eps)
+{
+  if ( !backend_available() ) return BACKEND_NO_CUDA;
+  qw3_block_status r = qw3_block_fp32(
+    (const float*)x_bytes, (float*)y_bytes,
+    q_w, q_s, q_b,  k_w, k_s, k_b,  v_w, v_s, v_b,  o_w, o_s, o_b,
+    gate_w, gate_s, gate_b,  up_w, up_s, up_b,  down_w, down_s, down_b,
+    input_ln_dptr, post_ln_dptr, q_norm_dptr, k_norm_dptr,
+    cos_dptr, sin_dptr,
+    S, D, D_ff, H, KH, Dh, group_size, rms_eps);
+  if ( r == QW3_OK )         return BACKEND_OK;
+  if ( r == QW3_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
+  if ( r == QW3_INVALID_ARG )return BACKEND_INVALID_ARG;
+  return BACKEND_LAUNCH_FAIL;
+}
+
+extern "C" backend_status
+backend_run_qwen3_forward_fp32(
+    const void* x_bytes, void* y_bytes,
+    const qw3_block_dptrs* blocks, size_t n_blocks,
+    uintptr_t cos_dptr, uintptr_t sin_dptr,
+    size_t S, size_t D, size_t D_ff,
+    size_t H, size_t KH, size_t Dh,
+    size_t group_size, float rms_eps)
+{
+  if ( !backend_available() ) return BACKEND_NO_CUDA;
+  qw3_block_status r = qw3_forward_fp32(
+    (const float*)x_bytes, (float*)y_bytes,
+    blocks, n_blocks,
+    cos_dptr, sin_dptr,
+    S, D, D_ff, H, KH, Dh, group_size, rms_eps);
+  if ( r == QW3_OK )         return BACKEND_OK;
+  if ( r == QW3_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
+  if ( r == QW3_INVALID_ARG )return BACKEND_INVALID_ARG;
+  return BACKEND_LAUNCH_FAIL;
+}
+
+extern "C" int
+backend_vram_probe(uint32_t hash, size_t n_bytes, const uint8_t* sentinel,
+                   uintptr_t* out_dptr)
+{
+  if ( !backend_available() ) return 0;
+  return vram_cache_probe(hash, n_bytes, sentinel, out_dptr) == VRAM_CACHE_OK
+    ? 1 : 0;
+}
+
+extern "C" backend_status
+backend_vram_upload(const void* bytes, size_t n_bytes, uint32_t hash,
+                    uintptr_t* out_dptr)
+{
+  if ( !backend_available() ) return BACKEND_NO_CUDA;
+  vram_cache_status r = vram_cache_get_or_upload(bytes, n_bytes, hash, out_dptr);
+  if ( r == VRAM_CACHE_OK )         return BACKEND_OK;
+  if ( r == VRAM_CACHE_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
+  return BACKEND_INVALID_ARG;
 }
 
 extern "C" void

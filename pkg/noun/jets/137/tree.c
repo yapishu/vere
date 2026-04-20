@@ -890,6 +890,22 @@ static u3j_harm _137_maroon_silu_mul_a[] =
   {{".2", u3wi_la_silu_mul}, {}};
 static u3j_harm _137_maroon_gqa_attention_a[] =
   {{".2", u3wi_la_gqa_attention}, {}};
+static u3j_harm _137_maroon_softmax_row_a[] =
+  {{".2", u3wi_la_softmax_row}, {}};
+static u3j_harm _137_maroon_mask_top_p_a[] =
+  {{".2", u3wi_la_mask_top_p}, {}};
+static u3j_harm _137_maroon_sample_from_dist_a[] =
+  {{".2", u3wi_la_sample_from_dist}, {}};
+static u3j_harm _137_maroon_run_block_qwen3_a[] =
+  {{".2", u3wi_la_run_qwen3_block}, {}};
+static u3j_harm _137_maroon_run_blocks_qwen3_a[] =
+  {{".2", u3wi_la_run_qwen3_forward}, {}};
+static u3j_harm _137_maroon_rope_cos_sin_a[] =
+  {{".2", u3wi_la_rope_cos_sin}, {}};
+static u3j_harm _137_maroon_dequant_mlx2_row_a[] =
+  {{".2", u3wi_la_dequant_mlx2_row}, {}};
+static u3j_harm _137_maroon_embed_tied_mlx2_a[] =
+  {{".2", u3wi_la_embed_tied_mlx2}, {}};
 
 static u3j_core _137_maroon_d[] =
   { { "dequant-mlx2", 7, _137_maroon_dequant_mlx2_a, 0, no_hashes },
@@ -899,6 +915,14 @@ static u3j_core _137_maroon_d[] =
     { "rope-apply-row", 7, _137_maroon_rope_apply_a, 0, no_hashes },
     { "silu-mul-ray", 7, _137_maroon_silu_mul_a, 0, no_hashes },
     { "gqa-attention-ray", 7, _137_maroon_gqa_attention_a, 0, no_hashes },
+    { "softmax-row-ray", 7, _137_maroon_softmax_row_a, 0, no_hashes },
+    { "mask-top-p-ray", 7, _137_maroon_mask_top_p_a, 0, no_hashes },
+    { "sample-from-dist-ray", 7, _137_maroon_sample_from_dist_a, 0, no_hashes },
+    { "run-block-qwen3", 7, _137_maroon_run_block_qwen3_a, 0, no_hashes },
+    { "run-blocks-qwen3", 7, _137_maroon_run_blocks_qwen3_a, 0, no_hashes },
+    { "rope-cos-sin", 7, _137_maroon_rope_cos_sin_a, 0, no_hashes },
+    { "dequant-mlx2-row", 7, _137_maroon_dequant_mlx2_row_a, 0, no_hashes },
+    { "embed-tied-mlx2", 7, _137_maroon_embed_tied_mlx2_a, 0, no_hashes },
     {}
   };
 

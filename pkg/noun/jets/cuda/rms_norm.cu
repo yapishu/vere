@@ -84,12 +84,12 @@ rms_norm_fp32(const float* x,
   size_t x_bytes = S * D * sizeof(float);
   size_t g_bytes = D * sizeof(float);
 
-  if ( cudaMalloc((void**)&d_x, x_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_g, g_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_y, x_bytes) != cudaSuccess ) {
-    if ( d_x ) cudaFree(d_x);
-    if ( d_g ) cudaFree(d_g);
-    if ( d_y ) cudaFree(d_y);
+  if ( cudaMallocAsync((void**)&d_x, x_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_g, g_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_y, x_bytes, 0) != cudaSuccess ) {
+    if ( d_x ) cudaFreeAsync(d_x, 0);
+    if ( d_g ) cudaFreeAsync(d_g, 0);
+    if ( d_y ) cudaFreeAsync(d_y, 0);
     return RMSN_ALLOC_FAIL;
   }
   cudaMemcpy(d_x, x,     x_bytes, cudaMemcpyHostToDevice);
@@ -99,9 +99,9 @@ rms_norm_fp32(const float* x,
   if ( cudaGetLastError() != cudaSuccess ||
        cudaDeviceSynchronize() != cudaSuccess ||
        cudaMemcpy(y, d_y, x_bytes, cudaMemcpyDeviceToHost) != cudaSuccess ) {
-    cudaFree(d_x); cudaFree(d_g); cudaFree(d_y);
+    cudaFreeAsync(d_x, 0); cudaFreeAsync(d_g, 0); cudaFreeAsync(d_y, 0);
     return RMSN_LAUNCH_FAIL;
   }
-  cudaFree(d_x); cudaFree(d_g); cudaFree(d_y);
+  cudaFreeAsync(d_x, 0); cudaFreeAsync(d_g, 0); cudaFreeAsync(d_y, 0);
   return RMSN_OK;
 }

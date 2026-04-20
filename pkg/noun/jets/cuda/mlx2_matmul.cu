@@ -97,14 +97,14 @@ _mlx2_launch(const float* x_host,
   size_t y_bytes = S * out_f * sizeof(float);
 
   float *d_x = NULL, *d_y = NULL;
-  if ( cudaMalloc((void**)&d_x, x_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_y, y_bytes) != cudaSuccess ) {
-    if ( d_x ) cudaFree(d_x);
-    if ( d_y ) cudaFree(d_y);
+  if ( cudaMallocAsync((void**)&d_x, x_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_y, y_bytes, 0) != cudaSuccess ) {
+    if ( d_x ) cudaFreeAsync(d_x, 0);
+    if ( d_y ) cudaFreeAsync(d_y, 0);
     return MLX2_MATMUL_ALLOC_FAIL;
   }
   if ( cudaMemcpy(d_x, x_host, x_bytes, cudaMemcpyHostToDevice) != cudaSuccess ) {
-    cudaFree(d_x); cudaFree(d_y);
+    cudaFreeAsync(d_x, 0); cudaFreeAsync(d_y, 0);
     return MLX2_MATMUL_LAUNCH_FAIL;
   }
 
@@ -122,12 +122,12 @@ _mlx2_launch(const float* x_host,
   if ( cudaGetLastError() != cudaSuccess ||
        cudaDeviceSynchronize() != cudaSuccess ||
        cudaMemcpy(y_host, d_y, y_bytes, cudaMemcpyDeviceToHost) != cudaSuccess ) {
-    cudaFree(d_x); cudaFree(d_y);
+    cudaFreeAsync(d_x, 0); cudaFreeAsync(d_y, 0);
     return MLX2_MATMUL_LAUNCH_FAIL;
   }
 
-  cudaFree(d_x);
-  cudaFree(d_y);
+  cudaFreeAsync(d_x, 0);
+  cudaFreeAsync(d_y, 0);
   return MLX2_MATMUL_OK;
 }
 
@@ -153,12 +153,12 @@ mlx2_matmul_fresh(const float*    x,
 
   uint32_t *d_w = NULL;
   float    *d_s = NULL, *d_b = NULL;
-  if ( cudaMalloc((void**)&d_w, w_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_s, s_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_b, s_bytes) != cudaSuccess ) {
-    if ( d_w ) cudaFree(d_w);
-    if ( d_s ) cudaFree(d_s);
-    if ( d_b ) cudaFree(d_b);
+  if ( cudaMallocAsync((void**)&d_w, w_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_s, s_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_b, s_bytes, 0) != cudaSuccess ) {
+    if ( d_w ) cudaFreeAsync(d_w, 0);
+    if ( d_s ) cudaFreeAsync(d_s, 0);
+    if ( d_b ) cudaFreeAsync(d_b, 0);
     return MLX2_MATMUL_ALLOC_FAIL;
   }
   cudaMemcpy(d_w, w_packed, w_bytes, cudaMemcpyHostToDevice);
@@ -169,9 +169,9 @@ mlx2_matmul_fresh(const float*    x,
     x, (uintptr_t)d_w, (uintptr_t)d_s, (uintptr_t)d_b, y,
     S, in_f, out_f, group);
 
-  cudaFree(d_w);
-  cudaFree(d_s);
-  cudaFree(d_b);
+  cudaFreeAsync(d_w, 0);
+  cudaFreeAsync(d_s, 0);
+  cudaFreeAsync(d_b, 0);
   return st;
 }
 

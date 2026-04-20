@@ -48,12 +48,12 @@ silu_mul_fp32(const float* a, const float* b, float* y, size_t N)
 
   size_t bytes = N * sizeof(float);
   float *d_a = NULL, *d_b = NULL, *d_y = NULL;
-  if ( cudaMalloc((void**)&d_a, bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_b, bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_y, bytes) != cudaSuccess ) {
-    if ( d_a ) cudaFree(d_a);
-    if ( d_b ) cudaFree(d_b);
-    if ( d_y ) cudaFree(d_y);
+  if ( cudaMallocAsync((void**)&d_a, bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_b, bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_y, bytes, 0) != cudaSuccess ) {
+    if ( d_a ) cudaFreeAsync(d_a, 0);
+    if ( d_b ) cudaFreeAsync(d_b, 0);
+    if ( d_y ) cudaFreeAsync(d_y, 0);
     return SILU_ALLOC_FAIL;
   }
   cudaMemcpy(d_a, a, bytes, cudaMemcpyHostToDevice);
@@ -69,6 +69,6 @@ silu_mul_fp32(const float* a, const float* b, float* y, size_t N)
        cudaMemcpy(y, d_y, bytes, cudaMemcpyDeviceToHost) != cudaSuccess ) {
     st = SILU_LAUNCH_FAIL;
   }
-  cudaFree(d_a); cudaFree(d_b); cudaFree(d_y);
+  cudaFreeAsync(d_a, 0); cudaFreeAsync(d_b, 0); cudaFreeAsync(d_y, 0);
   return st;
 }

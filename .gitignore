@@ -288,3 +288,8 @@ GTAGS
 /nel
 /nev
 /fes
+
+# CUDA build artifacts
+pkg/noun/jets/cuda/*_test
+pkg/noun/jets/cuda/*.o
+libvere_cuda.a

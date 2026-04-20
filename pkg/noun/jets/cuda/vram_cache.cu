@@ -240,6 +240,33 @@ _get_or_upload(const void* bytes, size_t n_bytes,
 }
 
 extern "C" vram_cache_status
+vram_cache_probe(uint32_t hash, size_t n_bytes, const uint8_t* sentinel,
+                 uintptr_t* out_dptr)
+{
+  if ( !out_dptr || !sentinel || n_bytes == 0 ) return VRAM_CACHE_INVALID_ARG;
+  if ( !g_init ) {
+    vram_cache_status s = vram_cache_init(0);
+    if ( s != VRAM_CACHE_OK ) return s;
+  }
+  uint64_t key = ((uint64_t)hash ? (uint64_t)hash : 1)
+               ^ ((uint64_t)n_bytes * 0x9e3779b97f4a7c15ULL);
+  if ( key == 0 ) key = 1;
+  Entry** slot = _find_slot(key);
+  Entry* e = *slot;
+  if ( e == NULL ) return VRAM_CACHE_MISS;
+  size_t spot = n_bytes < 16 ? n_bytes : 16;
+  if ( e->n_bytes != n_bytes ||
+       e->full_hash != (uint64_t)hash ||
+       memcmp(e->sentinel, sentinel, spot) != 0 ) {
+    return VRAM_CACHE_MISS;
+  }
+  g_hits++;
+  _lru_touch(e);
+  *out_dptr = e->dptr;
+  return VRAM_CACHE_OK;
+}
+
+extern "C" vram_cache_status
 vram_cache_get_or_upload(const void* bytes, size_t n_bytes,
                          uint32_t hash, uintptr_t* out_dptr)
 {

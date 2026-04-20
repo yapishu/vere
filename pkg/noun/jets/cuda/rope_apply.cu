@@ -75,14 +75,14 @@ rope_apply_fp32(const float* x,
   size_t cs_bytes = S * Dh * sizeof(float);
 
   float *d_x = NULL, *d_c = NULL, *d_s = NULL, *d_y = NULL;
-  if ( cudaMalloc((void**)&d_x, x_bytes)  != cudaSuccess ||
-       cudaMalloc((void**)&d_c, cs_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_s, cs_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_y, x_bytes)  != cudaSuccess ) {
-    if ( d_x ) cudaFree(d_x);
-    if ( d_c ) cudaFree(d_c);
-    if ( d_s ) cudaFree(d_s);
-    if ( d_y ) cudaFree(d_y);
+  if ( cudaMallocAsync((void**)&d_x, x_bytes, 0)  != cudaSuccess ||
+       cudaMallocAsync((void**)&d_c, cs_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_s, cs_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_y, x_bytes, 0)  != cudaSuccess ) {
+    if ( d_x ) cudaFreeAsync(d_x, 0);
+    if ( d_c ) cudaFreeAsync(d_c, 0);
+    if ( d_s ) cudaFreeAsync(d_s, 0);
+    if ( d_y ) cudaFreeAsync(d_y, 0);
     return ROPE_ALLOC_FAIL;
   }
   cudaMemcpy(d_x, x,       x_bytes,  cudaMemcpyHostToDevice);
@@ -99,6 +99,6 @@ rope_apply_fp32(const float* x,
        cudaMemcpy(y, d_y, x_bytes, cudaMemcpyDeviceToHost) != cudaSuccess ) {
     st = ROPE_LAUNCH_FAIL;
   }
-  cudaFree(d_x); cudaFree(d_c); cudaFree(d_s); cudaFree(d_y);
+  cudaFreeAsync(d_x, 0); cudaFreeAsync(d_c, 0); cudaFreeAsync(d_s, 0); cudaFreeAsync(d_y, 0);
   return st;
 }

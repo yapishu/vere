@@ -422,6 +422,14 @@
     u3_noun u3wi_la_rope_apply(u3_noun);
     u3_noun u3wi_la_silu_mul(u3_noun);
     u3_noun u3wi_la_gqa_attention(u3_noun);
+    u3_noun u3wi_la_softmax_row(u3_noun);
+    u3_noun u3wi_la_mask_top_p(u3_noun);
+    u3_noun u3wi_la_sample_from_dist(u3_noun);
+    u3_noun u3wi_la_rope_cos_sin(u3_noun);
+    u3_noun u3wi_la_dequant_mlx2_row(u3_noun);
+    u3_noun u3wi_la_embed_tied_mlx2(u3_noun);
+    u3_noun u3wi_la_run_qwen3_block(u3_noun);
+    u3_noun u3wi_la_run_qwen3_forward(u3_noun);
     u3_noun u3wi_la_ravel(u3_noun);
     u3_noun u3wi_la_min(u3_noun);
     u3_noun u3wi_la_max(u3_noun);

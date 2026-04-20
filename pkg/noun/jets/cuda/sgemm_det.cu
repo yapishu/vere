@@ -122,20 +122,20 @@ sgemm_det_row_major(const float* a,
   size_t b_bytes = K * N * sizeof(float);
   size_t c_bytes = M * N * sizeof(float);
 
-  if ( cudaMalloc((void**)&d_a, a_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_b, b_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_c, c_bytes) != cudaSuccess ) {
-    if ( d_a ) cudaFree(d_a);
-    if ( d_b ) cudaFree(d_b);
-    if ( d_c ) cudaFree(d_c);
+  if ( cudaMallocAsync((void**)&d_a, a_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_b, b_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_c, c_bytes, 0) != cudaSuccess ) {
+    if ( d_a ) cudaFreeAsync(d_a, 0);
+    if ( d_b ) cudaFreeAsync(d_b, 0);
+    if ( d_c ) cudaFreeAsync(d_c, 0);
     return SGEMM_DET_ALLOC_FAIL;
   }
   if ( cudaMemcpy(d_b, b, b_bytes, cudaMemcpyHostToDevice) != cudaSuccess ) {
-    cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+    cudaFreeAsync(d_a, 0); cudaFreeAsync(d_b, 0); cudaFreeAsync(d_c, 0);
     return SGEMM_DET_LAUNCH_FAIL;
   }
   sgemm_det_status st = _launch(a, d_a, a_bytes, d_b, c, d_c, c_bytes, M, K, N);
-  cudaFree(d_a); cudaFree(d_b); cudaFree(d_c);
+  cudaFreeAsync(d_a, 0); cudaFreeAsync(d_b, 0); cudaFreeAsync(d_c, 0);
   return st;
 }
 
@@ -158,13 +158,13 @@ sgemm_det_row_major_cached_b(const float* a,
   size_t a_bytes = M * K * sizeof(float);
   size_t c_bytes = M * N * sizeof(float);
 
-  if ( cudaMalloc((void**)&d_a, a_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_c, c_bytes) != cudaSuccess ) {
-    if ( d_a ) cudaFree(d_a);
-    if ( d_c ) cudaFree(d_c);
+  if ( cudaMallocAsync((void**)&d_a, a_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_c, c_bytes, 0) != cudaSuccess ) {
+    if ( d_a ) cudaFreeAsync(d_a, 0);
+    if ( d_c ) cudaFreeAsync(d_c, 0);
     return SGEMM_DET_ALLOC_FAIL;
   }
   sgemm_det_status st = _launch(a, d_a, a_bytes, d_b, c, d_c, c_bytes, M, K, N);
-  cudaFree(d_a); cudaFree(d_c);
+  cudaFreeAsync(d_a, 0); cudaFreeAsync(d_c, 0);
   return st;
 }

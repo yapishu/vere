@@ -28,7 +28,8 @@ typedef enum {
   VRAM_CACHE_OK = 0,
   VRAM_CACHE_NO_CUDA,
   VRAM_CACHE_ALLOC_FAIL,
-  VRAM_CACHE_INVALID_ARG
+  VRAM_CACHE_INVALID_ARG,
+  VRAM_CACHE_MISS         /* probe returned: not cached */
 } vram_cache_status;
 
 /*
@@ -63,6 +64,21 @@ vram_cache_get_or_upload64(const void* bytes,
                            size_t      n_bytes,
                            uint64_t    hash,
                            uintptr_t*  out_dptr);
+
+/*
+ * Lookup-only variant.  No allocation, no upload — just checks whether
+ * a matching entry is already resident.  `sentinel` must point to the
+ * first min(16, n_bytes) bytes of the payload; used to guard against
+ * 32-bit hash collisions without requiring the full payload in hand.
+ *
+ * Returns VRAM_CACHE_OK with *out_dptr set on hit.
+ * Returns VRAM_CACHE_MISS on miss (no state change).
+ */
+vram_cache_status
+vram_cache_probe(uint32_t       hash,
+                 size_t         n_bytes,
+                 const uint8_t* sentinel,
+                 uintptr_t*     out_dptr);
 
 /*
  * Diagnostics: total bytes resident, entry count, hit/miss counters.

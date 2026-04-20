@@ -126,14 +126,14 @@ gqa_attention_fp32(const float* q,
   size_t y_bytes = q_bytes;
 
   float *d_q = NULL, *d_k = NULL, *d_v = NULL, *d_y = NULL;
-  if ( cudaMalloc((void**)&d_q, q_bytes)  != cudaSuccess ||
-       cudaMalloc((void**)&d_k, kv_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_v, kv_bytes) != cudaSuccess ||
-       cudaMalloc((void**)&d_y, y_bytes)  != cudaSuccess ) {
-    if ( d_q ) cudaFree(d_q);
-    if ( d_k ) cudaFree(d_k);
-    if ( d_v ) cudaFree(d_v);
-    if ( d_y ) cudaFree(d_y);
+  if ( cudaMallocAsync((void**)&d_q, q_bytes, 0)  != cudaSuccess ||
+       cudaMallocAsync((void**)&d_k, kv_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_v, kv_bytes, 0) != cudaSuccess ||
+       cudaMallocAsync((void**)&d_y, y_bytes, 0)  != cudaSuccess ) {
+    if ( d_q ) cudaFreeAsync(d_q, 0);
+    if ( d_k ) cudaFreeAsync(d_k, 0);
+    if ( d_v ) cudaFreeAsync(d_v, 0);
+    if ( d_y ) cudaFreeAsync(d_y, 0);
     return GQA_ALLOC_FAIL;
   }
   cudaMemcpy(d_q, q, q_bytes,  cudaMemcpyHostToDevice);
@@ -152,6 +152,6 @@ gqa_attention_fp32(const float* q,
        cudaMemcpy(y, d_y, y_bytes, cudaMemcpyDeviceToHost) != cudaSuccess ) {
     st = GQA_LAUNCH_FAIL;
   }
-  cudaFree(d_q); cudaFree(d_k); cudaFree(d_v); cudaFree(d_y);
+  cudaFreeAsync(d_q, 0); cudaFreeAsync(d_k, 0); cudaFreeAsync(d_v, 0); cudaFreeAsync(d_y, 0);
   return st;
 }
