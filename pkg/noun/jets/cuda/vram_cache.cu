@@ -164,7 +164,30 @@ vram_cache_init(size_t budget_bytes)
     return VRAM_CACHE_NO_CUDA;
   if ( cudaSetDevice(0) != cudaSuccess )
     return VRAM_CACHE_NO_CUDA;
-  if ( budget_bytes > 0 ) g_budget = budget_bytes;
+  if ( budget_bytes > 0 ) {
+    g_budget = budget_bytes;
+  } else {
+    /* Size the cache to the card's actually-free VRAM, minus a headroom
+     * margin for CUDA context, scratch allocs, and other apps.  Keeps
+     * the cache dynamic without requiring hardcoded 8-GiB assumptions
+     * that over-promise on 4-GB cards and under-use 24-GB cards.
+     * Stateless + deterministic: budget affects only when eviction
+     * happens, never what is computed. */
+    size_t free_b = 0, total_b = 0;
+    if ( cudaMemGetInfo(&free_b, &total_b) == cudaSuccess && free_b > 0 ) {
+      /* Reserve 1 GiB or 15% (whichever is bigger) for scratch + headroom. */
+      size_t pct_margin  = total_b / 7;         /* ~14% of total */
+      size_t fixed_margin = (size_t)1 << 30;    /* 1 GiB */
+      size_t margin = pct_margin > fixed_margin ? pct_margin : fixed_margin;
+      g_budget = free_b > margin ? free_b - margin : free_b / 2;
+      fprintf(stderr,
+              "[vram-cache] budget=%zu MB (free=%zu MB, total=%zu MB)\n",
+              g_budget >> 20, free_b >> 20, total_b >> 20);
+    } else {
+      g_budget = (size_t)4 << 30;  /* safe-ish default */
+      fprintf(stderr, "[vram-cache] cudaMemGetInfo failed; using 4 GiB default\n");
+    }
+  }
   g_cap = 16;
   g_table = (Entry**)calloc(g_cap, sizeof(Entry*));
   g_init = 1;
@@ -341,6 +364,17 @@ vram_cache_probe64_keyonly(uint64_t key, uintptr_t* out_dptr, size_t* out_n_byte
   *out_dptr = e->dptr;
   if ( out_n_bytes ) *out_n_bytes = e->n_bytes;
   return VRAM_CACHE_OK;
+}
+
+extern "C" int
+vram_cache_drop(uint64_t key)
+{
+  if ( !g_init || key == 0 ) return 0;
+  Entry** slot = _find_slot(key);
+  Entry* e = *slot;
+  if ( e == NULL ) return 0;
+  _remove_entry(e);
+  return 1;
 }
 
 extern "C" size_t

@@ -104,6 +104,13 @@ backend_kv_drop_by_mask(uint64_t mask_bits)
   return 0;
 }
 
+int
+backend_kv_drop(uint64_t key)
+{
+  (void)key;
+  return 0;
+}
+
 backend_status
 backend_run_qwen3_decode_fp32(
     const void* x, void* y,

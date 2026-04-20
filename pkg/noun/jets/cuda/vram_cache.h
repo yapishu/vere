@@ -119,6 +119,14 @@ size_t
 vram_cache_drop_by_mask(uint64_t mask_bits);
 
 /*
+ * Drop one specific key (if resident).  Returns 1 on hit, 0 on miss.
+ * Used by decode to free the prev-step's KV tensor immediately after
+ * the memcpy into curr, so live KV footprint stays O(1) in seq length.
+ */
+int
+vram_cache_drop(uint64_t key);
+
+/*
  * Diagnostics: total bytes resident, entry count, hit/miss counters.
  */
 typedef struct {

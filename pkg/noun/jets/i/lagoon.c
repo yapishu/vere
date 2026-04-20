@@ -4408,6 +4408,19 @@
       kv_k_prev, kv_v_prev, kv_k_curr, kv_v_curr,
       D, D_ff, H, KH, Dh, group_size, rms_eps);
 
+    /* Drop prev KV entries — their contents have now been copied into
+     * curr.  Keeps live KV VRAM footprint O(1) in sequence length
+     * rather than O(N²) accumulation that triggers LRU churn. */
+    if ( bs == BACKEND_OK ) {
+      for ( size_t i = 0; i < n_blocks; i++ ) {
+        uint64_t key_k_prev = (1ULL << 63) | ((uint64_t)prev_hash << 16)
+                            | ((uint64_t)i << 4) | 0ULL;
+        uint64_t key_v_prev = key_k_prev | 1ULL;
+        backend_kv_drop(key_k_prev);
+        backend_kv_drop(key_v_prev);
+      }
+    }
+
     u3a_free(arr);
     u3a_free(kv_k_prev); u3a_free(kv_v_prev);
     u3a_free(kv_k_curr); u3a_free(kv_v_curr);

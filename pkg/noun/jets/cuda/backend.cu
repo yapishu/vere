@@ -319,6 +319,13 @@ backend_kv_drop_by_mask(uint64_t mask_bits)
   return vram_cache_drop_by_mask(mask_bits);
 }
 
+extern "C" int
+backend_kv_drop(uint64_t key)
+{
+  if ( !backend_available() ) return 0;
+  return vram_cache_drop(key);
+}
+
 extern "C" backend_status
 backend_run_qwen3_decode_fp32(
     const void* x_bytes, void* y_bytes,
