@@ -83,6 +83,45 @@ backend_vram_upload(const void* bytes, size_t n_bytes, uint32_t hash,
   return BACKEND_NO_CUDA;
 }
 
+int
+backend_kv_probe(uint64_t key, uintptr_t* out_dptr, size_t* out_n_bytes)
+{
+  (void)key; (void)out_dptr; (void)out_n_bytes;
+  return 0;
+}
+
+backend_status
+backend_kv_alloc(uint64_t key, size_t n_bytes, uintptr_t* out_dptr)
+{
+  (void)key; (void)n_bytes; (void)out_dptr;
+  return BACKEND_NO_CUDA;
+}
+
+size_t
+backend_kv_drop_by_mask(uint64_t mask_bits)
+{
+  (void)mask_bits;
+  return 0;
+}
+
+backend_status
+backend_run_qwen3_decode_fp32(
+    const void* x, void* y,
+    const qw3_block_dptrs* blocks, size_t n_blocks,
+    uintptr_t cos_dptr, uintptr_t sin_dptr, size_t position,
+    const uintptr_t* kp, const uintptr_t* vp,
+    const uintptr_t* kc, const uintptr_t* vc,
+    size_t D, size_t Dff, size_t H, size_t KH, size_t Dh,
+    size_t gs, float eps)
+{
+  (void)x; (void)y; (void)blocks; (void)n_blocks;
+  (void)cos_dptr; (void)sin_dptr; (void)position;
+  (void)kp; (void)vp; (void)kc; (void)vc;
+  (void)D; (void)Dff; (void)H; (void)KH; (void)Dh;
+  (void)gs; (void)eps;
+  return BACKEND_NO_CUDA;
+}
+
 backend_status
 backend_run_qwen3_forward_fp32(
     const void* x, void* y,
@@ -90,12 +129,13 @@ backend_run_qwen3_forward_fp32(
     uintptr_t cos_dptr, uintptr_t sin_dptr,
     size_t S, size_t D, size_t Dff,
     size_t H, size_t KH, size_t Dh,
-    size_t group_size, float rms_eps)
+    size_t group_size, float rms_eps,
+    const uintptr_t* ok, const uintptr_t* ov)
 {
   (void)x; (void)y; (void)blocks; (void)n_blocks;
   (void)cos_dptr; (void)sin_dptr;
   (void)S; (void)D; (void)Dff; (void)H; (void)KH; (void)Dh;
-  (void)group_size; (void)rms_eps;
+  (void)group_size; (void)rms_eps; (void)ok; (void)ov;
   return BACKEND_NO_CUDA;
 }
 

@@ -3839,25 +3839,28 @@
   /* +run-blocks-qwen3 jet.  Sample = [x=tensor blocks=(list block)
    *                                   cfg=model-config cos=tensor sin=tensor]
    * 5-tuple axes:
-   *   x:      +12 → meta +24,  data +25
-   *   blocks: +26 (a list of block-weights-qwen3)
-   *   cfg:    +54
-   *   cos:    +110 → meta +220, data +221
-   *   sin:    +111 → meta +222, data +223
+   *   x:        +12 → meta +24,  data +25
+   *   blocks:   +26 (a list of block-weights-qwen3)
+   *   cfg:      +54
+   *   cos:      +110 → meta +220, data +221
+   *   sin:      +222 → meta +444, data +445
+   *   seq-hash: +223  (mug of the full token sequence covered by x;
+   *                     0 disables KV-cache emission — pure recompute)
    * Collapses the entire per-block loop into one GPU kernel.  All 28
    * blocks run with x resident in VRAM; one HtoD + one DtoH + one sync
    * barrier, instead of one set per block. */
   u3_noun
   u3wi_la_run_qwen3_forward(u3_noun cor)
   {
-    u3_noun x_meta, x_data, blocks, cfg, cos_data, sin_data;
+    u3_noun x_meta, x_data, blocks, cfg, cos_data, sin_data, seq_hash_atom;
     if ( c3n == u3r_mean(cor,
                          (c3_w)24,  &x_meta,
                          (c3_w)25,  &x_data,
                          (c3_w)26,  &blocks,
                          (c3_w)54,  &cfg,
                          (c3_w)221, &cos_data,
-                         (c3_w)223, &sin_data,
+                         (c3_w)445, &sin_data,
+                         (c3_w)223, &seq_hash_atom,
                          u3_nul) ) {
       return u3m_bail(c3__exit);
     }
@@ -4047,12 +4050,46 @@
     c3_y* y_buf = (c3_y*)u3a_malloc(y_bytes + 1);
     u3r_bytes(0, (c3_w)x_bytes, x_buf, x_data);
 
+    /* KV cache emission: if caller supplied a non-zero seq-hash, allocate
+     * per-layer K/V dptrs and pass them to prefill.  The kernel memcpy's
+     * K (post-RoPE) and V into these slots.  Decode then reads them. */
+    uintptr_t* kv_k_dptrs = NULL;
+    uintptr_t* kv_v_dptrs = NULL;
+    c3_d kv_row_bytes = (c3_d)S * (c3_d)(KH * Dh) * 4;
+    c3_w seq_hash = 0;
+    if ( c3y == u3a_is_cat(seq_hash_atom) ) {
+      seq_hash = u3x_atom(seq_hash_atom);
+    }
+    if ( seq_hash != 0 ) {
+      kv_k_dptrs = (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
+      kv_v_dptrs = (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
+      for ( size_t li = 0; li < n_blocks; li++ ) {
+        /* key layout: top bit = kv marker; then seq_hash<<16, layer<<4, kind */
+        uint64_t key_k = (1ULL << 63)
+                       | ((uint64_t)seq_hash << 16)
+                       | ((uint64_t)li       << 4)
+                       | 0ULL;
+        uint64_t key_v = key_k | 1ULL;
+        if ( backend_kv_alloc(key_k, kv_row_bytes, &kv_k_dptrs[li]) != BACKEND_OK ||
+             backend_kv_alloc(key_v, kv_row_bytes, &kv_v_dptrs[li]) != BACKEND_OK ) {
+          /* Alloc failed — disable KV emission for this call and fall
+           * back to pure recompute.  Not an error at the API level. */
+          u3a_free(kv_k_dptrs); u3a_free(kv_v_dptrs);
+          kv_k_dptrs = kv_v_dptrs = NULL;
+          break;
+        }
+      }
+    }
+
     backend_status bs = backend_run_qwen3_forward_fp32(
       x_buf, y_buf,
       arr, n_blocks,
       d_cos, d_sin,
-      S, D, D_ff, H, KH, Dh, group_size, rms_eps);
+      S, D, D_ff, H, KH, Dh, group_size, rms_eps,
+      kv_k_dptrs, kv_v_dptrs);
 
+    if ( kv_k_dptrs ) u3a_free(kv_k_dptrs);
+    if ( kv_v_dptrs ) u3a_free(kv_v_dptrs);
     u3a_free(arr);
     u3a_free(x_buf);
 
@@ -4067,6 +4104,310 @@
     u3_noun out_shape = u3nt(u3k(S_atom), u3k(D_atom), u3_nul);
     u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
     return u3nc(out_meta, r_data);
+  }
+
+  /* +run-decode-qwen3 jet.  Sample = 8-tuple
+   *   [x=tensor blocks=(list block) cfg=model-config cos=tensor sin=tensor
+   *    position=@ud prev-seq-hash=@ud curr-seq-hash=@ud]
+   * Axes:
+   *   x:        +12 → meta +24,  data +25
+   *   blocks:   +26
+   *   cfg:      +54
+   *   cos:      +110 → meta +220, data +221
+   *   sin:      +222 → meta +444, data +445
+   *   position: +446
+   *   prev-seq-hash: +894
+   *   curr-seq-hash: +895
+   * Returns `(unit tensor)` — `[~ new-activation-at-position]` on the
+   * fast path, `~` if KV cache misses (caller must fall back). */
+  u3_noun
+  u3wi_la_run_qwen3_decode(u3_noun cor)
+  {
+    u3_noun x_meta, x_data, blocks, cfg, cos_data, sin_data;
+    u3_noun pos_atom, prev_hash_atom, curr_hash_atom;
+    if ( c3n == u3r_mean(cor,
+                         (c3_w)24,  &x_meta,
+                         (c3_w)25,  &x_data,
+                         (c3_w)26,  &blocks,
+                         (c3_w)54,  &cfg,
+                         (c3_w)221, &cos_data,
+                         (c3_w)445, &sin_data,
+                         (c3_w)446, &pos_atom,
+                         (c3_w)894, &prev_hash_atom,
+                         (c3_w)895, &curr_hash_atom,
+                         u3_nul) ) {
+      return u3m_bail(c3__exit);
+    }
+    if ( c3n == u3a_is_cat(pos_atom) ||
+         c3n == u3a_is_cat(prev_hash_atom) ||
+         c3n == u3a_is_cat(curr_hash_atom) ) {
+      return u3_none;
+    }
+    c3_w position  = u3x_atom(pos_atom);
+    c3_w prev_hash = u3x_atom(prev_hash_atom);
+    c3_w curr_hash = u3x_atom(curr_hash_atom);
+    if ( prev_hash == 0 || curr_hash == 0 ) return u3_none;
+
+    u3_noun x_shape = u3h(x_meta);
+    u3_noun S_atom  = u3h(x_shape);
+    u3_noun D_atom  = u3h(u3t(x_shape));
+    if ( c3n == u3a_is_cat(S_atom) || c3n == u3a_is_cat(D_atom) ) return u3_none;
+    c3_w S = u3x_atom(S_atom);
+    c3_w D = u3x_atom(D_atom);
+    if ( S != 1 ) return u3_none;  /* decode processes one token at a time */
+
+    u3_noun c = cfg;
+    u3_noun cfg_d_model  = u3h(c); c = u3t(c);
+    u3_noun cfg_n_heads  = u3h(c); c = u3t(c);
+    u3_noun cfg_n_kv_h   = u3h(c); c = u3t(c);
+                                   c = u3t(c);  /* n-layers */
+    u3_noun cfg_d_ff     = u3h(c); c = u3t(c);
+                                   c = u3t(c);  /* vocab */
+                                   c = u3t(c);  /* max-seq */
+    u3_noun cfg_head_dim = u3h(c); c = u3t(c);
+    u3_noun cfg_rms_eps  = u3h(c);
+
+    c3_w H  = u3x_atom(cfg_n_heads);
+    c3_w KH = u3x_atom(cfg_n_kv_h);
+    c3_w Dh = u3x_atom(cfg_head_dim);
+    c3_w D_ff = u3x_atom(cfg_d_ff);
+    if ( u3x_atom(cfg_d_model) != D || H * Dh != D || (H % KH) != 0 )
+      return u3_none;
+    c3_w eps_u32 = u3x_atom(cfg_rms_eps);
+    float rms_eps;
+    memcpy(&rms_eps, &eps_u32, 4);
+
+    c3_d x_bytes     = (c3_d)S * D * 4;
+    c3_d y_bytes     = x_bytes;
+    c3_d wD_bytes    = (c3_d)D * (D / 16) * 4;
+    c3_d wKV_bytes   = (c3_d)(KH * Dh) * (D / 16) * 4;
+    c3_d wFF_bytes   = (c3_d)D_ff * (D / 16) * 4;
+    c3_d wDown_bytes = (c3_d)D * (D_ff / 16) * 4;
+    c3_d gamma_D     = (c3_d)D * 4;
+    c3_d gamma_Dh    = (c3_d)Dh * 4;
+    /* cos/sin shape is [position+1, Dh] — the full table for the
+     * current sequence length.  Kernel slices to row `position`. */
+    c3_d cs_bytes    = (c3_d)(position + 1) * Dh * 4;
+
+    /* Walk blocks, extract per-layer weights (must all be cache-resident). */
+    size_t n_blocks = 0;
+    { u3_noun t = blocks; while ( t != u3_nul ) { n_blocks++; t = u3t(t); } }
+    if ( n_blocks == 0 ) return u3_none;
+
+    qw3_block_dptrs* arr =
+      (qw3_block_dptrs*)u3a_malloc(n_blocks * sizeof(qw3_block_dptrs));
+    if ( !arr ) return u3_none;
+    memset(arr, 0, n_blocks * sizeof(qw3_block_dptrs));
+
+    uintptr_t* kv_k_prev =
+      (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
+    uintptr_t* kv_v_prev =
+      (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
+    uintptr_t* kv_k_curr =
+      (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
+    uintptr_t* kv_v_curr =
+      (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
+
+    #define DEC_FAIL() do {                                         \
+        u3a_free(arr);                                              \
+        u3a_free(kv_k_prev); u3a_free(kv_v_prev);                   \
+        u3a_free(kv_k_curr); u3a_free(kv_v_curr);                   \
+        return u3_none;                                             \
+      } while (0)
+
+    #define PROBE_REQ_DEC(dst, data_atom, total_bytes) do {         \
+        c3_w _mug = u3r_mug(data_atom);                             \
+        uint8_t _sent[16];                                          \
+        size_t _spot = total_bytes < 16 ? (size_t)total_bytes : 16; \
+        u3r_bytes(0, (c3_w)_spot, _sent, data_atom);                \
+        if ( !backend_vram_probe((uint32_t)_mug, total_bytes, _sent, &dst) ) \
+          DEC_FAIL();                                               \
+      } while (0)
+    #define PROBE_OR_UP_DEC(dst, data_atom, total_bytes) do {       \
+        c3_w _mug = u3r_mug(data_atom);                             \
+        uint8_t _sent[16];                                          \
+        size_t _spot = total_bytes < 16 ? (size_t)total_bytes : 16; \
+        u3r_bytes(0, (c3_w)_spot, _sent, data_atom);                \
+        if ( !backend_vram_probe((uint32_t)_mug, total_bytes, _sent, &dst) ) { \
+          c3_y* _tmp = (c3_y*)u3a_malloc(total_bytes);              \
+          u3r_bytes(0, (c3_w)total_bytes, _tmp, data_atom);         \
+          backend_status _bs = backend_vram_upload(                 \
+            _tmp, total_bytes, (uint32_t)_mug, &dst);               \
+          u3a_free(_tmp);                                           \
+          if ( _bs != BACKEND_OK ) DEC_FAIL();                      \
+        }                                                           \
+      } while (0)
+    #define MLX2_PROJ_DEC(proj, WD, SD, BD, GRP) do {               \
+        if ( u3h(proj) != c3_s4('m','l','x','2') ) DEC_FAIL();      \
+        u3_noun _body = u3t(proj);                                  \
+        u3_noun _wq   = u3h(_body);                                 \
+        u3_noun _r1   = u3t(_body);                                 \
+        u3_noun _sc   = u3h(_r1);                                   \
+        u3_noun _r2   = u3t(_r1);                                   \
+        u3_noun _bi   = u3h(_r2);                                   \
+        u3_noun _grp  = u3t(_r2);                                   \
+        WD = u3t(_wq);                                              \
+        SD = u3t(_sc);                                              \
+        BD = u3t(_bi);                                              \
+        GRP = u3x_atom(_grp);                                       \
+      } while (0)
+
+    c3_w group_size = 0;
+    c3_d kv_prev_bytes = (c3_d)position * (KH * Dh) * 4;
+    c3_d kv_curr_bytes = (c3_d)(position + 1) * (KH * Dh) * 4;
+
+    u3_noun tl = blocks;
+    for ( size_t i = 0; i < n_blocks; i++ ) {
+      if ( tl == u3_nul ) DEC_FAIL();
+      u3_noun bw = u3h(tl);
+      tl = u3t(tl);
+
+      u3_noun b = bw;
+      u3_noun q_proj = u3h(b); b = u3t(b);
+      u3_noun k_proj = u3h(b); b = u3t(b);
+      u3_noun v_proj = u3h(b); b = u3t(b);
+      u3_noun o_proj = u3h(b); b = u3t(b);
+      u3_noun gate_proj = u3h(b); b = u3t(b);
+      u3_noun up_proj   = u3h(b); b = u3t(b);
+      u3_noun down_proj = u3h(b); b = u3t(b);
+      u3_noun input_ln  = u3h(b); b = u3t(b);
+      u3_noun post_ln   = u3h(b); b = u3t(b);
+      u3_noun q_norm    = u3h(b);
+      u3_noun k_norm    = u3t(b);
+
+      u3_noun qw_data, qs_data, qb_data;
+      u3_noun kw_data, ks_data, kb_data;
+      u3_noun vw_data, vs_data, vb_data;
+      u3_noun ow_data, os_data, ob_data;
+      u3_noun gw_data, gs_data, gb_data;
+      u3_noun uw_data, us_data, ub_data;
+      u3_noun dw_data, ds_data, db_data;
+      c3_w grp;
+
+      MLX2_PROJ_DEC(q_proj,    qw_data, qs_data, qb_data, grp);
+      if ( i == 0 ) group_size = grp;
+      else if ( grp != group_size ) DEC_FAIL();
+      MLX2_PROJ_DEC(k_proj,    kw_data, ks_data, kb_data, grp);
+      MLX2_PROJ_DEC(v_proj,    vw_data, vs_data, vb_data, grp);
+      MLX2_PROJ_DEC(o_proj,    ow_data, os_data, ob_data, grp);
+      MLX2_PROJ_DEC(gate_proj, gw_data, gs_data, gb_data, grp);
+      MLX2_PROJ_DEC(up_proj,   uw_data, us_data, ub_data, grp);
+      MLX2_PROJ_DEC(down_proj, dw_data, ds_data, db_data, grp);
+
+      c3_d sD_bytes    = (c3_d)D * (D / group_size) * 4;
+      c3_d sKV_bytes   = (c3_d)(KH * Dh) * (D / group_size) * 4;
+      c3_d sFF_bytes   = (c3_d)D_ff * (D / group_size) * 4;
+      c3_d sDown_bytes = (c3_d)D * (D_ff / group_size) * 4;
+
+      PROBE_REQ_DEC(arr[i].qw, qw_data, wD_bytes);
+      PROBE_REQ_DEC(arr[i].qs, qs_data, sD_bytes);
+      PROBE_REQ_DEC(arr[i].qb, qb_data, sD_bytes);
+      PROBE_REQ_DEC(arr[i].kw, kw_data, wKV_bytes);
+      PROBE_REQ_DEC(arr[i].ks, ks_data, sKV_bytes);
+      PROBE_REQ_DEC(arr[i].kb, kb_data, sKV_bytes);
+      PROBE_REQ_DEC(arr[i].vw, vw_data, wKV_bytes);
+      PROBE_REQ_DEC(arr[i].vs, vs_data, sKV_bytes);
+      PROBE_REQ_DEC(arr[i].vb, vb_data, sKV_bytes);
+      PROBE_REQ_DEC(arr[i].ow, ow_data, wD_bytes);
+      PROBE_REQ_DEC(arr[i].os, os_data, sD_bytes);
+      PROBE_REQ_DEC(arr[i].ob, ob_data, sD_bytes);
+      PROBE_REQ_DEC(arr[i].gate_w, gw_data, wFF_bytes);
+      PROBE_REQ_DEC(arr[i].gate_s, gs_data, sFF_bytes);
+      PROBE_REQ_DEC(arr[i].gate_b, gb_data, sFF_bytes);
+      PROBE_REQ_DEC(arr[i].up_w,   uw_data, wFF_bytes);
+      PROBE_REQ_DEC(arr[i].up_s,   us_data, sFF_bytes);
+      PROBE_REQ_DEC(arr[i].up_b,   ub_data, sFF_bytes);
+      PROBE_REQ_DEC(arr[i].down_w, dw_data, wDown_bytes);
+      PROBE_REQ_DEC(arr[i].down_s, ds_data, sDown_bytes);
+      PROBE_REQ_DEC(arr[i].down_b, db_data, sDown_bytes);
+
+      u3_noun iln_data = u3t(input_ln);
+      u3_noun pln_data = u3t(post_ln);
+      u3_noun qn_data  = u3t(q_norm);
+      u3_noun kn_data  = u3t(k_norm);
+      PROBE_OR_UP_DEC(arr[i].input_ln, iln_data, gamma_D);
+      PROBE_OR_UP_DEC(arr[i].post_ln,  pln_data, gamma_D);
+      PROBE_OR_UP_DEC(arr[i].q_norm,   qn_data,  gamma_Dh);
+      PROBE_OR_UP_DEC(arr[i].k_norm,   kn_data,  gamma_Dh);
+
+      /* KV cache: probe prev (must hit) and alloc curr. */
+      uint64_t key_k_prev = (1ULL << 63) | ((uint64_t)prev_hash << 16)
+                          | ((uint64_t)i << 4) | 0ULL;
+      uint64_t key_v_prev = key_k_prev | 1ULL;
+      uint64_t key_k_curr = (1ULL << 63) | ((uint64_t)curr_hash << 16)
+                          | ((uint64_t)i << 4) | 0ULL;
+      uint64_t key_v_curr = key_k_curr | 1ULL;
+
+      size_t prev_b_out = 0, unused = 0;
+      if ( !backend_kv_probe(key_k_prev, &kv_k_prev[i], &prev_b_out) ) DEC_FAIL();
+      if ( prev_b_out != kv_prev_bytes ) DEC_FAIL();
+      if ( !backend_kv_probe(key_v_prev, &kv_v_prev[i], &unused) ) DEC_FAIL();
+
+      if ( backend_kv_alloc(key_k_curr, kv_curr_bytes, &kv_k_curr[i]) != BACKEND_OK )
+        DEC_FAIL();
+      if ( backend_kv_alloc(key_v_curr, kv_curr_bytes, &kv_v_curr[i]) != BACKEND_OK )
+        DEC_FAIL();
+    }
+    #undef PROBE_REQ_DEC
+    #undef PROBE_OR_UP_DEC
+    #undef MLX2_PROJ_DEC
+
+    /* cos/sin for this sequence length — probe-or-upload like prefill. */
+    uintptr_t d_cos = 0, d_sin = 0;
+    {
+      c3_w _mug;
+      uint8_t _sent[16];
+      size_t _spot;
+      #define POU_CS(dst, data_atom) do {                             \
+          _mug = u3r_mug(data_atom);                                  \
+          _spot = cs_bytes < 16 ? (size_t)cs_bytes : 16;              \
+          u3r_bytes(0, (c3_w)_spot, _sent, data_atom);                \
+          if ( !backend_vram_probe((uint32_t)_mug, cs_bytes, _sent, &dst) ) { \
+            c3_y* _tmp = (c3_y*)u3a_malloc(cs_bytes);                 \
+            u3r_bytes(0, (c3_w)cs_bytes, _tmp, data_atom);            \
+            backend_status _bs = backend_vram_upload(                 \
+              _tmp, cs_bytes, (uint32_t)_mug, &dst);                  \
+            u3a_free(_tmp);                                           \
+            if ( _bs != BACKEND_OK ) DEC_FAIL();                      \
+          }                                                           \
+        } while (0)
+      POU_CS(d_cos, cos_data);
+      POU_CS(d_sin, sin_data);
+      #undef POU_CS
+    }
+
+    c3_y* x_buf = (c3_y*)u3a_malloc(x_bytes);
+    c3_y* y_buf = (c3_y*)u3a_malloc(y_bytes + 1);
+    u3r_bytes(0, (c3_w)x_bytes, x_buf, x_data);
+
+    backend_status bs = backend_run_qwen3_decode_fp32(
+      x_buf, y_buf,
+      arr, n_blocks,
+      d_cos, d_sin,
+      position,
+      kv_k_prev, kv_v_prev, kv_k_curr, kv_v_curr,
+      D, D_ff, H, KH, Dh, group_size, rms_eps);
+
+    u3a_free(arr);
+    u3a_free(kv_k_prev); u3a_free(kv_v_prev);
+    u3a_free(kv_k_curr); u3a_free(kv_v_curr);
+    u3a_free(x_buf);
+
+    #undef DEC_FAIL
+
+    if ( bs != BACKEND_OK ) {
+      u3a_free(y_buf);
+      return u3_none;
+    }
+    y_buf[y_bytes] = 0x01;
+    u3_noun r_data = u3i_bytes((c3_w)(y_bytes + 1), y_buf);
+    u3a_free(y_buf);
+
+    u3_noun out_shape = u3nt(u3k(S_atom), u3k(D_atom), u3_nul);
+    u3_noun out_meta  = u3nq(out_shape, u3i_word(5), c3__i754, 0);
+    u3_noun tensor    = u3nc(out_meta, r_data);
+    /* Return `[~ tensor]` (unit-just) so Hoon callers can pattern-match. */
+    return u3nc(u3_nul, tensor);
   }
 
   u3_noun

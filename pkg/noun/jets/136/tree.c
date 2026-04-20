@@ -975,6 +975,8 @@ static u3j_harm _136_maroon_run_block_qwen3_a[] =
   {{".2", u3wi_la_run_qwen3_block}, {}};
 static u3j_harm _136_maroon_run_blocks_qwen3_a[] =
   {{".2", u3wi_la_run_qwen3_forward}, {}};
+static u3j_harm _136_maroon_run_decode_qwen3_a[] =
+  {{".2", u3wi_la_run_qwen3_decode}, {}};
 static u3j_harm _136_maroon_rope_cos_sin_a[] =
   {{".2", u3wi_la_rope_cos_sin}, {}};
 static u3j_harm _136_maroon_dequant_mlx2_row_a[] =
@@ -995,6 +997,7 @@ static u3j_core _136_maroon_d[] =
     { "sample-from-dist-ray", 7, _136_maroon_sample_from_dist_a, 0, no_hashes },
     { "run-block-qwen3", 7, _136_maroon_run_block_qwen3_a, 0, no_hashes },
     { "run-blocks-qwen3", 7, _136_maroon_run_blocks_qwen3_a, 0, no_hashes },
+    { "run-decode-qwen3", 7, _136_maroon_run_decode_qwen3_a, 0, no_hashes },
     { "rope-cos-sin", 7, _136_maroon_rope_cos_sin_a, 0, no_hashes },
     { "dequant-mlx2-row", 7, _136_maroon_dequant_mlx2_row_a, 0, no_hashes },
     { "embed-tied-mlx2", 7, _136_maroon_embed_tied_mlx2_a, 0, no_hashes },

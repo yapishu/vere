@@ -190,6 +190,40 @@ backend_run_qwen3_block_fp32(
     size_t H, size_t KH, size_t Dh,
     size_t group_size, float rms_eps);
 
+/* ===== KV cache (per-generation transformer K/V tensors) =====
+ *
+ * Keyed by an opaque 64-bit ID that the jet builds from
+ * (seq_hash, layer, kind).  By convention the top bit (0x8000_0000_0000_0000)
+ * is set so these can't collide with weight-cache keys.
+ *
+ * At decode step N for a given generation, the jet:
+ *   1. Probes the previous-step key for each (layer, kind) to get the
+ *      cached [N-1, KH*Dh] K/V tensor.
+ *   2. Allocates a fresh [N, KH*Dh] buffer under the current-step key.
+ *   3. Copies the old bytes into the first N-1 positions.
+ *   4. Writes the freshly-computed K/V for position N-1 into the last slot.
+ *   5. Uses that extended tensor in attention and moves on to the next layer.
+ *
+ * Determinism: the tensor's content at positions 0..N-1 is a function of
+ * the token sequence only, so cache-hit vs freshly-recomputed are bit-
+ * identical.  Statelessness: Nock never sees the cache; same inputs →
+ * same outputs regardless of cache state. */
+int
+backend_kv_probe(uint64_t    key,
+                 uintptr_t*  out_dptr,
+                 size_t*     out_n_bytes);
+
+backend_status
+backend_kv_alloc(uint64_t    key,
+                 size_t      n_bytes,
+                 uintptr_t*  out_dptr);
+
+/* Drop every cache entry whose key has any bit of `mask_bits` set.
+ * Intended for the %single handler to clear a completed generation's
+ * KV entries in one call. */
+size_t
+backend_kv_drop_by_mask(uint64_t mask_bits);
+
 /* Fused whole-forward Qwen3 kernel.  Runs all `n_blocks` transformer
  * blocks on GPU, keeping x resident in VRAM across blocks.  Requires
  * all per-block weights + gammas and the rope cos/sin to already have
@@ -209,7 +243,32 @@ backend_run_qwen3_forward_fp32(
     size_t                  KH,
     size_t                  Dh,
     size_t                  group_size,
-    float                   rms_eps);
+    float                   rms_eps,
+    /* Optional KV cache outputs: per-layer dptrs to write post-RoPE K
+     * and V to.  Pass NULL to disable (no caching). */
+    const uintptr_t*        out_k_dptrs,
+    const uintptr_t*        out_v_dptrs);
+
+/* Decode-mode forward for a single new token, consuming previously-
+ * cached K/V dptrs and filling freshly-allocated `curr` K/V slots.
+ * Caller owns the alloc (backend_kv_alloc) + key bookkeeping. */
+backend_status
+backend_run_qwen3_decode_fp32(
+    const void*        x_bytes,
+    void*              y_bytes,
+    const qw3_block_dptrs* blocks,
+    size_t             n_blocks,
+    uintptr_t          cos_dptr,
+    uintptr_t          sin_dptr,
+    size_t             position,
+    const uintptr_t*   kv_k_prev_dptrs,
+    const uintptr_t*   kv_v_prev_dptrs,
+    const uintptr_t*   kv_k_curr_dptrs,
+    const uintptr_t*   kv_v_curr_dptrs,
+    size_t D,   size_t D_ff,
+    size_t H,   size_t KH,   size_t Dh,
+    size_t group_size,
+    float  rms_eps);
 
 /* Cache stats for introspection. */
 typedef struct {

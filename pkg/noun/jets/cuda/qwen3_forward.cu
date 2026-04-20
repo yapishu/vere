@@ -73,7 +73,9 @@ qw3_forward_fp32(const float* x_host,
                  size_t S, size_t D, size_t D_ff,
                  size_t H, size_t KH, size_t Dh,
                  size_t group_size,
-                 float  rms_eps)
+                 float  rms_eps,
+                 const uintptr_t* out_k_dptrs,
+                 const uintptr_t* out_v_dptrs)
 {
   if ( !x_host || !y_host || !blocks || n_blocks == 0 ||
        cos_dptr == 0 || sin_dptr == 0 ||
@@ -185,6 +187,19 @@ qw3_forward_fp32(const float* x_host,
     LAUNCH_CHECK();
     rope_apply_kernel<<<rope_grid_k, rope_block>>>(d_k, d_cos, d_sin, d_k2, S, KH, Dh, half);
     LAUNCH_CHECK();
+
+    /* Optionally emit K (post-RoPE) and V to caller-provided VRAM dptrs
+     * so decode steps can reuse this prefill's KV. */
+    if ( out_k_dptrs && out_k_dptrs[i] ) {
+      if ( cudaMemcpyAsync((void*)out_k_dptrs[i], d_k2, kv_bytes,
+                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
+        goto fail;
+    }
+    if ( out_v_dptrs && out_v_dptrs[i] ) {
+      if ( cudaMemcpyAsync((void*)out_v_dptrs[i], d_v, kv_bytes,
+                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
+        goto fail;
+    }
 
     gqa_attention_kernel<<<gqa_grid, 128, gqa_shared>>>(
       d_q2, d_k2, d_v, d_attn, S, H, KH, Dh, inv_sqrt_dh, group);

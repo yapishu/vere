@@ -23,6 +23,7 @@ typedef struct Entry {
   size_t         n_bytes;
   uintptr_t      dptr;
   uint8_t        sentinel[16];
+  uint8_t        untagged;     /* 1 = alloc64/probe64 entry (no sentinel) */
   struct Entry*  prev;
   struct Entry*  next;
 } Entry;
@@ -284,6 +285,85 @@ vram_cache_get_or_upload64(const void* bytes, size_t n_bytes,
   uint64_t key = (hash ? hash : 1) ^ ((uint64_t)n_bytes * 0x9e3779b97f4a7c15ULL);
   if ( key == 0 ) key = 1;
   return _get_or_upload(bytes, n_bytes, hash, key, out_dptr);
+}
+
+extern "C" vram_cache_status
+vram_cache_alloc64(uint64_t key, size_t n_bytes, uintptr_t* out_dptr)
+{
+  if ( !out_dptr || n_bytes == 0 || key == 0 ) return VRAM_CACHE_INVALID_ARG;
+  if ( !g_init ) {
+    vram_cache_status s = vram_cache_init(0);
+    if ( s != VRAM_CACHE_OK ) return s;
+  }
+  Entry** slot = _find_slot(key);
+  Entry* e = *slot;
+  if ( e != NULL ) {
+    if ( e->n_bytes == n_bytes ) {
+      g_hits++;
+      _lru_touch(e);
+      *out_dptr = e->dptr;
+      return VRAM_CACHE_OK;
+    }
+    /* size changed — evict and re-alloc. */
+    _remove_entry(e);
+    slot = _find_slot(key);
+  }
+  _ensure_room(n_bytes);
+  void* dptr = NULL;
+  if ( cudaMalloc(&dptr, n_bytes) != cudaSuccess )
+    return VRAM_CACHE_ALLOC_FAIL;
+  Entry* ne = (Entry*)calloc(1, sizeof(Entry));
+  ne->key       = key;
+  ne->full_hash = key;
+  ne->n_bytes   = n_bytes;
+  ne->dptr      = (uintptr_t)dptr;
+  ne->untagged  = 1;
+  _lru_push_front(ne);
+  *slot = ne;
+  g_count++;
+  g_resident += n_bytes;
+  g_misses++;
+  if ( g_count * 2 >= g_cap ) _grow();
+  *out_dptr = ne->dptr;
+  return VRAM_CACHE_OK;
+}
+
+extern "C" vram_cache_status
+vram_cache_probe64_keyonly(uint64_t key, uintptr_t* out_dptr, size_t* out_n_bytes)
+{
+  if ( !out_dptr || key == 0 ) return VRAM_CACHE_INVALID_ARG;
+  if ( !g_init ) return VRAM_CACHE_MISS;
+  Entry** slot = _find_slot(key);
+  Entry* e = *slot;
+  if ( e == NULL ) return VRAM_CACHE_MISS;
+  g_hits++;
+  _lru_touch(e);
+  *out_dptr = e->dptr;
+  if ( out_n_bytes ) *out_n_bytes = e->n_bytes;
+  return VRAM_CACHE_OK;
+}
+
+extern "C" size_t
+vram_cache_drop_by_mask(uint64_t mask_bits)
+{
+  if ( !g_init || mask_bits == 0 ) return 0;
+  size_t dropped = 0;
+  /* Collect victims first so _remove_entry doesn't trip us mid-scan. */
+  size_t cap = g_cap;
+  Entry** victims = (Entry**)calloc(cap, sizeof(Entry*));
+  size_t nv = 0;
+  for ( size_t i = 0; i < cap; i++ ) {
+    Entry* e = g_table[i];
+    if ( e && (e->key & mask_bits) ) {
+      victims[nv++] = e;
+    }
+  }
+  for ( size_t i = 0; i < nv; i++ ) {
+    _remove_entry(victims[i]);
+    dropped++;
+  }
+  free(victims);
+  return dropped;
 }
 
 extern "C" void

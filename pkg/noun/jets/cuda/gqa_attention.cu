@@ -92,6 +92,73 @@ gqa_attention_kernel(const float* __restrict__ q,
   }
 }
 
+/* Decode-mode attention: exactly one query (position N-1) against N
+ * cached K/V positions.  Same byte-exact math as the prefill kernel —
+ * just no causal-mask padding since there's only one query.
+ *
+ *   Grid: (H)  — one block per query head
+ *   Block: 128 threads
+ *   Shared: 2 * N * sizeof(float)
+ *
+ *   q: [1, H, Dh]
+ *   k: [N, KH, Dh]
+ *   v: [N, KH, Dh]
+ *   y: [1, H, Dh] */
+__global__ void
+gqa_attention_decode_kernel(const float* __restrict__ q,
+                            const float* __restrict__ k,
+                            const float* __restrict__ v,
+                            float*       __restrict__ y,
+                            size_t N,
+                            size_t H,
+                            size_t KH,
+                            size_t Dh,
+                            float  inv_sqrt_dh,
+                            size_t group)
+{
+  size_t h = blockIdx.x;
+  if ( h >= H ) return;
+  size_t kvh = h / group;
+
+  extern __shared__ float sm[];
+  float* probs = sm;               /* [N] */
+  float* scores = sm + N;          /* [N] scratch */
+
+  if ( threadIdx.x == 0 ) {
+    const float* q_ptr = q + h * Dh;   /* single query row */
+    float mx = -INFINITY;
+    for ( size_t j = 0; j < N; j++ ) {
+      const float* k_ptr = k + j * KH * Dh + kvh * Dh;
+      float s = 0.0f;
+      for ( size_t e = 0; e < Dh; e++ ) {
+        s = s + q_ptr[e] * k_ptr[e];
+      }
+      s = s * inv_sqrt_dh;
+      scores[j] = s;
+      if ( s > mx ) mx = s;
+    }
+    float sum = 0.0f;
+    for ( size_t j = 0; j < N; j++ ) {
+      float e = expf_hoon(scores[j] - mx);
+      scores[j] = e;
+      sum = sum + e;
+    }
+    for ( size_t j = 0; j < N; j++ ) {
+      probs[j] = scores[j] / sum;
+    }
+  }
+  __syncthreads();
+
+  for ( size_t d = threadIdx.x; d < Dh; d += blockDim.x ) {
+    float out = 0.0f;
+    for ( size_t j = 0; j < N; j++ ) {
+      float vj = v[j * KH * Dh + kvh * Dh + d];
+      out = out + probs[j] * vj;
+    }
+    y[h * Dh + d] = out;
+  }
+}
+
 static int
 _init_once(void)
 {

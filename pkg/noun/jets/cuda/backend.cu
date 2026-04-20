@@ -258,14 +258,16 @@ backend_run_qwen3_forward_fp32(
     uintptr_t cos_dptr, uintptr_t sin_dptr,
     size_t S, size_t D, size_t D_ff,
     size_t H, size_t KH, size_t Dh,
-    size_t group_size, float rms_eps)
+    size_t group_size, float rms_eps,
+    const uintptr_t* out_k_dptrs, const uintptr_t* out_v_dptrs)
 {
   if ( !backend_available() ) return BACKEND_NO_CUDA;
   qw3_block_status r = qw3_forward_fp32(
     (const float*)x_bytes, (float*)y_bytes,
     blocks, n_blocks,
     cos_dptr, sin_dptr,
-    S, D, D_ff, H, KH, Dh, group_size, rms_eps);
+    S, D, D_ff, H, KH, Dh, group_size, rms_eps,
+    out_k_dptrs, out_v_dptrs);
   if ( r == QW3_OK )         return BACKEND_OK;
   if ( r == QW3_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
   if ( r == QW3_INVALID_ARG )return BACKEND_INVALID_ARG;
@@ -290,6 +292,56 @@ backend_vram_upload(const void* bytes, size_t n_bytes, uint32_t hash,
   if ( r == VRAM_CACHE_OK )         return BACKEND_OK;
   if ( r == VRAM_CACHE_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
   return BACKEND_INVALID_ARG;
+}
+
+extern "C" int
+backend_kv_probe(uint64_t key, uintptr_t* out_dptr, size_t* out_n_bytes)
+{
+  if ( !backend_available() ) return 0;
+  return vram_cache_probe64_keyonly(key, out_dptr, out_n_bytes) == VRAM_CACHE_OK
+    ? 1 : 0;
+}
+
+extern "C" backend_status
+backend_kv_alloc(uint64_t key, size_t n_bytes, uintptr_t* out_dptr)
+{
+  if ( !backend_available() ) return BACKEND_NO_CUDA;
+  vram_cache_status r = vram_cache_alloc64(key, n_bytes, out_dptr);
+  if ( r == VRAM_CACHE_OK )         return BACKEND_OK;
+  if ( r == VRAM_CACHE_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
+  return BACKEND_INVALID_ARG;
+}
+
+extern "C" size_t
+backend_kv_drop_by_mask(uint64_t mask_bits)
+{
+  if ( !backend_available() ) return 0;
+  return vram_cache_drop_by_mask(mask_bits);
+}
+
+extern "C" backend_status
+backend_run_qwen3_decode_fp32(
+    const void* x_bytes, void* y_bytes,
+    const qw3_block_dptrs* blocks, size_t n_blocks,
+    uintptr_t cos_dptr, uintptr_t sin_dptr,
+    size_t position,
+    const uintptr_t* kv_k_prev, const uintptr_t* kv_v_prev,
+    const uintptr_t* kv_k_curr, const uintptr_t* kv_v_curr,
+    size_t D, size_t D_ff,
+    size_t H, size_t KH, size_t Dh,
+    size_t group_size, float rms_eps)
+{
+  if ( !backend_available() ) return BACKEND_NO_CUDA;
+  qw3_block_status r = qw3_decode_fp32(
+    (const float*)x_bytes, (float*)y_bytes,
+    blocks, n_blocks,
+    cos_dptr, sin_dptr, position,
+    kv_k_prev, kv_v_prev, kv_k_curr, kv_v_curr,
+    D, D_ff, H, KH, Dh, group_size, rms_eps);
+  if ( r == QW3_OK )         return BACKEND_OK;
+  if ( r == QW3_ALLOC_FAIL ) return BACKEND_ALLOC_FAIL;
+  if ( r == QW3_INVALID_ARG )return BACKEND_INVALID_ARG;
+  return BACKEND_LAUNCH_FAIL;
 }
 
 extern "C" void

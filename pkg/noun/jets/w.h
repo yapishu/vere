@@ -430,6 +430,7 @@
     u3_noun u3wi_la_embed_tied_mlx2(u3_noun);
     u3_noun u3wi_la_run_qwen3_block(u3_noun);
     u3_noun u3wi_la_run_qwen3_forward(u3_noun);
+    u3_noun u3wi_la_run_qwen3_decode(u3_noun);
     u3_noun u3wi_la_ravel(u3_noun);
     u3_noun u3wi_la_min(u3_noun);
     u3_noun u3wi_la_max(u3_noun);

@@ -574,6 +574,7 @@ fn buildBinary(
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/gqa_attention.o"));
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/qwen3_block.o"));
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/qwen3_forward.o"));
+        urbit.addObjectFile(b.path("pkg/noun/jets/cuda/qwen3_decode.o"));
         urbit.addObjectFile(b.path("pkg/noun/jets/cuda/vram_cache.o"));
         urbit.addLibraryPath(.{ .cwd_relative = cfg.cuda_lib_path });
         urbit.linkSystemLibrary("cudart");

@@ -18,7 +18,7 @@ GENCODES    := \
   -gencode arch=compute_89,code=sm_89 \
   -gencode arch=compute_90,code=sm_90
 
-OBJS := sgemm_det.o mlx2_matmul.o rms_norm.o rope_apply.o silu_mul.o gqa_attention.o qwen3_block.o qwen3_forward.o vram_cache.o backend.o sgemm_ref.o
+OBJS := sgemm_det.o mlx2_matmul.o rms_norm.o rope_apply.o silu_mul.o gqa_attention.o qwen3_block.o qwen3_forward.o qwen3_decode.o vram_cache.o backend.o sgemm_ref.o
 
 LIB  := libvere_cuda.a
 

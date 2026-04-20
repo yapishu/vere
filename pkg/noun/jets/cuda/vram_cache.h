@@ -81,6 +81,44 @@ vram_cache_probe(uint32_t       hash,
                  uintptr_t*     out_dptr);
 
 /*
+ * Allocate an uninitialized VRAM buffer keyed by an opaque 64-bit ID.
+ * Unlike get_or_upload, this doesn't transfer host bytes — the caller
+ * writes into the buffer via kernel or cudaMemcpy after this returns.
+ * Intended for per-layer KV cache entries whose content is produced
+ * on-device and is a deterministic function of the (seq_hash, layer,
+ * kind) key encoded into the ID.
+ *
+ * Same LRU as weights; separate keyspace convention (e.g. top bit set)
+ * keeps weight and KV entries from colliding.
+ *
+ * On cache hit with matching n_bytes, returns the cached dptr without
+ * re-allocating.  On hit with *different* n_bytes, evicts the old entry
+ * and allocates fresh (the caller is trusted to regenerate content).
+ */
+vram_cache_status
+vram_cache_alloc64(uint64_t    key,
+                   size_t      n_bytes,
+                   uintptr_t*  out_dptr);
+
+/*
+ * Probe by 64-bit key only, no sentinel check.  Returns OK with dptr +
+ * n_bytes set on hit, MISS otherwise.  For caches whose content is
+ * written on-device (see vram_cache_alloc64).
+ */
+vram_cache_status
+vram_cache_probe64_keyonly(uint64_t    key,
+                           uintptr_t*  out_dptr,
+                           size_t*     out_n_bytes);
+
+/*
+ * Drop all entries whose key has any of `mask_bits` set.  Used to clear
+ * a generation's KV entries when its stream finishes.  Returns the
+ * number of entries evicted.
+ */
+size_t
+vram_cache_drop_by_mask(uint64_t mask_bits);
+
+/*
  * Diagnostics: total bytes resident, entry count, hit/miss counters.
  */
 typedef struct {

@@ -100,7 +100,39 @@ qw3_forward_fp32(const float* x_host,                 /* [S, D] */
                  size_t S, size_t D, size_t D_ff,
                  size_t H, size_t KH, size_t Dh,
                  size_t group_size,
-                 float  rms_eps);
+                 float  rms_eps,
+                 /* Optional: per-layer VRAM dptrs to write K (post-RoPE)
+                  * and V tensors to.  Each must point to S*KH*Dh*4 bytes.
+                  * Pass NULL to disable caching (original behavior). */
+                 const uintptr_t* out_k_dptrs,
+                 const uintptr_t* out_v_dptrs);
+
+/* Decode-mode forward: one new token at `position` using cached K/V
+ * from the previous step.  Produces the layer-stack activation for
+ * just the new position.  Per-layer: memcpy prev_k → curr_k (first
+ * position slots) + write fresh K/V for the new slot, attend query
+ * against the full N KV positions, continue.
+ *
+ * Each kv_*_prev_dptrs[i] is a dptr to an [N-1, KH*Dh] fp32 tensor
+ * (from the previous step's cache).  Each kv_*_curr_dptrs[i] is a
+ * freshly-allocated [N, KH*Dh] tensor owned by the caller (via
+ * backend_kv_alloc); this function fills it in place. */
+qw3_block_status
+qw3_decode_fp32(const float* x_host,                 /* [1, D] */
+                float*       y_host,                 /* [1, D] */
+                const qw3_block_dptrs* blocks,
+                size_t       n_blocks,
+                uintptr_t    cos_dptr,                /* [total_seq, Dh] */
+                uintptr_t    sin_dptr,
+                size_t       position,                /* 0-indexed new pos */
+                const uintptr_t* kv_k_prev_dptrs,     /* n_blocks */
+                const uintptr_t* kv_v_prev_dptrs,
+                const uintptr_t* kv_k_curr_dptrs,
+                const uintptr_t* kv_v_curr_dptrs,
+                size_t D, size_t D_ff,
+                size_t H, size_t KH, size_t Dh,
+                size_t group_size,
+                float  rms_eps);
 
 #ifdef __cplusplus
 }
