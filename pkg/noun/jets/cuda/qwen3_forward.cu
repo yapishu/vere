@@ -16,6 +16,7 @@
 #include "qwen3_block.h"
 
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include <math.h>
 #include <string.h>
 
@@ -23,6 +24,9 @@ extern __global__ void
 mlx2_matmul_kernel(const float*, const uint32_t*, const float*, const float*,
                    float*, size_t S, size_t in_features, size_t out_features,
                    size_t group_size, size_t packed_cols, size_t groups_per_row);
+
+extern __global__ void
+narrow_fp32_to_fp16_kernel(const float*, __half*, size_t n);
 
 extern __global__ void
 rms_norm_kernel(const float*, const float*, float eps, float*, size_t S, size_t D);
@@ -194,17 +198,23 @@ qw3_forward_fp32(const float* x_host,
     rope_apply_kernel<<<rope_grid_k, rope_block>>>(d_k, d_cos, d_sin, d_k2, S, KH, Dh, half);
     LAUNCH_CHECK();
 
-    /* Optionally emit K (post-RoPE) and V to caller-provided VRAM dptrs
-     * so decode steps can reuse this prefill's KV. */
+    /* Optionally emit K (post-RoPE) and V as fp16 to caller-provided
+     * VRAM dptrs so decode steps can reuse this prefill's KV.  Cache is
+     * fp16 to halve decode-side attention bandwidth; the narrow is
+     * per-element and deterministic. */
     if ( out_k_dptrs && out_k_dptrs[i] ) {
-      if ( cudaMemcpyAsync((void*)out_k_dptrs[i], d_k2, kv_bytes,
-                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
-        goto fail;
+      size_t n = S * KV_D;
+      size_t t = 256, g = (n + t - 1) / t;
+      narrow_fp32_to_fp16_kernel<<<(unsigned)g, (unsigned)t>>>(
+        d_k2, (__half*)(void*)out_k_dptrs[i], n);
+      LAUNCH_CHECK();
     }
     if ( out_v_dptrs && out_v_dptrs[i] ) {
-      if ( cudaMemcpyAsync((void*)out_v_dptrs[i], d_v, kv_bytes,
-                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
-        goto fail;
+      size_t n = S * KV_D;
+      size_t t = 256, g = (n + t - 1) / t;
+      narrow_fp32_to_fp16_kernel<<<(unsigned)g, (unsigned)t>>>(
+        d_v, (__half*)(void*)out_v_dptrs[i], n);
+      LAUNCH_CHECK();
     }
 
     gqa_attention_kernel<<<gqa_grid, 128, gqa_shared>>>(

@@ -23,7 +23,21 @@
 #include "expf_hoon.cuh"
 
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include <math.h>
+
+/* Narrow an fp32 row to fp16.  Used by prefill/decode to write K, V
+ * into the half-precision KV cache.  Per-element, no reductions —
+ * deterministic across hosts by the IEEE round-to-nearest-even rule
+ * that `__float2half` implements. */
+__global__ void
+narrow_fp32_to_fp16_kernel(const float* __restrict__ src,
+                           __half*      __restrict__ dst,
+                           size_t n)
+{
+  size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
+  if ( i < n ) dst[i] = __float2half(src[i]);
+}
 
 __global__ void
 gqa_attention_kernel(const float* __restrict__ q,
@@ -103,12 +117,22 @@ gqa_attention_kernel(const float* __restrict__ q,
  *   q: [1, H, Dh]
  *   k: [N, KH, Dh]
  *   v: [N, KH, Dh]
- *   y: [1, H, Dh] */
+ *   y: [1, H, Dh]
+ *
+ * Online-softmax flash-style kernel.  One warp (32 threads) per query
+ * head; each thread owns Dh/32 dims of the accumulator.  For each j:
+ *   - threads cooperatively compute s_j = q·k[j] (partial dots + warp
+ *     shuffle reduction; order within the warp is fixed by the shuffle
+ *     tree, so the result is deterministic across runs on one host).
+ *   - all threads update running softmax stats (m, l) and rescale their
+ *     dims of acc.
+ * Eliminates the single-threaded O(N·Dh) score loop and the O(N)
+ * shared-memory scratch arrays the previous implementation used. */
 __global__ void
-gqa_attention_decode_kernel(const float* __restrict__ q,
-                            const float* __restrict__ k,
-                            const float* __restrict__ v,
-                            float*       __restrict__ y,
+gqa_attention_decode_kernel(const float*  __restrict__ q,
+                            const __half* __restrict__ k,
+                            const __half* __restrict__ v,
+                            float*        __restrict__ y,
                             size_t N,
                             size_t H,
                             size_t KH,
@@ -120,42 +144,70 @@ gqa_attention_decode_kernel(const float* __restrict__ q,
   if ( h >= H ) return;
   size_t kvh = h / group;
 
-  extern __shared__ float sm[];
-  float* probs = sm;               /* [N] */
-  float* scores = sm + N;          /* [N] scratch */
+  const int   lane = (int)threadIdx.x;
+  const int   WARP = 32;
+  const int   dims_per_thread = (int)((Dh + WARP - 1) / WARP);
 
-  if ( threadIdx.x == 0 ) {
-    const float* q_ptr = q + h * Dh;   /* single query row */
-    float mx = -INFINITY;
-    for ( size_t j = 0; j < N; j++ ) {
-      const float* k_ptr = k + j * KH * Dh + kvh * Dh;
-      float s = 0.0f;
-      for ( size_t e = 0; e < Dh; e++ ) {
-        s = s + q_ptr[e] * k_ptr[e];
-      }
-      s = s * inv_sqrt_dh;
-      scores[j] = s;
-      if ( s > mx ) mx = s;
-    }
-    float sum = 0.0f;
-    for ( size_t j = 0; j < N; j++ ) {
-      float e = expf_hoon(scores[j] - mx);
-      scores[j] = e;
-      sum = sum + e;
-    }
-    for ( size_t j = 0; j < N; j++ ) {
-      probs[j] = scores[j] / sum;
-    }
+  /* Max 8 dims per thread — covers Dh up to 256 (qwen3: 128 → 4 dims).
+   * Static sizing keeps these in registers rather than local memory. */
+  float q_local[8];
+  float acc[8];
+  #pragma unroll
+  for ( int i = 0; i < 8; i++ ) acc[i] = 0.0f;
+
+  const float* q_ptr = q + h * Dh;
+  #pragma unroll
+  for ( int i = 0; i < 8; i++ ) {
+    int d = lane + i * WARP;
+    q_local[i] = ( (size_t)d < Dh ) ? q_ptr[d] : 0.0f;
   }
-  __syncthreads();
 
-  for ( size_t d = threadIdx.x; d < Dh; d += blockDim.x ) {
-    float out = 0.0f;
-    for ( size_t j = 0; j < N; j++ ) {
-      float vj = v[j * KH * Dh + kvh * Dh + d];
-      out = out + probs[j] * vj;
+  float m = -INFINITY;
+  float l = 0.0f;
+
+  for ( size_t j = 0; j < N; j++ ) {
+    const __half* k_ptr = k + j * KH * Dh + kvh * Dh;
+    const __half* v_ptr = v + j * KH * Dh + kvh * Dh;
+
+    /* Partial dot across warp; reduce via shuffle tree (fixed order).
+     * Widen each K element to fp32 on load for math precision. */
+    float s = 0.0f;
+    #pragma unroll
+    for ( int i = 0; i < 8; i++ ) {
+      int d = lane + i * WARP;
+      if ( (size_t)d < Dh && i < dims_per_thread ) {
+        s = s + q_local[i] * __half2float(k_ptr[d]);
+      }
     }
-    y[h * Dh + d] = out;
+    #pragma unroll
+    for ( int off = 16; off > 0; off /= 2 ) {
+      s = s + __shfl_xor_sync(0xFFFFFFFF, s, off);
+    }
+    s = s * inv_sqrt_dh;
+
+    /* Online softmax: fold s into running (m, l, acc). */
+    float m_new = fmaxf(m, s);
+    float factor = ( m == -INFINITY ) ? 0.0f : expf_hoon(m - m_new);
+    float p      = expf_hoon(s - m_new);
+    l = l * factor + p;
+
+    #pragma unroll
+    for ( int i = 0; i < 8; i++ ) {
+      int d = lane + i * WARP;
+      if ( (size_t)d < Dh && i < dims_per_thread ) {
+        acc[i] = acc[i] * factor + p * __half2float(v_ptr[d]);
+      }
+    }
+    m = m_new;
+  }
+
+  float inv_l = 1.0f / l;
+  #pragma unroll
+  for ( int i = 0; i < 8; i++ ) {
+    int d = lane + i * WARP;
+    if ( (size_t)d < Dh && i < dims_per_thread ) {
+      y[h * Dh + d] = acc[i] * inv_l;
+    }
   }
 }
 

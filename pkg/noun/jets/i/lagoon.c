@@ -3873,6 +3873,60 @@
    * run determinism on the same host is preserved.
    *
    * Output: tensor [half] fp32 where half = head_dim / 2. */
+
+  /* +warm-weights jet.  Sample = (list @)  — a flat list of weight
+   * data atoms.
+   *
+   * For each atom: probe the VRAM cache by (mug, met-minus-sentinel);
+   * if absent, upload.  Model-agnostic — the caller builds the list
+   * from whatever architecture-specific layout it has, and the jet
+   * just burns them into VRAM.  Idempotent: probe-hit skips work.
+   *
+   * Each data atom carries its size implicitly: `u3r_met(3, atom)`
+   * yields the byte count including the 0x01 sentinel that the load
+   * step tacks on to preserve trailing zeros, so actual weight bytes
+   * = met(3) - 1.
+   *
+   * Returns the count of newly-uploaded atoms.  Zero means everything
+   * was already cached. */
+  u3_noun
+  u3wi_la_warm_weights(u3_noun cor)
+  {
+    u3_noun atoms;
+    if ( c3n == u3r_mean(cor, u3x_sam, &atoms, u3_nul) ) {
+      return u3m_bail(c3__exit);
+    }
+
+    int uploaded = 0;
+    u3_noun tl = atoms;
+    while ( tl != u3_nul ) {
+      if ( c3n == u3du(tl) ) break;
+      u3_noun data = u3h(tl);
+      tl = u3t(tl);
+
+      c3_d total = u3r_met(3, data);
+      if ( total == 0 ) continue;
+      total -= 1;  /* strip the 0x01 sentinel byte */
+      if ( total == 0 ) continue;
+
+      c3_w    mug  = u3r_mug(data);
+      uint8_t sent[16];
+      size_t  spot = total < 16 ? (size_t)total : 16;
+      u3r_bytes(0, (c3_w)spot, sent, data);
+
+      uintptr_t dst = 0;
+      if ( backend_vram_probe((uint32_t)mug, total, sent, &dst) ) continue;
+
+      c3_y* buf = (c3_y*)u3a_malloc(total);
+      u3r_bytes(0, (c3_w)total, buf, data);
+      backend_status bs = backend_vram_upload(buf, total, (uint32_t)mug, &dst);
+      u3a_free(buf);
+      if ( bs == BACKEND_OK ) uploaded++;
+    }
+
+    return u3i_word((c3_w)uploaded);
+  }
+
   u3_noun
   u3wi_la_rope_inv_freq(u3_noun cor)
   {
@@ -4268,7 +4322,10 @@
     if ( c3y == u3a_is_cat(session_atom) ) session_id = u3x_atom(session_atom);
     if ( c3y == u3a_is_cat(maxseq_atom)  ) max_seq    = u3x_atom(maxseq_atom);
     if ( session_id != 0 && max_seq >= S ) {
-      c3_d kv_buf_bytes = (c3_d)max_seq * (c3_d)(KH * Dh) * 4;
+      /* KV cache stores fp16 (2 bytes/elt).  Halves memory and
+       * attention-read bandwidth; per-element narrow/widen is
+       * deterministic. */
+      c3_d kv_buf_bytes = (c3_d)max_seq * (c3_d)(KH * Dh) * 2;
       kv_k_dptrs = (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
       kv_v_dptrs = (uintptr_t*)u3a_malloc(n_blocks * sizeof(uintptr_t));
       for ( size_t li = 0; li < n_blocks; li++ ) {

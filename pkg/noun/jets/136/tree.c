@@ -983,6 +983,8 @@ static u3j_harm _136_maroon_rope_inv_freq_a[] =
   {{".2", u3wi_la_rope_inv_freq}, {}};
 static u3j_harm _136_maroon_apply_sampling_adjust_a[] =
   {{".2", u3wi_la_apply_sampling_adjust}, {}};
+static u3j_harm _136_maroon_warm_weights_a[] =
+  {{".2", u3wi_la_warm_weights}, {}};
 static u3j_harm _136_maroon_dequant_mlx2_row_a[] =
   {{".2", u3wi_la_dequant_mlx2_row}, {}};
 static u3j_harm _136_maroon_embed_tied_mlx2_a[] =
@@ -1005,6 +1007,7 @@ static u3j_core _136_maroon_d[] =
     { "rope-cos-sin", 7, _136_maroon_rope_cos_sin_a, 0, no_hashes },
     { "rope-inv-freq", 7, _136_maroon_rope_inv_freq_a, 0, no_hashes },
     { "apply-sampling-adjust", 7, _136_maroon_apply_sampling_adjust_a, 0, no_hashes },
+    { "warm-weights", 7, _136_maroon_warm_weights_a, 0, no_hashes },
     { "dequant-mlx2-row", 7, _136_maroon_dequant_mlx2_row_a, 0, no_hashes },
     { "embed-tied-mlx2", 7, _136_maroon_embed_tied_mlx2_a, 0, no_hashes },
     {}

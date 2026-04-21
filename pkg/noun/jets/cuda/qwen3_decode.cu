@@ -26,12 +26,16 @@
 #include "qwen3_block.h"
 
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 #include <math.h>
 
 extern __global__ void
 mlx2_matmul_kernel(const float*, const uint32_t*, const float*, const float*,
                    float*, size_t S, size_t in_features, size_t out_features,
                    size_t group_size, size_t packed_cols, size_t groups_per_row);
+
+extern __global__ void
+narrow_fp32_to_fp16_kernel(const float*, __half*, size_t n);
 
 extern __global__ void
 rms_norm_kernel(const float*, const float*, float eps, float*, size_t S, size_t D);
@@ -53,7 +57,7 @@ extern __global__ void
 qw3_add_kernel(const float*, const float*, float*, size_t N);
 
 extern __global__ void
-gqa_attention_decode_kernel(const float*, const float*, const float*, float*,
+gqa_attention_decode_kernel(const float*, const __half*, const __half*, float*,
                             size_t N, size_t H, size_t KH, size_t Dh,
                             float inv_sqrt_dh, size_t group);
 
@@ -112,7 +116,6 @@ qw3_decode_fp32(const float* x_host,
   size_t x_bytes    = S * D      * sizeof(float);
   size_t kv_row_bts = S * KV_D   * sizeof(float);  /* bytes for 1 position of K/V */
   size_t ff_bytes   = S * D_ff   * sizeof(float);
-  size_t attn_shared = 2 * N * sizeof(float);
 
   dim3 mm_block(16, 16);
   dim3 mm_grid_q ((unsigned)((D    + 15) / 16), 1u);
@@ -206,21 +209,25 @@ qw3_decode_fp32(const float* x_host,
     LAUNCH_CHECK();
 
     /* Write new K/V (post-rope for K, plain for V) into the session
-     * buffer at slot `position`.  In-place append — no prev→curr copy. */
+     * buffer at slot `position`.  Cache holds fp16 K/V — narrow fp32
+     * → __half at write time; attention widens on read. */
     {
-      void* dst_k = (void*)(kv_k + position * KV_D * sizeof(float));
-      if ( cudaMemcpyAsync(dst_k, d_k2_new, kv_row_bts,
-                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
-        goto fail;
-      void* dst_v = (void*)(kv_v + position * KV_D * sizeof(float));
-      if ( cudaMemcpyAsync(dst_v, d_v_new, kv_row_bts,
-                           cudaMemcpyDeviceToDevice, 0) != cudaSuccess )
-        goto fail;
+      __half* dst_k = (__half*)(void*)(kv_k + position * KV_D * sizeof(__half));
+      __half* dst_v = (__half*)(void*)(kv_v + position * KV_D * sizeof(__half));
+      size_t t = 256, g = (KV_D + t - 1) / t;
+      narrow_fp32_to_fp16_kernel<<<(unsigned)g, (unsigned)t>>>(d_k2_new, dst_k, KV_D);
+      LAUNCH_CHECK();
+      narrow_fp32_to_fp16_kernel<<<(unsigned)g, (unsigned)t>>>(d_v_new, dst_v, KV_D);
+      LAUNCH_CHECK();
     }
 
-    /* Attention: 1 query × N in-buffer K/V. */
-    gqa_attention_decode_kernel<<<gqa_grid, 128, attn_shared>>>(
-      d_q2, (const float*)(void*)kv_k, (const float*)(void*)kv_v,
+    /* Attention: 1 query × N in-buffer fp16 K/V.  Warp-per-head
+     * flash-style online softmax — 32 threads/block, no shared memory,
+     * all state in registers.  Score order is fixed by the warp
+     * shuffle reduction, so same hardware gives same bits across
+     * runs. */
+    gqa_attention_decode_kernel<<<gqa_grid, 32>>>(
+      d_q2, (const __half*)(void*)kv_k, (const __half*)(void*)kv_v,
       d_attn, N, H, KH, Dh, inv_sqrt_dh, group);
     LAUNCH_CHECK();
 
