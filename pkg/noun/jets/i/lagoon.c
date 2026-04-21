@@ -3751,6 +3751,200 @@
     return p;
   }
 
+  /* +apply-sampling-adjust jet.  Sample = [logits=tensor context=(list @ud)
+   *                                        penalty=@rs temp=@rs]
+   *
+   * Axes (sample-relative):
+   *   logits:  2    → meta 4, data 5
+   *   context: 6
+   *   penalty: 14
+   *   temp:    15
+   *
+   * Core axes for the above (sample at core axis 6, so sample axis N
+   * inside sample ↔ core axis that vere's u3x_sam_N macro gives):
+   *   logits meta: 24, data: 25
+   *   context:     26
+   *   penalty:     54
+   *   temp:        55
+   *
+   * Does rep-penalty (dedup context, divide logits[tok] by penalty if
+   * positive else multiply) then divide all elements by temp.  Produces
+   * a fresh fp32 tensor with identical meta. */
+  u3_noun
+  u3wi_la_apply_sampling_adjust(u3_noun cor)
+  {
+    u3_noun logits_meta, logits_data, context_list, penalty_atom, temp_atom;
+    if ( c3n == u3r_mean(cor,
+                         (c3_w)24, &logits_meta,
+                         (c3_w)25, &logits_data,
+                         (c3_w)26, &context_list,
+                         (c3_w)54, &penalty_atom,
+                         (c3_w)55, &temp_atom,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+
+    /* logits shape — expect [V] or [1, V]; V is the vocab size. */
+    u3_noun shape = u3h(logits_meta);
+    if ( c3n == u3du(shape) ) return u3_none;  /* must be a cell list */
+    u3_noun first  = u3h(shape);
+    u3_noun second = u3t(shape);
+    c3_w V = 0;
+    if ( u3_nul == second ) {
+      if ( c3n == u3a_is_cat(first) ) return u3_none;
+      V = u3x_atom(first);
+    }
+    else {
+      /* [1, V] */
+      if ( c3n == u3a_is_cat(first) ) return u3_none;
+      c3_w d0 = u3x_atom(first);
+      if ( d0 != 1 ) return u3_none;
+      if ( c3n == u3du(second) ) return u3_none;
+      u3_noun second_head = u3h(second);
+      if ( c3n == u3a_is_cat(second_head) ) return u3_none;
+      V = u3x_atom(second_head);
+    }
+    if ( V == 0 ) return u3_none;
+
+    c3_d vbytes = (c3_d)V * 4;
+    float* buf  = (float*)u3a_malloc(vbytes);
+    u3r_bytes(0, (c3_w)vbytes, (c3_y*)buf, logits_data);
+
+    float penalty, temp;
+    c3_w penalty_bits = u3x_atom(penalty_atom);
+    c3_w temp_bits    = u3x_atom(temp_atom);
+    memcpy(&penalty, &penalty_bits, 4);
+    memcpy(&temp,    &temp_bits,    4);
+
+    /* repetition penalty: skip when penalty == 1.0 */
+    if ( penalty != 1.0f ) {
+      /* naive set for dedup — O(N²) on context but N is the prompt
+       * length, typically under a few hundred.  Use a pass-flag array
+       * to avoid touching the same token twice. */
+      u3_noun it = context_list;
+      c3_y* seen = (c3_y*)u3a_calloc(V, 1);
+      while ( u3_nul != it ) {
+        if ( c3n == u3du(it) ) break;
+        u3_noun head = u3h(it);
+        if ( c3n == u3a_is_cat(head) ) { it = u3t(it); continue; }
+        c3_w tok = u3x_atom(head);
+        if ( tok < V && !seen[tok] ) {
+          seen[tok] = 1;
+          float v = buf[tok];
+          buf[tok] = (v > 0.0f) ? (v / penalty) : (v * penalty);
+        }
+        it = u3t(it);
+      }
+      u3a_free(seen);
+    }
+
+    /* temperature scaling: skip when temp == 1.0 */
+    if ( temp != 1.0f ) {
+      for ( c3_w i = 0; i < V; i++ ) {
+        buf[i] = buf[i] / temp;
+      }
+    }
+
+    c3_y* out_buf = (c3_y*)u3a_malloc(vbytes + 1);
+    memcpy(out_buf, buf, vbytes);
+    out_buf[vbytes] = 0x01;
+    u3_noun out_data = u3i_bytes((c3_w)(vbytes + 1), out_buf);
+    u3a_free(buf);
+    u3a_free(out_buf);
+
+    return u3nc(u3k(logits_meta), out_data);
+  }
+
+  /* +rope-inv-freq jet.  Sample = [head-dim=@ud base=@rs
+   *                                orig-max=@ud factor=@rs]
+   * 4-tuple axes:
+   *   head-dim: +12 (sam_2)
+   *   base:     +26 (sam_6)
+   *   orig-max: +54 (sam_14)
+   *   factor:   +55 (sam_15)
+   *
+   * Computes the YaRN-scaled inverse-frequency table the RoPE embedding
+   * needs — bypassing the pure-Hoon log:rs / exp:rs path, which (in
+   * some vere / pier combinations) miskicks through the ++sew jet and
+   * crashes.  Uses libm powf directly; the downstream rope-cos-sin jet
+   * is byte-exact vs Hoon regardless of how inv-freq was computed, and
+   * the decode kernels consume whichever floats land here, so cross-
+   * run determinism on the same host is preserved.
+   *
+   * Output: tensor [half] fp32 where half = head_dim / 2. */
+  u3_noun
+  u3wi_la_rope_inv_freq(u3_noun cor)
+  {
+    u3_noun head_dim_atom, base_atom, orig_max_atom, factor_atom;
+    if ( c3n == u3r_mean(cor,
+                         u3x_sam_2,   &head_dim_atom,
+                         u3x_sam_6,   &base_atom,
+                         u3x_sam_14,  &orig_max_atom,
+                         u3x_sam_15,  &factor_atom,
+                         u3_nul) )
+    {
+      return u3m_bail(c3__exit);
+    }
+    if ( c3n == u3a_is_cat(head_dim_atom) ||
+         c3n == u3a_is_cat(orig_max_atom) ) {
+      return u3_none;
+    }
+    c3_w head_dim = u3x_atom(head_dim_atom);
+    c3_w orig_max = u3x_atom(orig_max_atom);
+    if ( head_dim == 0 || (head_dim & 1) ) return u3_none;
+    c3_w half = head_dim / 2;
+
+    float base, factor;
+    c3_w base_bits   = u3x_atom(base_atom);
+    c3_w factor_bits = u3x_atom(factor_atom);
+    memcpy(&base,   &base_bits,   4);
+    memcpy(&factor, &factor_bits, 4);
+
+    float low_fac  = 1.0f;
+    float high_fac = 32.0f;
+    float pi2      = 2.0f * 3.14159265f;
+    float low_wav  = (float)orig_max / low_fac;   /* 8192 at Qwen3 default */
+    float high_wav = (float)orig_max / high_fac;  /* 256  at Qwen3 default */
+
+    c3_d  out_bytes = (c3_d)half * 4;
+    float* out      = (float*)u3a_malloc(out_bytes);
+
+    for ( c3_w j = 0; j < half; j++ ) {
+      float expnt    = (2.0f * (float)j) / (float)head_dim;
+      float base_pow = powf(base, expnt);
+      float inv      = 1.0f / base_pow;
+      float wavelen  = pi2 / inv;
+      float scaled;
+      if ( factor == 1.0f ) {
+        scaled = inv;
+      }
+      else if ( wavelen < high_wav ) {
+        scaled = inv;
+      }
+      else if ( wavelen > low_wav ) {
+        scaled = inv / factor;
+      }
+      else {
+        float s = (((float)orig_max / wavelen) - low_fac) / (high_fac - low_fac);
+        float one_minus_s = 1.0f - s;
+        scaled = one_minus_s * (inv / factor) + s * inv;
+      }
+      out[j] = scaled;
+    }
+
+    c3_y* buf = (c3_y*)u3a_malloc(out_bytes + 1);
+    memcpy(buf, out, out_bytes);
+    buf[out_bytes] = 0x01;
+    u3_noun data = u3i_bytes((c3_w)(out_bytes + 1), buf);
+    u3a_free(out);
+    u3a_free(buf);
+
+    u3_noun meta = u3nq(u3nc(u3i_word(half), u3_nul),
+                        u3i_word(5), c3__i754, 0);
+    return u3nc(meta, data);
+  }
+
   /* +rope-cos-sin jet.  Sample = [seq-len=@ud head-dim=@ud
    *                               inv-freq=tensor attn-factor=@rs]
    * 4-tuple axes:

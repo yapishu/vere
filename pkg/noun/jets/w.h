@@ -426,6 +426,8 @@
     u3_noun u3wi_la_mask_top_p(u3_noun);
     u3_noun u3wi_la_sample_from_dist(u3_noun);
     u3_noun u3wi_la_rope_cos_sin(u3_noun);
+    u3_noun u3wi_la_rope_inv_freq(u3_noun);
+    u3_noun u3wi_la_apply_sampling_adjust(u3_noun);
     u3_noun u3wi_la_dequant_mlx2_row(u3_noun);
     u3_noun u3wi_la_embed_tied_mlx2(u3_noun);
     u3_noun u3wi_la_run_qwen3_block(u3_noun);

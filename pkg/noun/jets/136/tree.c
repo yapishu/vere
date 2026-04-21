@@ -979,6 +979,10 @@ static u3j_harm _136_maroon_run_decode_qwen3_a[] =
   {{".2", u3wi_la_run_qwen3_decode}, {}};
 static u3j_harm _136_maroon_rope_cos_sin_a[] =
   {{".2", u3wi_la_rope_cos_sin}, {}};
+static u3j_harm _136_maroon_rope_inv_freq_a[] =
+  {{".2", u3wi_la_rope_inv_freq}, {}};
+static u3j_harm _136_maroon_apply_sampling_adjust_a[] =
+  {{".2", u3wi_la_apply_sampling_adjust}, {}};
 static u3j_harm _136_maroon_dequant_mlx2_row_a[] =
   {{".2", u3wi_la_dequant_mlx2_row}, {}};
 static u3j_harm _136_maroon_embed_tied_mlx2_a[] =
@@ -999,6 +1003,8 @@ static u3j_core _136_maroon_d[] =
     { "run-blocks-qwen3", 7, _136_maroon_run_blocks_qwen3_a, 0, no_hashes },
     { "run-decode-qwen3", 7, _136_maroon_run_decode_qwen3_a, 0, no_hashes },
     { "rope-cos-sin", 7, _136_maroon_rope_cos_sin_a, 0, no_hashes },
+    { "rope-inv-freq", 7, _136_maroon_rope_inv_freq_a, 0, no_hashes },
+    { "apply-sampling-adjust", 7, _136_maroon_apply_sampling_adjust_a, 0, no_hashes },
     { "dequant-mlx2-row", 7, _136_maroon_dequant_mlx2_row_a, 0, no_hashes },
     { "embed-tied-mlx2", 7, _136_maroon_embed_tied_mlx2_a, 0, no_hashes },
     {}

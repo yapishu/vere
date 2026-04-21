@@ -141,7 +141,15 @@ static int
 _evict_lru_one(void)
 {
   if ( !g_lru_tail ) return 0;
+  /* alloc64 entries (KV buffers and other "live state") are marked
+   * `untagged` and must not be LRU-evicted — they hold session-scoped
+   * working memory that the caller is actively reading/writing.  Walk
+   * backwards from the LRU tail to find the first evictable entry. */
   Entry* victim = g_lru_tail;
+  while ( victim && victim->untagged ) {
+    victim = victim->prev;
+  }
+  if ( !victim ) return 0;
   _remove_entry(victim);
   g_evictions++;
   return 1;
