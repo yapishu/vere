@@ -51,6 +51,12 @@ silu_mul_test: silu_mul.o silu_mul_test.c
 gqa_attention_test: gqa_attention.o gqa_attention_test.c
 	$(NVCC) $(CFLAGS) $^ -o $@ -lm
 
+fused_rmsnorm_mm_test: mlx2_matmul.o rms_norm.o fused_rmsnorm_mm_test.c
+	$(NVCC) $(CFLAGS) $^ -o $@ -lm
+
+fused_gate_up_silu_test: mlx2_matmul.o silu_mul.o fused_gate_up_silu_test.c
+	$(NVCC) $(CFLAGS) $^ -o $@ -lm
+
 test: det_test mlx2_test rms_norm_test rope_apply_test silu_mul_test gqa_attention_test
 	./det_test
 	./mlx2_test

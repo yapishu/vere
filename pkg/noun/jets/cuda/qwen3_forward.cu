@@ -35,6 +35,12 @@ extern __global__ void
 silu_mul_kernel(const float*, const float*, float*, size_t N);
 
 extern __global__ void
+gate_up_silu_mlx2_kernel(const float*, const uint32_t*, const float*, const float*,
+                         const uint32_t*, const float*, const float*,
+                         float*, size_t S, size_t in_features, size_t out_features,
+                         size_t group_size, size_t packed_cols, size_t groups_per_row);
+
+extern __global__ void
 gqa_attention_kernel(const float*, const float*, const float*, float*,
                      size_t S, size_t H, size_t KH, size_t Dh,
                      float inv_sqrt_dh, size_t group);
@@ -222,23 +228,19 @@ qw3_forward_fp32(const float* x_host,
       d_xr1, (const float*)(void*)bw->post_ln, rms_eps, d_x2, S, D);
     LAUNCH_CHECK();
 
-    mlx2_matmul_kernel<<<mm_grid_ff, mm_block>>>(
-      d_x2, (const uint32_t*)(void*)bw->gate_w, (const float*)(void*)bw->gate_s,
-      (const float*)(void*)bw->gate_b, d_gate, S, D, D_ff, group_size,
+    /* Fused gate + up + silu*mul: replaces 2 matmul launches + 1
+     * silu_mul launch with one kernel that writes hid directly.
+     * Byte-exact: see fused_gate_up_silu_test. */
+    gate_up_silu_mlx2_kernel<<<mm_grid_ff, mm_block>>>(
+      d_x2,
+      (const uint32_t*)(void*)bw->gate_w, (const float*)(void*)bw->gate_s,
+      (const float*)(void*)bw->gate_b,
+      (const uint32_t*)(void*)bw->up_w,   (const float*)(void*)bw->up_s,
+      (const float*)(void*)bw->up_b,
+      d_hid, S, D, D_ff, group_size,
       packed_cols_D, (size_t)(D / group_size));
     LAUNCH_CHECK();
-    mlx2_matmul_kernel<<<mm_grid_ff, mm_block>>>(
-      d_x2, (const uint32_t*)(void*)bw->up_w, (const float*)(void*)bw->up_s,
-      (const float*)(void*)bw->up_b, d_up, S, D, D_ff, group_size,
-      packed_cols_D, (size_t)(D / group_size));
-    LAUNCH_CHECK();
-
-    {
-      size_t N = S * D_ff;
-      size_t t = 256, g = (N + t - 1) / t;
-      silu_mul_kernel<<<(unsigned)g, (unsigned)t>>>(d_gate, d_up, d_hid, N);
-      LAUNCH_CHECK();
-    }
+    (void)d_gate; (void)d_up;  /* retained for the scratch alloc; unused in fused path */
 
     mlx2_matmul_kernel<<<mm_grid_q, mm_block>>>(
       d_hid, (const uint32_t*)(void*)bw->down_w, (const float*)(void*)bw->down_s,

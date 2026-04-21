@@ -180,12 +180,8 @@ vram_cache_init(size_t budget_bytes)
       size_t fixed_margin = (size_t)1 << 30;    /* 1 GiB */
       size_t margin = pct_margin > fixed_margin ? pct_margin : fixed_margin;
       g_budget = free_b > margin ? free_b - margin : free_b / 2;
-      fprintf(stderr,
-              "[vram-cache] budget=%zu MB (free=%zu MB, total=%zu MB)\n",
-              g_budget >> 20, free_b >> 20, total_b >> 20);
     } else {
       g_budget = (size_t)4 << 30;  /* safe-ish default */
-      fprintf(stderr, "[vram-cache] cudaMemGetInfo failed; using 4 GiB default\n");
     }
   }
   /* Pre-size: Qwen3 has 588 weight entries + up to 28×2=56 persistent
