@@ -38,6 +38,8 @@
 <input id="pkt" placeholder="leave empty to generate a mesa %peek">
 <label>boot-lite WASM URL</label>
 <input id="wasm-url" value="../../../zig-out/bin/noun-boot-lite-wasm.wasm">
+<label>ivory boot WASM URL</label>
+<input id="ivory-wasm-url" value="../../../zig-out/bin/noun-ivory-boot-wasm.wasm">
 <label>hostfs WASM URL</label>
 <input id="hostfs-wasm-url" value="../../../zig-out/bin/noun-hostfs-wasm.wasm">
 
@@ -65,6 +67,7 @@
 <button id="peer-proof">dial + request peer proof</button>
 <button id="chum">dial + send encrypted chum poke</button>
 <button id="wasm-smoke">run WASM boot-lite</button>
+<button id="ivory-smoke">run WASM ivory boot</button>
 <button id="hostfs-smoke">run WASM hostfs</button>
 <div id="log"></div>
 
@@ -505,6 +508,30 @@ $('wasm-smoke').onclick = async () => {
     );
   } catch (e) {
     log('wasm boot-lite failed: ' + e, 'err');
+  }
+};
+
+$('ivory-smoke').onclick = async () => {
+  $('log').textContent = '';
+  const wasmUrl = $('ivory-wasm-url').value.trim();
+  try {
+    log(`loading ${wasmUrl} ...`);
+    const { exitCode, plan } = await runVereWasmProbe(wasmUrl, {
+      memoryOptions: {
+        loomExponent: 26,
+        overheadBytes: 256 * 1024 * 1024,
+        maximumBytes: 512 * 1024 * 1024,
+      },
+      onStdout: bytes => logWasmBytes(bytes, 'rx'),
+      onStderr: bytes => logWasmBytes(bytes),
+    });
+    log(
+      `wasm ivory boot exited ${exitCode}; ` +
+      `initial=${plan.initialBytes} max=${plan.maximumBytes}`,
+      exitCode === 0 ? 'rx' : 'err',
+    );
+  } catch (e) {
+    log('wasm ivory boot failed: ' + e, 'err');
   }
 };
 

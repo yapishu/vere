@@ -119,7 +119,12 @@ it builds `zig-out/bin/noun-boot-lite-wasm.wasm` from the full `noun` static
 library, starts it with `web/vere-wasm-host.mjs`, calls `u3m_boot_lite()` with
 a 16MB loom, constructs/jams/cues nouns, shuts down, and exits 0. The same JS
 host runs under Node and in Chrome; `web/wasm-smoke.html` is an auto-running
-browser smoke page that fetches the built artifact from `zig-out`. The wasm
+browser smoke page that fetches the built artifact from `zig-out`.
+`zig build noun-ivory-boot-wasm` goes one step further: it links the full noun
+library with the embedded Ivory pill, starts a 64MB loom, cues the pill,
+runs `u3v_boot_lite()`, and checks a simple kernel parse path. Under the JS
+host this needs a larger browser memory plan: 320MB initial, 512MB maximum.
+`web/wasm-ivory-smoke.html` verifies the same artifact in Chrome. The wasm
 build uses a 32-bit generic GMP configuration with checked-in generated tables
 and generic low-level `mpn` primitives, omits the native `%lia` `wasm3` jet
 registration, makes POSIX signal profiling and shared-memory slow-stack
@@ -167,17 +172,19 @@ Serve the repo root and open it in **Chrome** (or Chromium/Edge — a browser
 that honors the WebTransport `serverCertificateHashes` API):
 
 ```
-zig build noun-boot-lite-wasm noun-hostfs-wasm
+zig build noun-boot-lite-wasm noun-ivory-boot-wasm noun-hostfs-wasm
 python3 -m http.server 8092 --directory .
 # start the bridge with -dev and copy its printed cert sha-256
 # open http://localhost:8092/tools/ames-wt-bridge/web/index.html
 ```
 
 The `run WASM boot-lite` button runs the linked browser smoke against
-`zig-out/bin/noun-boot-lite-wasm.wasm`. The `run WASM hostfs` button runs
+`zig-out/bin/noun-boot-lite-wasm.wasm`. The `run WASM ivory boot` button boots
+the linked Ivory pill with a 64MB loom. The `run WASM hostfs` button runs
 `noun-hostfs-wasm` with an IndexedDB-backed store and verifies that `/out`
 persists as `quic`. For auto-running smoke pages, open
-`http://localhost:8092/tools/ames-wt-bridge/web/wasm-smoke.html` or
+`http://localhost:8092/tools/ames-wt-bridge/web/wasm-smoke.html`,
+`http://localhost:8092/tools/ames-wt-bridge/web/wasm-ivory-smoke.html`, or
 `http://localhost:8092/tools/ames-wt-bridge/web/wasm-hostfs-smoke.html`;
 success is `data-status="ok"` with `exit=0`.
 
