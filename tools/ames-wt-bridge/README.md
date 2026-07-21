@@ -171,6 +171,21 @@ Interactive developer page:
 http://localhost:8093/vere/tools/ames-wt-bridge/web/index.html
 ```
 
+Browser WASM terminal and hosted Eyre HTTP page:
+
+```text
+http://localhost:8093/vere/tools/ames-wt-bridge/web/wasm-webterm.html
+```
+
+For the local terminal/HTTP page, build `vere-disk-wasm`, serve the parent
+workspace as above, open `wasm-webterm.html`, leave the memory fields at
+`loom=29`, `overhead MiB=512`, `maximum MiB=1536`, then click
+`Start Terminal`. That boots the browser `vere-disk-wasm` runtime from the
+brass pill, starts Dill `/term/1`, and exposes the Eyre request panel. The
+bridge is not required for local terminal or Eyre HTTP requests. Run the bridge,
+paste its dev certificate hash, and click `Connect Ames` only when testing
+WebTransport packet routing.
+
 Auto-running browser route smoke page:
 
 ```text
@@ -184,16 +199,39 @@ waiter automatically. Manual page runs need those pieces running separately.
 
 `web/index.html` is a developer control page for WebTransport, Mesa pact
 packets, comet/proof helpers, `%chum` helpers, and WASM smoke buttons. It is
-not a browser webterm or a full Urbit TUI.
+still the low-level transport workbench.
+
+`web/wasm-webterm.html` starts the resident `vere-disk-wasm` runtime in a
+browser worker, hosts a Dill terminal on `/term/1`, and sends native terminal
+ova:
+
+- `%d /term/1 %born`
+- `%d /term/1 %blew [cols rows]`
+- `%d /term/1 %hail`
+- `%d /term/1 %belt [%txt ...]` and `%ret`
+
+Terminal output is decoded from `%blit` gifts and rendered in an xterm-style
+browser pane. The first renderer is intentionally small: text, clears,
+newlines, line clears, bells, URLs, and nested `%mor` blits are handled; `%klr`
+styled text is flattened to text.
 
 The browser WASM runtime has outbound HTTP support through a hosted
 `%http-client` adapter. The JS host commits `%http-client %born`, decodes
 `%request` and `%cancel-request` effects, performs browser `fetch()`, and
 injects `%receive` ova back into the resident runtime.
 
-The browser WASM runtime does not expose an inbound Eyre/http-server. The
-demo's HTTP server is Python serving static assets, and the native fake ships
-have loopback HTTP control planes for harness commands.
+The browser WASM runtime also hosts inbound Eyre/http-server requests through
+JS. A browser tab cannot bind a real TCP port, so this is exposed as worker
+commands and page controls instead of `localhost:8080`: the JS host commits
+`%http-server %born`, `%live`, `%request-local`/`%request`, and
+`%cancel-request` ova, then resolves JS `Response`-shaped objects from Eyre
+`%response` gifts. `wasm-webterm.html` includes a small Eyre HTTP request
+panel for paths such as `/~/name`.
+
+The browser runtime uses Vere's normal loom exponent semantics. The page
+defaults to `--loom 29`, which reserves a 512MiB loom; the runtime avoids
+touching every fresh wasm page at startup, so this does not imply all 512MiB are
+actively used after boot.
 
 ## Tests
 
@@ -205,6 +243,19 @@ bash -n tools/ames-wt-bridge/demo-fake-galaxy.sh
 (cd tools/ames-wt-bridge && go test ./...)
 node --test tools/ames-wt-bridge/web/*.test.mjs
 git diff --check
+```
+
+Focused browser-runtime checks:
+
+```sh
+zig build -Doptimize=ReleaseFast mars-boot-wasm vere-disk-wasm noun-boot-lite-wasm
+node --test \
+  tools/ames-wt-bridge/web/vere-wasm-host.test.mjs \
+  tools/ames-wt-bridge/web/ames-wasm-runtime-service.test.mjs \
+  tools/ames-wt-bridge/web/ames-wasm-runtime-worker.test.mjs \
+  tools/ames-wt-bridge/web/ames-wasm-runtime-route-demo.test.mjs \
+  tools/ames-wt-bridge/web/ames-wasm-terminal.test.mjs \
+  tools/ames-wt-bridge/web/ames-wasm-http-server.test.mjs
 ```
 
 From the Urbit repo:

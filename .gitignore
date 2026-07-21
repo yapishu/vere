@@ -12,6 +12,7 @@ MODULE.bazel.lock
 # Zig
 **/.zig-cache
 **/zig-out
+/tools/ames-wt-bridge/dist
 
 # clangd
 **/.cache

@@ -72,6 +72,41 @@ _probe_card(u3_noun ovo)
   return u3t(ovo);
 }
 
+static void
+_probe_dump_tape(u3_noun tep)
+{
+  while ( c3y == u3du(tep) ) {
+    fputc((c3_i)u3h(tep), stderr);
+    tep = u3t(tep);
+  }
+}
+
+static void
+_probe_slog(u3_noun hod)
+{
+  u3_noun pri, tac;
+
+  if ( c3y == u3r_cell(hod, &pri, &tac) ) {
+    (void)pri;
+
+    if ( c3y == u3a_is_atom(tac) ) {
+      c3_c* str_c = u3r_string(tac);
+      fputs(str_c, stderr);
+      c3_free(str_c);
+    }
+    else if ( c3__leaf == u3h(tac) ) {
+      _probe_dump_tape(u3t(tac));
+    }
+    else {
+      fputs("mars-boot: slog tank\r\n", stderr);
+    }
+
+    fputs("\r\n", stderr);
+  }
+
+  u3z(hod);
+}
+
 static c3_o
 _probe_has_arg(int argc, char** argv, const c3_c* arg_c)
 {
@@ -388,6 +423,7 @@ _probe_run_boot(u3_noun ova, u3_noun cax)
   //
   u3m_hate(1 << 18);
   u3_noun xev = u3m_love(u3ke_cue(u3ke_jam(u3nc(cax, ova))));
+  u3z(cax);
   u3x_cell(xev, &cax, &ova);
   u3k(cax); u3k(ova);
   u3z(xev);
@@ -403,9 +439,12 @@ _probe_run_boot(u3_noun ova, u3_noun cax)
   u3l_log("--------------- bootstrap starting ----------------");
   u3l_log("boot: 1-%u", u3qb_lent(ova));
 
+  u3C.slog_f = _probe_slog;
   if ( c3n == u3v_boot(ova) ) {
+    u3C.slog_f = 0;
     return c3n;
   }
+  u3C.slog_f = 0;
 
   u3l_log("--------------- bootstrap complete ----------------");
   u3l_log("mars-boot: booted fake zod core %x", u3r_mug(u3A->roc));

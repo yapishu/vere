@@ -1,0 +1,877 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vere WASM Dojo</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0f1114;
+    --panel: #171a1f;
+    --panel-2: #1f242b;
+    --line: #343a44;
+    --ink: #edf1f6;
+    --muted: #a8b0bb;
+    --accent: #43c6ac;
+    --danger: #fb7185;
+    --ok: #8bdc9f;
+    --term: #06080a;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel-2);
+    color: var(--ink);
+    padding: 0.45rem 0.72rem;
+    cursor: pointer;
+  }
+
+  button.primary {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: #041f1a;
+    font-weight: 750;
+  }
+
+  button.secondary {
+    border-color: #365579;
+    color: #dbe8ff;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  input,
+  select,
+  textarea {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #0c0f13;
+    color: var(--ink);
+    padding: 0.48rem 0.58rem;
+  }
+
+  textarea {
+    min-height: 4.5rem;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+  }
+
+  label {
+    display: grid;
+    gap: 0.25rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 650;
+  }
+
+  .app {
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 0.7rem;
+    height: 100dvh;
+    padding: 0.75rem;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 2.5rem;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 750;
+    letter-spacing: 0;
+  }
+
+  .status {
+    min-width: 7.5rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 0.28rem 0.72rem;
+    color: var(--muted);
+    text-align: center;
+    font: 0.78rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  .status.ok {
+    border-color: #246b40;
+    color: var(--ok);
+  }
+
+  .status.err {
+    border-color: #9f1239;
+    color: var(--danger);
+  }
+
+  .dojo-bar,
+  .stage {
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+
+  .dojo-bar {
+    display: grid;
+    grid-template-columns: auto minmax(12rem, 1fr) auto auto auto;
+    gap: 0.55rem;
+    align-items: center;
+    padding: 0.65rem;
+  }
+
+  .dojo-input {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.45rem;
+    min-width: 0;
+  }
+
+  .quick {
+    display: flex;
+    gap: 0.4rem;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .quick button {
+    padding: 0.36rem 0.55rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 0.35rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #12161b;
+  }
+
+  .tab {
+    min-width: 6.5rem;
+    border-color: transparent;
+    background: transparent;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .tab[aria-selected="true"] {
+    border-color: #365579;
+    background: var(--panel-2);
+    color: var(--ink);
+  }
+
+  .stage {
+    display: grid;
+    min-height: 0;
+  }
+
+  .tab-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .tab-panel[hidden] {
+    display: none;
+  }
+
+  .pane-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    min-height: 2.35rem;
+    padding: 0.48rem 0.7rem;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .terminal-scroll {
+    min-height: 0;
+    overflow: auto;
+    background: var(--term);
+  }
+
+  #terminal {
+    min-height: 100%;
+    margin: 0;
+    padding: 0.9rem;
+    color: #d9f8e1;
+    font: 0.92rem/1.42 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  #log {
+    min-height: 0;
+    height: 100%;
+    margin: 0;
+    overflow: auto;
+    padding: 0.7rem;
+    color: #d8e8df;
+    background: #0a0d10;
+    font: 0.78rem/1.38 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  #log span {
+    display: block;
+  }
+
+  .rx {
+    color: var(--ok);
+  }
+
+  .tx {
+    color: #a7c7ff;
+  }
+
+  .err {
+    color: var(--danger);
+  }
+
+  .web-panel {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .web-controls {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+    gap: 0.45rem;
+    align-items: end;
+    padding: 0.55rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .web-frame-wrap {
+    min-height: 0;
+    background: #f8fafc;
+  }
+
+  #web-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: white;
+  }
+
+  .options-panel {
+    display: block;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .options-form {
+    display: grid;
+    gap: 0.7rem;
+    max-width: 54rem;
+    padding: 0.85rem;
+  }
+
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+  }
+
+  @media (max-width: 980px) {
+    html,
+    body {
+      overflow: auto;
+    }
+
+    .app {
+      height: auto;
+      min-height: 100dvh;
+      grid-template-rows: auto auto auto minmax(32rem, 1fr);
+    }
+
+    .dojo-bar {
+      grid-template-columns: 1fr;
+    }
+
+    .quick {
+      flex-wrap: wrap;
+    }
+
+    .web-controls,
+    .grid2 {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="app">
+  <header>
+    <h1>Vere WASM Dojo</h1>
+    <div id="status" class="status">idle</div>
+  </header>
+
+  <section class="dojo-bar">
+    <button id="start" class="primary">Boot</button>
+    <div class="dojo-input">
+      <input id="command" autocomplete="off" spellcheck="false" placeholder="dojo command">
+      <button id="send" class="primary">Send</button>
+    </div>
+    <div class="quick">
+      <button data-command="+trouble">+trouble</button>
+      <button data-command="+vats">+vats</button>
+      <button data-command="|mass">|mass</button>
+      <button data-command="-home!make">-home!make</button>
+    </div>
+    <button id="refresh" class="secondary">Refresh</button>
+    <button id="shutdown" class="secondary">Shutdown</button>
+  </section>
+
+  <nav class="tabs" aria-label="Demo views">
+    <button class="tab" data-tab-target="dojo" aria-selected="false">Dojo</button>
+    <button class="tab" data-tab-target="web" aria-selected="false">Web</button>
+    <button class="tab" data-tab-target="logs" aria-selected="true">Logs</button>
+    <button class="tab" data-tab-target="options" aria-selected="false">Options</button>
+  </nav>
+
+  <main class="stage">
+    <section id="tab-dojo" class="tab-panel" hidden>
+      <div class="pane-head">
+        <span>Dojo</span>
+        <span id="terminal-meta">not booted</span>
+      </div>
+      <div id="terminal-scroll" class="terminal-scroll">
+        <pre id="terminal"></pre>
+      </div>
+    </section>
+
+    <section id="tab-web" class="tab-panel web-panel" hidden>
+      <div class="web-controls">
+        <label>method
+          <select id="http-method">
+            <option>GET</option>
+            <option>HEAD</option>
+            <option>POST</option>
+          </select>
+        </label>
+        <label>Eyre path
+          <input id="http-path" value="/">
+        </label>
+        <button id="http-send">Open Web UI</button>
+      </div>
+      <div class="web-frame-wrap">
+        <iframe id="web-frame" title="Eyre preview" sandbox="allow-forms allow-scripts"></iframe>
+      </div>
+    </section>
+
+    <section id="tab-logs" class="tab-panel">
+      <div class="pane-head">
+        <span>Runtime Logs</span>
+        <span id="log-meta">0 lines</span>
+      </div>
+      <pre id="log"></pre>
+    </section>
+
+    <section id="tab-options" class="tab-panel options-panel" hidden>
+      <div class="options-form">
+        <label>vere disk WASM URL
+          <input id="wasm-url" value="../../../zig-out/bin/vere-disk-wasm.wasm" data-bundle="./assets/vere-disk-wasm.wasm">
+        </label>
+        <label>brass pill URL
+          <input id="pill-url" value="../../../../urbit/bin/brass.pill" data-bundle="./assets/brass.pill">
+        </label>
+        <div class="grid2">
+          <label>fake ship
+            <input id="fake-ship" value="0x100">
+          </label>
+          <label>scope
+            <input id="scope" value="wasm-dojo-demo">
+          </label>
+        </div>
+        <div class="grid2">
+          <label>cols
+            <input id="cols" value="110">
+          </label>
+          <label>rows
+            <input id="rows" value="34">
+          </label>
+        </div>
+        <div class="grid2">
+          <label>loom
+            <input id="loom" value="29">
+          </label>
+          <label>session id
+            <input id="session-id" value="1">
+          </label>
+        </div>
+        <div class="grid2">
+          <label>overhead MiB
+            <input id="overhead-mib" value="512">
+          </label>
+          <label>maximum MiB
+            <input id="maximum-mib" value="1536">
+          </label>
+        </div>
+        <label>HTTP headers
+          <textarea id="headers">accept: text/html,text/plain,application/json,*/*
+user-agent: vere-wasm-dojo-demo</textarea>
+        </label>
+        <div class="grid2">
+          <label>bridge URL
+            <input id="bridge-url" value="https://127.0.0.1:8443/~_~/ames">
+          </label>
+          <label>bridge cert sha-256
+            <input id="hash" placeholder="unused for local demo">
+          </label>
+        </div>
+        <button id="connect">Connect Ames</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+import {
+  createRuntimeWorkerCommandClient,
+} from './ames-wasm-runtime-route-demo.mjs';
+
+const $ = id => document.getElementById(id);
+const decoder = new TextDecoder();
+
+let worker = null;
+let client = null;
+let started = false;
+let terminalStarted = false;
+let connected = false;
+let webFrameLoaded = false;
+
+const terminalState = {
+  text: '',
+  pending: '',
+  timer: 0,
+  flushDelayMs: 28,
+  maxChars: 220_000,
+};
+
+const logState = {
+  lines: 0,
+  maxLines: 1_500,
+};
+
+function setTab(name) {
+  for (const button of document.querySelectorAll('[data-tab-target]')) {
+    const selected = button.dataset.tabTarget === name;
+    button.setAttribute('aria-selected', selected ? 'true' : 'false');
+  }
+  for (const panel of document.querySelectorAll('.tab-panel')) {
+    panel.hidden = panel.id !== `tab-${name}`;
+  }
+  if (name === 'dojo') {
+    $('command').focus();
+  }
+}
+
+function absoluteHref(value) {
+  return new URL(String(value).trim(), import.meta.url).href;
+}
+
+async function assetExists(path) {
+  try {
+    const response = await fetch(new URL(path, import.meta.url), { method: 'HEAD' });
+    return response.ok;
+  }
+  catch (_) {
+    return false;
+  }
+}
+
+async function preferBundledAssets() {
+  const wasm = $('wasm-url');
+  const pill = $('pill-url');
+  if (wasm?.dataset.bundle && await assetExists(wasm.dataset.bundle)) {
+    wasm.value = wasm.dataset.bundle;
+  }
+  if (pill?.dataset.bundle && await assetExists(pill.dataset.bundle)) {
+    pill.value = pill.dataset.bundle;
+  }
+}
+
+function setStatus(text, cls = '') {
+  $('status').textContent = text;
+  $('status').className = `status ${cls}`.trim();
+}
+
+function appendLog(message, className = '') {
+  const line = document.createElement('span');
+  if (className) {
+    line.className = className;
+  }
+  line.textContent = String(message);
+  $('log').append(line);
+  logState.lines++;
+  while ($('log').childNodes.length > logState.maxLines) {
+    $('log').firstChild.remove();
+    logState.lines--;
+  }
+  $('log-meta').textContent = `${logState.lines} lines`;
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+function normalizeTerminalText(text) {
+  return String(text).replace(/\r\n/g, '\n');
+}
+
+function applyTerminalText(text) {
+  const parts = normalizeTerminalText(text).split('\r\x1b[K');
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) {
+      terminalState.text = terminalState.text.slice(
+        0,
+        terminalState.text.lastIndexOf('\n') + 1,
+      );
+    }
+    terminalState.text += parts[i].replace(/\r/g, '');
+  }
+  if (terminalState.text.length > terminalState.maxChars) {
+    terminalState.text = terminalState.text.slice(-terminalState.maxChars);
+  }
+}
+
+function renderTerminalNow() {
+  terminalState.timer = 0;
+  if (terminalState.pending) {
+    applyTerminalText(terminalState.pending);
+    terminalState.pending = '';
+  }
+  $('terminal').textContent = terminalState.text;
+  $('terminal-meta').textContent = `${terminalState.text.length} chars`;
+  $('terminal-scroll').scrollTop = $('terminal-scroll').scrollHeight;
+}
+
+function queueTerminalText(text) {
+  terminalState.pending += text;
+  if (!terminalState.timer) {
+    terminalState.timer = setTimeout(renderTerminalNow, terminalState.flushDelayMs);
+  }
+}
+
+function clearTerminal() {
+  terminalState.text = '';
+  terminalState.pending = '';
+  if (terminalState.timer) {
+    clearTimeout(terminalState.timer);
+    terminalState.timer = 0;
+  }
+  renderTerminalNow();
+}
+
+function renderTerminalEvent(event) {
+  if (event.type === 'clear') {
+    clearTerminal();
+  }
+  else if (event.type === 'write') {
+    queueTerminalText(event.text);
+  }
+  else if (event.type === 'bell') {
+    $('terminal-scroll').animate(
+      [{ backgroundColor: '#241116' }, { backgroundColor: '#06080a' }],
+      { duration: 140 },
+    );
+  }
+  else if (event.type === 'url') {
+    appendLog(`terminal url ${event.url}`, 'rx');
+  }
+  else if (event.type === 'logo' || event.type === 'quit') {
+    appendLog(`terminal ${event.type}`, 'err');
+  }
+}
+
+function parseBigIntField(id, name) {
+  const raw = $(id).value.trim();
+  if (!raw) {
+    throw new Error(`${name} is required`);
+  }
+  return BigInt(raw);
+}
+
+function parseNumberField(id, name) {
+  const value = Number($(id).value.trim());
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function parseHeaders(text) {
+  const headers = [];
+  for (const rawLine of String(text).split('\n')) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    const index = line.indexOf(':');
+    if (index <= 0) {
+      throw new Error(`invalid header: ${line}`);
+    }
+    headers.push([
+      line.slice(0, index).trim().toLowerCase(),
+      line.slice(index + 1).trim(),
+    ]);
+  }
+  return headers;
+}
+
+function ensureClient() {
+  if (client) {
+    return client;
+  }
+  worker = new Worker(
+    new URL('./ames-wasm-runtime-worker.mjs', import.meta.url),
+    { type: 'module' },
+  );
+  client = createRuntimeWorkerCommandClient(worker, {
+    emit: message => {
+      if (message.type === 'log') {
+        appendLog(message.message, message.className || '');
+      }
+      else if (message.type === 'terminal') {
+        renderTerminalEvent(message.event);
+      }
+    },
+  });
+  return client;
+}
+
+async function startRuntime() {
+  if (!started) {
+    setStatus('booting');
+    $('start').disabled = true;
+    await ensureClient().command('start', {
+      wasmUrl: absoluteHref($('wasm-url').value),
+      pillUrl: absoluteHref($('pill-url').value),
+      bridgeUrl: $('bridge-url').value.trim(),
+      certificateHash: $('hash').value.trim(),
+      scope: $('scope').value.trim() || 'wasm-dojo-demo',
+      loomExponent: parseNumberField('loom', 'loom'),
+      overheadMiB: parseNumberField('overhead-mib', 'overhead MiB'),
+      maximumMiB: parseNumberField('maximum-mib', 'maximum MiB'),
+      fakeShip: parseBigIntField('fake-ship', 'fake ship').toString(),
+      sessionId: parseBigIntField('session-id', 'session id').toString(),
+      clearStore: true,
+    });
+    started = true;
+  }
+
+  if (!terminalStarted) {
+    clearTerminal();
+    await ensureClient().command('terminal-start', {
+      cols: parseNumberField('cols', 'cols'),
+      rows: parseNumberField('rows', 'rows'),
+    });
+    terminalStarted = true;
+  }
+
+  setStatus('dojo ready', 'ok');
+  setTab('dojo');
+  $('command').focus();
+  if (!webFrameLoaded) {
+    await requestWebFrame({ quiet: true });
+  }
+}
+
+async function connectAmes() {
+  await startRuntime();
+  if (connected) {
+    return;
+  }
+  setStatus('connecting');
+  await ensureClient().command('connect', {
+    bridgeUrl: $('bridge-url').value.trim(),
+    certificateHash: $('hash').value.trim(),
+  });
+  connected = true;
+  setStatus('connected', 'ok');
+}
+
+async function refreshTerminal() {
+  await startRuntime();
+  await ensureClient().command('terminal-resize', {
+    cols: parseNumberField('cols', 'cols'),
+    rows: parseNumberField('rows', 'rows'),
+  });
+  await ensureClient().command('terminal-refresh');
+}
+
+async function sendCommand() {
+  await startRuntime();
+  const text = $('command').value;
+  $('command').value = '';
+  await ensureClient().command('terminal-input', {
+    text,
+    enter: true,
+  });
+}
+
+function frameDocument({ status, type, body, path }) {
+  const bodyText = decoder.decode(body);
+  if (String(type).includes('text/html')) {
+    return bodyText;
+  }
+  const escaped = bodyText
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  return `<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; padding: 1rem; background: #f8fafc; color: #0f172a; font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .meta { color: #64748b; margin-bottom: 0.75rem; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+<div class="meta">${status} ${type || 'unknown'} ${path}</div>
+<pre>${escaped || `[${body.length} bytes]`}</pre>`;
+}
+
+async function requestWebFrame({ quiet = false } = {}) {
+  const path = $('http-path').value.trim() || '/';
+  const response = await ensureClient().command('http-request', {
+    method: $('http-method').value,
+    url: path,
+    headers: parseHeaders($('headers').value),
+    timeoutMs: 120_000,
+  });
+  const body = Uint8Array.from(response.body || []);
+  const type = (response.headers || []).find(([key]) => (
+    String(key).toLowerCase() === 'content-type'
+  ))?.[1] || 'unknown';
+  $('web-frame').srcdoc = frameDocument({
+    status: response.status,
+    type,
+    body,
+    path,
+  });
+  webFrameLoaded = true;
+  if (!quiet) {
+    appendLog(`web frame ${path} status=${response.status} type=${type} bytes=${body.length}`, 'rx');
+  }
+}
+
+async function loadWebFrame({ quiet = false } = {}) {
+  await startRuntime();
+  await requestWebFrame({ quiet });
+  setTab('web');
+}
+
+async function shutdownRuntime() {
+  if (!client) {
+    return;
+  }
+  setStatus('stopping');
+  try {
+    if (started) {
+      await client.command('shutdown');
+    }
+  }
+  finally {
+    client.terminate();
+    worker = null;
+    client = null;
+    started = false;
+    terminalStarted = false;
+    connected = false;
+    webFrameLoaded = false;
+    $('start').disabled = false;
+    setStatus('idle');
+  }
+}
+
+function action(fn) {
+  return async () => {
+    try {
+      await fn();
+    }
+    catch (error) {
+      setStatus('error', 'err');
+      appendLog(String(error?.stack ?? error), 'err');
+      setTab('logs');
+      $('start').disabled = false;
+    }
+  };
+}
+
+for (const button of document.querySelectorAll('[data-tab-target]')) {
+  button.addEventListener('click', () => setTab(button.dataset.tabTarget));
+}
+
+$('start').addEventListener('click', action(startRuntime));
+$('connect').addEventListener('click', action(connectAmes));
+$('refresh').addEventListener('click', action(refreshTerminal));
+$('send').addEventListener('click', action(sendCommand));
+$('http-send').addEventListener('click', action(() => loadWebFrame()));
+$('shutdown').addEventListener('click', action(shutdownRuntime));
+
+$('command').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    $('send').click();
+  }
+});
+
+$('http-path').addEventListener('keydown', event => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    $('http-send').click();
+  }
+});
+
+for (const button of document.querySelectorAll('[data-command]')) {
+  button.addEventListener('click', () => {
+    $('command').value = button.dataset.command;
+    $('send').click();
+  });
+}
+
+window.addEventListener('beforeunload', () => {
+  client?.terminate();
+});
+
+preferBundledAssets();
+</script>

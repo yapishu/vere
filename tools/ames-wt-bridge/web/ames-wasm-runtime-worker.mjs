@@ -6,8 +6,6 @@ import {
   IndexedDBVereWasmFileStore,
 } from './vere-wasm-host.mjs';
 
-const decoder = new TextDecoder();
-
 function asBigInt(value, name) {
   if (value == null || value === '') {
     throw new Error(`${name} is required`);
@@ -16,6 +14,9 @@ function asBigInt(value, name) {
 }
 
 function asBytes(value, name) {
+  if (value == null) {
+    return null;
+  }
   if (value instanceof Uint8Array) {
     return Uint8Array.from(value);
   }
@@ -61,11 +62,41 @@ async function fetchBytes(fetchFn, url) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-function writeBytes(emit, className, bytes) {
-  const text = decoder.decode(bytes).replace(/\r/g, '');
-  for (const line of text.split('\n')) {
+class WasmLogBuffer {
+  constructor(emit, className) {
+    this.emit = emit;
+    this.className = className;
+    this.decoder = new TextDecoder();
+    this.pending = '';
+  }
+
+  write(bytes) {
+    this.pending += this.decoder.decode(bytes, { stream: true }).replace(/\r/g, '');
+    this.#drainCompleteLines();
+  }
+
+  flush() {
+    this.pending += this.decoder.decode().replace(/\r/g, '');
+    this.#emitLine(this.pending);
+    this.pending = '';
+  }
+
+  #drainCompleteLines() {
+    let newline = this.pending.indexOf('\n');
+    while (-1 !== newline) {
+      this.#emitLine(this.pending.slice(0, newline));
+      this.pending = this.pending.slice(newline + 1);
+      newline = this.pending.indexOf('\n');
+    }
+  }
+
+  #emitLine(line) {
     if (line) {
-      emit({ type: 'log', message: `wasm: ${line}`, className });
+      this.emit({
+        type: 'log',
+        message: `wasm: ${line}`,
+        className: this.className,
+      });
     }
   }
 }
@@ -78,6 +109,13 @@ export function createAmesRuntimeWorkerHandler({
 } = {}) {
   let service = null;
   let loopCompletionPromise = null;
+  const wasmStdout = new WasmLogBuffer(emit, '');
+  const wasmStderr = new WasmLogBuffer(emit, 'err');
+
+  function flushWasmLogs() {
+    wasmStdout.flush();
+    wasmStderr.flush();
+  }
 
   const requireService = () => {
     if (!service) {
@@ -89,6 +127,7 @@ export function createAmesRuntimeWorkerHandler({
   async function start(message) {
     if (service) {
       await service.shutdown();
+      flushWasmLogs();
       service = null;
     }
     loopCompletionPromise = null;
@@ -117,12 +156,16 @@ export function createAmesRuntimeWorkerHandler({
       fakeShip: asBigInt(message.fakeShip ?? '0x100', 'fakeShip'),
       sessionId: asBigInt(message.sessionId ?? '1', 'sessionId'),
       onLog: event => emit({ type: 'log', ...event }),
-      onStdout: bytes => writeBytes(emit, '', bytes),
-      onStderr: bytes => writeBytes(emit, 'err', bytes),
+      onStdout: bytes => wasmStdout.write(bytes),
+      onStderr: bytes => wasmStderr.write(bytes),
       onPacket: event => emit({
         type: 'packet',
         mode: event.mode,
         bytes: [...event.packet],
+      }),
+      onTerminal: event => emit({
+        type: 'terminal',
+        event: publicResult(event),
       }),
     });
 
@@ -196,6 +239,38 @@ export function createAmesRuntimeWorkerHandler({
             lane: message.lane == null ? undefined : BigInt(message.lane),
           });
           break;
+        case 'http-request':
+          result = await requireService().httpRequest({
+            method: message.method ?? 'GET',
+            url: message.url ?? '/',
+            headers: Array.isArray(message.headers) ? message.headers : [],
+            body: asBytes(message.body, 'body'),
+            secure: Boolean(message.secure),
+            local: message.local !== false,
+            timeoutMs: message.timeoutMs,
+          });
+          break;
+        case 'terminal-start':
+          result = await requireService().terminalStart({
+            cols: message.cols ?? 80,
+            rows: message.rows ?? 24,
+          });
+          break;
+        case 'terminal-resize':
+          result = await requireService().terminalResize({
+            cols: message.cols ?? 80,
+            rows: message.rows ?? 24,
+          });
+          break;
+        case 'terminal-refresh':
+          result = await requireService().terminalRefresh();
+          break;
+        case 'terminal-input':
+          result = await requireService().terminalInput({
+            text: String(message.text ?? ''),
+            enter: message.enter !== false,
+          });
+          break;
         case 'pump':
           result = await requireService().runInputLoop({
             ...loopOptions(message),
@@ -221,6 +296,7 @@ export function createAmesRuntimeWorkerHandler({
             shutdownRuntime: message.shutdownRuntime !== false,
           });
           if (message.shutdownRuntime !== false) {
+            flushWasmLogs();
             service = null;
           }
           break;
@@ -234,6 +310,7 @@ export function createAmesRuntimeWorkerHandler({
             await service.stopInputLoop();
           }
           result = await requireService().shutdown();
+          flushWasmLogs();
           service = null;
           loopCompletionPromise = null;
           break;

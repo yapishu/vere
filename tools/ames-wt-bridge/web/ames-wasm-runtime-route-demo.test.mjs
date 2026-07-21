@@ -77,6 +77,12 @@ class FakeWorker {
         message: response.log,
       });
     }
+    if (response.terminal) {
+      this.#emit('message', {
+        type: 'terminal',
+        event: response.terminal,
+      });
+    }
     this.#emit('message', {
       type: 'result',
       id: message.id,
@@ -339,6 +345,28 @@ test('createRuntimeWorkerCommandClient rejects worker command errors', async () 
     client.command('keen', { ship: '0x200' }),
     /bad keen/,
   );
+});
+
+test('createRuntimeWorkerCommandClient forwards terminal events', async () => {
+  const worker = new FakeWorker({
+    'terminal-input': () => ({
+      terminal: { type: 'write', text: 'dojo> ' },
+      result: { events: [] },
+    }),
+  });
+  const emitted = [];
+  const client = createRuntimeWorkerCommandClient(worker, {
+    emit: message => emitted.push(message),
+  });
+
+  await client.command('terminal-input', { text: '+trouble' });
+
+  assert.deepEqual(emitted, [
+    {
+      type: 'terminal',
+      event: { type: 'write', text: 'dojo> ' },
+    },
+  ]);
 });
 
 test('assertRuntimeRouteSummary reports route proof failures', () => {

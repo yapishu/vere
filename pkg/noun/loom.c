@@ -15,6 +15,7 @@
 
 #ifdef U3_OS_wasm
 c3_w* u3m_Loom;
+static c3_o _loom_wasm_fresh_o = c3y;
 #endif
 
 size_t
@@ -54,7 +55,10 @@ _loom_init_wasm(size_t len_i)
     return c3n;
   }
 
-  memset((void*)lom_i, 0, len_i);
+  if ( c3n == _loom_wasm_fresh_o ) {
+    memset((void*)lom_i, 0, len_i);
+  }
+  _loom_wasm_fresh_o = c3n;
   u3m_Loom = (c3_w*)lom_i;
   u3C.wor_i = len_i >> 2;
   u3l_log("loom: mapped %zuMB", len_i >> 20);

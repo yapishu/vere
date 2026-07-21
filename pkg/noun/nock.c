@@ -2196,8 +2196,8 @@ _n_kale(u3_noun a)
 }
 
 typedef struct __attribute__((__packed__)) {
-  u3n_prog* pog_u;
-  c3_w     ip_w;
+  u3p(u3n_prog) pog_p;
+  c3_w          ip_w;
 } burnframe;
 
 /* _n_burn(): pog: program
@@ -2248,7 +2248,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       }
       else {
         fam   = u3to(burnframe, u3R->cap_p) + off;
-        pog_u = fam->pog_u;
+        pog_u = u3to(u3n_prog, fam->pog_p);
         pog   = pog_u->byc_u.ops_y;
         ip_w  = fam->ip_w;
 
@@ -2433,7 +2433,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       fam        = u3to(burnframe, u3R->cap_p) + off + mov;
       u3R->cap_p = u3of(burnframe, fam - off);
       fam->ip_w  = ip_w;
-      fam->pog_u = pog_u;
+      fam->pog_p = u3of(u3n_prog, pog_u);
       _n_push(mov, off, x);
     nock_out:
       pog_u = _n_find(u3_nul, o);
@@ -2594,7 +2594,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
         fam         = u3to(burnframe, u3R->cap_p) + off + mov;
         u3R->cap_p  = u3of(burnframe, fam - off);
         fam->ip_w   = ip_w;
-        fam->pog_u  = pog_u;
+        fam->pog_p  = u3of(u3n_prog, pog_u);
 
         pog_u = u3to(u3n_prog, sit_u->pog_p);
         pog   = pog_u->byc_u.ops_y;
@@ -3368,5 +3368,3 @@ u3n_nock_an(u3_noun bus, u3_noun fol)
   u3_noun gul = u3nt(u3nc(1, 0), u3nc(0, 0), 0);  //  |~(^ ~)
   return u3n_nock_et(gul, bus, fol);
 }
-
-

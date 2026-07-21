@@ -20,6 +20,12 @@ import {
   httpClientBornOvumJam,
 } from './ames-wasm-http-client.mjs';
 import {
+  BrowserHttpServerHost,
+} from './ames-wasm-http-server.mjs';
+import {
+  BrowserTerminalHost,
+} from './ames-wasm-terminal.mjs';
+import {
   instantiateVereDiskWasmRuntime,
   runVereWasmProbeWithFileStore,
 } from './vere-wasm-host.mjs';
@@ -89,6 +95,14 @@ function defaultHttpClientHostFactory(input) {
   return new BrowserHttpClientHost(input);
 }
 
+function defaultHttpServerHostFactory(input) {
+  return new BrowserHttpServerHost(input);
+}
+
+function defaultTerminalHostFactory(input) {
+  return new BrowserTerminalHost(input);
+}
+
 function sanitizeLabel(label) {
   return String(label).replace(/[^a-zA-Z0-9_.-]/g, '-');
 }
@@ -105,6 +119,13 @@ function publicRouteCount(routes) {
       unknown: 0,
       pending: 0,
     },
+    terminal: routes?.terminal ?? {
+      events: 0,
+      blits: 0,
+      logos: 0,
+      unknown: 0,
+      bufferChars: 0,
+    },
   };
 }
 
@@ -118,6 +139,8 @@ export function publicRuntimeSnapshot(snapshot) {
     inputLoopActive: Boolean(snapshot.inputLoopActive),
     queue: snapshot.queue,
     hostedHttp: snapshot.hostedHttp ?? null,
+    hostedHttpServer: snapshot.hostedHttpServer ?? null,
+    hostedTerminal: snapshot.hostedTerminal ?? null,
     totals: snapshot.totals,
   };
 }
@@ -138,10 +161,15 @@ export class AmesWasmRuntimeService {
     clientFactory = defaultClientFactory,
     httpClientHost = null,
     httpClientHostFactory = defaultHttpClientHostFactory,
+    httpServerHost = null,
+    httpServerHostFactory = defaultHttpServerHostFactory,
+    terminalHost = null,
+    terminalHostFactory = defaultTerminalHostFactory,
     onLog = () => {},
     onStdout = () => {},
     onStderr = () => {},
     onPacket = () => {},
+    onTerminal = () => {},
   } = {}) {
     if (!wasmUrl) {
       throw new Error('wasmUrl is required');
@@ -168,8 +196,15 @@ export class AmesWasmRuntimeService {
     this.onStdout = onStdout;
     this.onStderr = onStderr;
     this.onPacket = onPacket;
+    this.onTerminal = onTerminal;
     this.httpClientHost = httpClientHost ?? httpClientHostFactory({
       onLog: event => log(this.onLog, event.message, event.className),
+    });
+    this.httpServerHost = httpServerHost ?? httpServerHostFactory({
+      onLog: event => log(this.onLog, event.message, event.className),
+    });
+    this.terminalHost = terminalHost ?? terminalHostFactory({
+      onTerminal: event => this.onTerminal(event),
     });
 
     this.runtime = null;
@@ -195,6 +230,10 @@ export class AmesWasmRuntimeService {
       inboundPackets: 0,
       httpRequests: 0,
       httpCancels: 0,
+      httpServerRequests: 0,
+      httpServerResponses: 0,
+      terminalEvents: 0,
+      terminalBlits: 0,
     };
   }
 
@@ -208,6 +247,8 @@ export class AmesWasmRuntimeService {
       inputLoopActive: Boolean(this.inputLoopPromise),
       queue: this.inboundPackets.stats(),
       hostedHttp: this.httpClientHost?.snapshot?.() ?? null,
+      hostedHttpServer: this.httpServerHost?.snapshot?.() ?? null,
+      hostedTerminal: this.terminalHost?.snapshot?.() ?? null,
       totals: { ...this.totals },
     };
   }
@@ -252,6 +293,18 @@ export class AmesWasmRuntimeService {
         ovumBytes: httpClientBornOvumJam(),
       })
       : null;
+    const httpServerBorn = this.httpServerHost
+      ? await this.#pokeOvum({
+        label: 'http-server-born',
+        ovumBytes: this.httpServerHost.bornOvumJam(),
+      })
+      : null;
+    const httpServerLive = this.httpServerHost
+      ? await this.#pokeOvum({
+        label: 'http-server-live',
+        ovumBytes: this.httpServerHost.liveOvumJam(),
+      })
+      : null;
     const born = await this.#pokeOvum({
       label: 'born',
       ovumBytes: bornOvumJam(),
@@ -260,6 +313,8 @@ export class AmesWasmRuntimeService {
     return {
       load,
       httpBorn,
+      httpServerBorn,
+      httpServerLive,
       born,
       snapshot: this.snapshot(),
     };
@@ -372,6 +427,127 @@ export class AmesWasmRuntimeService {
         packet: packetCopy(packet),
       }),
     });
+  }
+
+  async httpRequest({
+    method = 'GET',
+    url = '/',
+    headers = [],
+    body = null,
+    secure = false,
+    local = true,
+    timeoutMs = undefined,
+  } = {}) {
+    this.#ensureStarted();
+    if (!this.httpServerHost) {
+      throw new Error('http-server host is not enabled');
+    }
+
+    this.totals.httpServerRequests++;
+    return this.httpServerHost.handleRequest({
+      method,
+      url,
+      headers,
+      body,
+      secure,
+      local,
+      timeoutMs,
+    }, {
+      injectOvum: ({ label, ovumBytes }) => this.#pokeOvum({ label, ovumBytes }),
+    });
+  }
+
+  async terminalStart({
+    cols = 80,
+    rows = 24,
+  } = {}) {
+    this.#ensureStarted();
+    if (!this.terminalHost) {
+      throw new Error('terminal host is not enabled');
+    }
+
+    const born = await this.#pokeOvum({
+      label: 'terminal-born',
+      ovumBytes: this.terminalHost.bornOvumJam(),
+    });
+    const blew = await this.#pokeOvum({
+      label: 'terminal-blew',
+      ovumBytes: this.terminalHost.blewOvumJam({ cols, rows }),
+    });
+    const hail = await this.#pokeOvum({
+      label: 'terminal-hail',
+      ovumBytes: this.terminalHost.hailOvumJam(),
+    });
+    this.terminalHost.started = true;
+
+    return {
+      born,
+      blew,
+      hail,
+      snapshot: this.snapshot(),
+    };
+  }
+
+  async terminalResize({
+    cols = 80,
+    rows = 24,
+  } = {}) {
+    this.#ensureStarted();
+    if (!this.terminalHost) {
+      throw new Error('terminal host is not enabled');
+    }
+    const resized = await this.#pokeOvum({
+      label: 'terminal-blew',
+      ovumBytes: this.terminalHost.blewOvumJam({ cols, rows }),
+    });
+    return {
+      resized,
+      snapshot: this.snapshot(),
+    };
+  }
+
+  async terminalRefresh() {
+    this.#ensureStarted();
+    if (!this.terminalHost) {
+      throw new Error('terminal host is not enabled');
+    }
+    const refreshed = await this.#pokeOvum({
+      label: 'terminal-hail',
+      ovumBytes: this.terminalHost.hailOvumJam(),
+    });
+    return {
+      refreshed,
+      snapshot: this.snapshot(),
+    };
+  }
+
+  async terminalInput({
+    text = '',
+    enter = true,
+  } = {}) {
+    this.#ensureStarted();
+    if (!this.terminalHost) {
+      throw new Error('terminal host is not enabled');
+    }
+
+    const events = [];
+    if (String(text).length > 0) {
+      events.push(await this.#pokeOvum({
+        label: 'terminal-text',
+        ovumBytes: this.terminalHost.textOvumJam({ text }),
+      }));
+    }
+    if (enter) {
+      events.push(await this.#pokeOvum({
+        label: 'terminal-ret',
+        ovumBytes: this.terminalHost.retOvumJam(),
+      }));
+    }
+
+    return {
+      events,
+      snapshot: this.snapshot(),
+    };
   }
 
   async runInputLoop({
@@ -572,6 +748,7 @@ export class AmesWasmRuntimeService {
         catch (_) {}
       }
       this.httpClientHost?.abortAll?.();
+      this.httpServerHost?.cancelAll?.();
       await this.client?.close?.({ reason: 'browser runtime service shutdown' });
     }
     finally {
@@ -680,10 +857,36 @@ export class AmesWasmRuntimeService {
     this.totals.httpRequests += http.requests;
     this.totals.httpCancels += http.cancels;
 
+    const httpServer = this.httpServerHost
+      ? this.httpServerHost.routeEffects(effectsBytes)
+      : {
+        responses: 0,
+        configs: 0,
+        sessions: 0,
+        grows: 0,
+        unknown: 0,
+        pending: 0,
+      };
+    this.totals.httpServerResponses += httpServer.responses;
+
+    const terminal = this.terminalHost
+      ? this.terminalHost.routeEffects(effectsBytes)
+      : {
+        events: 0,
+        blits: 0,
+        logos: 0,
+        unknown: 0,
+        bufferChars: 0,
+      };
+    this.totals.terminalEvents += terminal.events;
+    this.totals.terminalBlits += terminal.blits;
+
     return {
       ...routes,
       summary,
       http,
+      httpServer,
+      terminal,
     };
   }
 

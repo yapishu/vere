@@ -37,8 +37,13 @@ class FakeService {
     this.loopPromise = null;
     this.resolveLoop = null;
     FakeService.instances.push(this);
+    const encoder = new TextEncoder();
     options.onLog({ message: 'service-log', className: 'rx' });
-    options.onStdout(new TextEncoder().encode('stdout-line\n'));
+    options.onStdout(encoder.encode('std'));
+    options.onStdout(encoder.encode('out'));
+    options.onStdout(encoder.encode('-line\n'));
+    options.onStderr(encoder.encode('err'));
+    options.onStderr(encoder.encode('or-line\npartial'));
   }
 
   async start() {
@@ -63,6 +68,25 @@ class FakeService {
   async injectPacket(input) {
     this.injectInput = input;
     return { event: 24n, effects: { pushes: 0 } };
+  }
+
+  async httpRequest(input) {
+    this.httpRequestInput = input;
+    return {
+      status: 200,
+      headers: [['content-type', 'text/plain']],
+      body: Uint8Array.from([111, 107]),
+    };
+  }
+
+  async terminalStart(input) {
+    this.terminalStartInput = input;
+    return { snapshot: { terminal: 'started' } };
+  }
+
+  async terminalInput(input) {
+    this.terminalInputInput = input;
+    return { events: [{ event: 26n }] };
   }
 
   async runInputLoop(input) {
@@ -185,13 +209,23 @@ test('runtime worker handler runs command lifecycle and serializes results', asy
   await handler.handle({ id: 3, type: 'mate', ship: '0x200' });
   await handler.handle({ id: 4, type: 'keen', ship: '0x200', path: '/c/x/1/kids/sys/kelvin' });
   await handler.handle({ id: 5, type: 'inject-packet', packet: [9, 8, 7] });
-  await handler.handle({ id: 6, type: 'pump', maxRounds: 1, firstIdleTimeoutMs: 0 });
-  await handler.handle({ id: 7, type: 'pump-start', firstIdleTimeoutMs: 1000 });
-  await handler.handle({ id: 8, type: 'pump-stop' });
-  await handler.handle({ id: 9, type: 'snapshot' });
-  await handler.handle({ id: 10, type: 'save' });
-  await handler.handle({ id: 11, type: 'replay', shutdownRuntime: false });
-  await handler.handle({ id: 12, type: 'shutdown' });
+  await handler.handle({
+    id: 6,
+    type: 'http-request',
+    method: 'POST',
+    url: '/~/name',
+    headers: [['content-type', 'text/plain']],
+    body: [104, 105],
+  });
+  await handler.handle({ id: 7, type: 'terminal-start', cols: 100, rows: 30 });
+  await handler.handle({ id: 8, type: 'terminal-input', text: '+trouble' });
+  await handler.handle({ id: 9, type: 'pump', maxRounds: 1, firstIdleTimeoutMs: 0 });
+  await handler.handle({ id: 10, type: 'pump-start', firstIdleTimeoutMs: 1000 });
+  await handler.handle({ id: 11, type: 'pump-stop' });
+  await handler.handle({ id: 12, type: 'snapshot' });
+  await handler.handle({ id: 13, type: 'save' });
+  await handler.handle({ id: 14, type: 'replay', shutdownRuntime: false });
+  await handler.handle({ id: 15, type: 'shutdown' });
 
   assert.equal(FakeStore.instances.length, 1);
   assert.equal(FakeStore.instances[0].options.scope, 'worker-test');
@@ -201,6 +235,12 @@ test('runtime worker handler runs command lifecycle and serializes results', asy
   assert.equal(FakeService.instances[0].options.fakeShip, 0x100n);
   assert.equal(FakeService.instances[0].mateInput.ship, 0x200n);
   assert.deepEqual([...FakeService.instances[0].injectInput.packet], [9, 8, 7]);
+  assert.equal(FakeService.instances[0].httpRequestInput.method, 'POST');
+  assert.equal(FakeService.instances[0].httpRequestInput.url, '/~/name');
+  assert.deepEqual([...FakeService.instances[0].httpRequestInput.body], [104, 105]);
+  assert.equal(FakeService.instances[0].terminalStartInput.cols, 100);
+  assert.equal(FakeService.instances[0].terminalStartInput.rows, 30);
+  assert.equal(FakeService.instances[0].terminalInputInput.text, '+trouble');
   assert.equal(FakeService.instances[0].pumpStartInput.firstIdleTimeoutMs, 1000);
   assert.equal(FakeService.instances[0].replayInput.shutdownRuntime, false);
 
@@ -210,19 +250,37 @@ test('runtime worker handler runs command lifecycle and serializes results', asy
   assert.ok(emitted.some(message => (
     message.type === 'log' && message.message === 'wasm: stdout-line'
   )));
+  assert.equal(
+    emitted.filter(message => message.message === 'wasm: stdout-line').length,
+    1,
+  );
+  assert.ok(emitted.some(message => (
+    message.type === 'log' &&
+    message.message === 'wasm: error-line' &&
+    message.className === 'err'
+  )));
+  assert.ok(emitted.some(message => (
+    message.type === 'log' &&
+    message.message === 'wasm: partial' &&
+    message.className === 'err'
+  )));
   assert.ok(emitted.some(message => (
     message.type === 'log' && message.message === 'pill-bytes=2'
   )));
   assert.deepEqual(
     emitted.filter(message => message.type === 'result').map(message => message.id),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   );
   assert.equal(
-    emitted.find(message => message.id === 9).result.snapshot.fakeShip,
+    emitted.find(message => message.id === 6).result.body.join(','),
+    '111,107',
+  );
+  assert.equal(
+    emitted.find(message => message.id === 12).result.snapshot.fakeShip,
     '256',
   );
   assert.equal(
-    emitted.find(message => message.id === 11).result.replay.exitCode,
+    emitted.find(message => message.id === 14).result.replay.exitCode,
     0,
   );
   assert.ok(emitted.some(message => (

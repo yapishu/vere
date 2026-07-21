@@ -42,6 +42,41 @@ static c3_d     _probe_reactor_boot_len_d = 0;
 static c3_c     _probe_reactor_arg0_c[PROBE_REACTOR_ARG_BYTES];
 static c3_c     _probe_reactor_arg1_c[PROBE_REACTOR_ARG_BYTES];
 
+static void
+_probe_dump_tape(u3_noun tep)
+{
+  while ( c3y == u3du(tep) ) {
+    fputc((c3_i)u3h(tep), stderr);
+    tep = u3t(tep);
+  }
+}
+
+static void
+_probe_slog(u3_noun hod)
+{
+  u3_noun pri, tac;
+
+  if ( c3y == u3r_cell(hod, &pri, &tac) ) {
+    (void)pri;
+
+    if ( c3y == u3a_is_atom(tac) ) {
+      c3_c* str_c = u3r_string(tac);
+      fputs(str_c, stderr);
+      c3_free(str_c);
+    }
+    else if ( c3__leaf == u3h(tac) ) {
+      _probe_dump_tape(u3t(tac));
+    }
+    else {
+      fputs("disk-wasm: slog tank\r\n", stderr);
+    }
+
+    fputs("\r\n", stderr);
+  }
+
+  u3z(hod);
+}
+
 static c3_o
 _probe_has_arg(int argc, char** argv, const c3_c* arg_c)
 {
@@ -398,6 +433,7 @@ _probe_run_boot(u3_noun ova, u3_noun cax)
 {
   u3m_hate(1 << 18);
   u3_noun xev = u3m_love(u3ke_cue(u3ke_jam(u3nc(cax, ova))));
+  u3z(cax);
   u3x_cell(xev, &cax, &ova);
   u3k(cax); u3k(ova);
   u3z(xev);
@@ -412,9 +448,12 @@ _probe_run_boot(u3_noun ova, u3_noun cax)
 
   u3l_log("disk-wasm: bootstrap starting");
 
+  u3C.slog_f = _probe_slog;
   if ( c3n == u3v_boot(ova) ) {
+    u3C.slog_f = 0;
     return c3n;
   }
+  u3C.slog_f = 0;
 
   u3l_log("disk-wasm: bootstrap complete core=%x event=%" PRIu64,
           u3r_mug(u3A->roc), u3A->eve_d);
@@ -749,6 +788,9 @@ _probe_reactor_load(c3_w exp_w, c3_d who_d[2])
   u3l_log("disk-wasm: reactor loaded events=%u committed=%" PRIu64,
           len_w, log_u->dun_d);
 
+  u3z(ova);
+  ova = u3_nul;
+
   if ( c3n == _probe_run_boot(lova, cax) ) {
     fprintf(stderr, "disk-wasm: reactor boot from log failed\r\n");
     lova = u3_none;
@@ -996,6 +1038,9 @@ main(int argc, char** argv)
           len_w, log_u->dun_d);
 
   if ( c3y == run_o ) {
+    u3z(ova);
+    ova = u3_nul;
+
     if ( c3n == _probe_run_boot(lova, cax) ) {
       fprintf(stderr, "disk-wasm: boot from log failed\r\n");
       return 1;

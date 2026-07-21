@@ -12,6 +12,12 @@ import {
   httpRequestNoun,
 } from './ames-wasm-http-client.mjs';
 import {
+  httpServerWire,
+} from './ames-wasm-http-server.mjs';
+import {
+  termWire,
+} from './ames-wasm-terminal.mjs';
+import {
   atomFromBytesLE,
   jamBytes,
   list,
@@ -54,10 +60,51 @@ function httpRequestEffects({
   ));
 }
 
+function httpServerResponseEffects({
+  connectionId = 1n,
+  requestId = 1n,
+  body = [111, 107],
+} = {}) {
+  return jamBytes(list(
+    tuple(
+      httpServerWire({ connectionId, requestId }),
+      tuple(
+        termAtom('response'),
+        tuple(
+          termAtom('start'),
+          tuple(200n, list([termAtom('content-type'), termAtom('text/plain')])),
+          [0n, [BigInt(body.length), packetAtom(body)]],
+          0n,
+        ),
+      ),
+    ),
+  ));
+}
+
+function terminalBlitEffects({
+  text = 'dojo> ',
+} = {}) {
+  const chars = list(...[...text].map(char => BigInt(char.codePointAt(0))));
+  return jamBytes(list(
+    tuple(
+      termWire(),
+      tuple(
+        termAtom('give'),
+        tuple(
+          termAtom('blit'),
+          list(tuple(termAtom('put'), chars)),
+        ),
+      ),
+    ),
+  ));
+}
+
 function makeRuntimeFactory({
   mateEffects = pushEffects(0n),
   keenEffects = pushEffects(0n),
   replyEffects = emptyEffects(),
+  httpServerEffects = httpServerResponseEffects(),
+  terminalEffects = terminalBlitEffects(),
 } = {}) {
   const runtimes = [];
 
@@ -91,6 +138,12 @@ function makeRuntimeFactory({
         }
         else if (ovumPath.includes('reply')) {
           this.host.files.set(effectsPath, replyEffects);
+        }
+        else if (ovumPath.includes('http-server-request')) {
+          this.host.files.set(effectsPath, httpServerEffects);
+        }
+        else if (ovumPath.includes('terminal-')) {
+          this.host.files.set(effectsPath, terminalEffects);
         }
         else {
           this.host.files.set(effectsPath, emptyEffects());
@@ -162,11 +215,16 @@ test('AmesWasmRuntimeService starts a resident runtime and routes pokes over Web
   const started = await service.start();
   assert.equal(started.snapshot.started, true);
   assert.equal(started.httpBorn.event, 22n);
-  assert.equal(started.born.event, 23n);
+  assert.equal(started.httpServerBorn.event, 23n);
+  assert.equal(started.httpServerLive.event, 24n);
+  assert.equal(started.born.event, 25n);
   assert.equal(runtimeFactory.runtimes[0].initialized, true);
   assert.equal(runtimeFactory.runtimes[0].ship, 0x100n);
   assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
     path => path.includes('http-client-born'),
+  ));
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
+    path => path.includes('http-server-born'),
   ));
 
   await service.connect();
@@ -194,6 +252,53 @@ test('AmesWasmRuntimeService starts a resident runtime and routes pokes over Web
   assert.equal(runtimeFactory.runtimes[0].saved, true);
   assert.equal(runtimeFactory.runtimes[0].shutDown, true);
   assert.equal(clientFactory.clients[0].closed, true);
+});
+
+test('AmesWasmRuntimeService hosts inbound http-server requests', async () => {
+  const runtimeFactory = makeRuntimeFactory();
+  const service = new AmesWasmRuntimeService({
+    wasmUrl: 'vere-disk-wasm.wasm',
+    pillBytes: Uint8Array.from([1]),
+    fileStore: {},
+    runtimeFactory,
+  });
+
+  await service.start();
+  const response = await service.httpRequest({
+    method: 'GET',
+    url: '/~/name',
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual([...response.body], [111, 107]);
+  assert.equal(service.snapshot().totals.httpServerRequests, 1);
+  assert.equal(service.snapshot().totals.httpServerResponses, 1);
+});
+
+test('AmesWasmRuntimeService hosts a Dill terminal session', async () => {
+  const terminalEvents = [];
+  const runtimeFactory = makeRuntimeFactory({
+    terminalEffects: terminalBlitEffects({ text: 'dojo> +trouble' }),
+  });
+  const service = new AmesWasmRuntimeService({
+    wasmUrl: 'vere-disk-wasm.wasm',
+    pillBytes: Uint8Array.from([1]),
+    fileStore: {},
+    runtimeFactory,
+    onTerminal: event => terminalEvents.push(event),
+  });
+
+  await service.start();
+  const started = await service.terminalStart({ cols: 100, rows: 30 });
+  const input = await service.terminalInput({ text: '+trouble', enter: true });
+
+  assert.equal(started.snapshot.hostedTerminal.started, true);
+  assert.equal(started.snapshot.hostedTerminal.cols, 100);
+  assert.equal(input.events.length, 2);
+  assert.equal(service.snapshot().totals.terminalBlits, 5);
+  assert.ok(terminalEvents.some(event => (
+    event.type === 'write' && event.text === 'dojo> +trouble'
+  )));
 });
 
 test('AmesWasmRuntimeService can inject a packet directly over a session lane', async () => {
@@ -344,6 +449,8 @@ test('publicRuntimeSnapshot serializes bigint fields', () => {
     inputLoopActive: true,
     queue: { accepted: 0 },
     hostedHttp: { pending: 0 },
+    hostedHttpServer: null,
+    hostedTerminal: null,
     totals: { sent: 0 },
   }), {
     started: true,
@@ -354,6 +461,8 @@ test('publicRuntimeSnapshot serializes bigint fields', () => {
     inputLoopActive: true,
     queue: { accepted: 0 },
     hostedHttp: { pending: 0 },
+    hostedHttpServer: null,
+    hostedTerminal: null,
     totals: { sent: 0 },
   });
 });

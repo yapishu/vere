@@ -187,7 +187,9 @@ pub fn build(b: *std.Build) !void {
         }
         try files.append(file);
     }
-
+    if (t.os.tag == .wasi) {
+        try files.append("platform/wasm/setjmp.c");
+    }
     pkg_noun.addCSourceFiles(.{
         .root = b.path(""),
         .files = files.items,

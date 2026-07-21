@@ -182,6 +182,10 @@ export function createRuntimeWorkerCommandClient(worker, {
       });
       return;
     }
+    if (message.type === 'terminal') {
+      emit(message);
+      return;
+    }
 
     const id = message.id;
     const entry = pending.get(id);
