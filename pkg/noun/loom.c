@@ -3,6 +3,7 @@
 #include "loom.h"
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -43,19 +44,18 @@ _loom_size_ok(size_t len_i)
 static c3_o
 _loom_init_wasm(size_t len_i)
 {
-  void* mem_v = aligned_alloc(U3M_LOOM_PAGE_BYTES, len_i);
-  if ( NULL == mem_v ) {
-    u3l_log("boot: wasm loom allocation %zuMB failed: %s",
-            len_i >> 20, strerror(errno));
+  uintptr_t mem_i = ((uintptr_t)__builtin_wasm_memory_size(0))
+                  << U3M_LOOM_PAGE_BITS;
+  uintptr_t lom_i = mem_i - len_i;
+
+  if ( (mem_i < len_i) || (lom_i & (U3M_LOOM_PAGE_BYTES - 1)) ) {
+    u3l_log("boot: wasm loom reservation %zuMB failed in %zuMB memory",
+            len_i >> 20, (size_t)(mem_i >> 20));
     return c3n;
   }
 
-  if ( u3m_Loom ) {
-    free(u3m_Loom);
-  }
-
-  memset(mem_v, 0, len_i);
-  u3m_Loom = mem_v;
+  memset((void*)lom_i, 0, len_i);
+  u3m_Loom = (c3_w*)lom_i;
   u3C.wor_i = len_i >> 2;
   u3l_log("loom: mapped %zuMB", len_i >> 20);
   return c3y;

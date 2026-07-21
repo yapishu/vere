@@ -199,6 +199,8 @@ _main_init(void)
   u3_Host.ops_u.poq_s = U3_MESA_QUIC_DEFAULT_PORT;
   u3_Host.ops_u.qsp = c3n;
   u3_Host.ops_u.qsp_s = 0;
+  u3_Host.ops_u.qlg = c3n;
+  u3_Host.ops_u.nmd = c3n;
 #if defined(U3_OS_wasm)
   u3_Host.ops_u.lut_y = 28;     /* aka 256MB */
   u3_Host.ops_u.lom_y = 28;
@@ -297,6 +299,8 @@ _main_getopt(c3_i argc, c3_c** argv)
     { "ames-quic-port",      required_argument, NULL, 14 },
     { "ames-quic-sponsor",   no_argument,       NULL, 15 },
     { "ames-quic-sponsor-port", required_argument, NULL, 16 },
+    { "no-ames-mdns",        no_argument,       NULL, 17 },
+    { "ames-quic-log",       no_argument,       NULL, 18 },
     { "http-port",           required_argument, NULL, c3__http },
     { "https-port",          required_argument, NULL, c3__htls },
     { "snap-time",           required_argument, NULL, c3__snap },
@@ -401,6 +405,14 @@ _main_getopt(c3_i argc, c3_c** argv)
         if ( c3n == _main_readw(optarg, 65536, &arg_w) ) {
           return c3n;
         } else u3_Host.ops_u.qsp_s = arg_w;
+        break;
+      }
+      case 17: {  //  no-ames-mdns
+        u3_Host.ops_u.nmd = c3y;
+        break;
+      }
+      case 18: {  //  ames-quic-log
+        u3_Host.ops_u.qlg = c3y;
         break;
       }
       //  special args
@@ -906,6 +918,8 @@ u3_ve_usage(c3_i argc, c3_c** argv)
     "    --ames-quic-port PORT     Set the raw QUIC ames port to bind to (default 8443)\n",
     "    --ames-quic-sponsor       Send sponsor-routed Mesa traffic over raw QUIC\n",
     "    --ames-quic-sponsor-port PORT  Override sponsor raw QUIC fallback port\n",
+    "    --ames-quic-log           Log raw-QUIC Mesa session bind/forward events\n",
+    "    --no-ames-mdns            Disable local Ames mDNS registration/discovery\n",
     "    --http-port PORT          Set the http port to bind to\n",
     "    --https-port PORT         Set the https port to bind to\n",
     "    --snap-time TIME          Set the snapshotting rate in minutes (> 0)\n",

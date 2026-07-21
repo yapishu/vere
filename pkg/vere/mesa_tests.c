@@ -906,6 +906,37 @@ _test_session_bound_modal_send(void)
   return ret_i;
 }
 
+/* _test_session_hear_without_udp_not_direct(): session hears do not imply UDP.
+*/
+static c3_i
+_test_session_hear_without_udp_not_direct(void)
+{
+  u3_mesa sam_u;
+  u3_peer per_u;
+  memset(&sam_u, 0, sizeof(sam_u));
+  memset(&per_u, 0, sizeof(per_u));
+
+  _init_peer(&sam_u, &per_u);
+  per_u.dir_u.her_d = _get_now_micros();
+
+  c3_i ret_i = 0;
+  if ( c3n != _mesa_is_direct_mode(&per_u) ) {
+    fprintf(stderr, "mesa: fresh zero UDP lane selected as direct\r\n");
+    ret_i = 1;
+  }
+
+  per_u.dan_u.sin_family = AF_INET;
+  per_u.dan_u.sin_addr.s_addr = htonl(0x7f000001);
+  per_u.dan_u.sin_port = htons(31337);
+
+  if ( c3y != _mesa_is_direct_mode(&per_u) ) {
+    fprintf(stderr, "mesa: valid fresh UDP lane not selected as direct\r\n");
+    ret_i = 1;
+  }
+
+  return ret_i;
+}
+
 /* _test_session_bound_forward_request(): sponsor relay prefers sessions.
 */
 static c3_i
@@ -1679,6 +1710,7 @@ main(int argc, char* argv[])
   ret_i |= _test_quic4_lane_dispatch();
   ret_i |= _test_session_rejects_legacy_packet();
   ret_i |= _test_session_bound_modal_send();
+  ret_i |= _test_session_hear_without_udp_not_direct();
   ret_i |= _test_session_bound_forward_request();
   ret_i |= _test_bind_gift_forward_request();
   ret_i |= _test_quic_hop_decoding();

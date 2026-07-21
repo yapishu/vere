@@ -40,8 +40,20 @@
 <input id="wasm-url" value="../../../zig-out/bin/noun-boot-lite-wasm.wasm">
 <label>ivory boot WASM URL</label>
 <input id="ivory-wasm-url" value="../../../zig-out/bin/noun-ivory-boot-wasm.wasm">
+<label>mars boot WASM URL</label>
+<input id="mars-wasm-url" value="../../../zig-out/bin/mars-boot-wasm.wasm">
+<label>real brass pill URL</label>
+<input id="mars-pill-url" value="../../../../urbit/bin/brass.pill">
 <label>hostfs WASM URL</label>
 <input id="hostfs-wasm-url" value="../../../zig-out/bin/noun-hostfs-wasm.wasm">
+<label>vere disk WASM URL</label>
+<input id="vere-disk-wasm-url" value="../../../zig-out/bin/vere-disk-wasm.wasm">
+<label>vere disk WASM loom exponent</label>
+<input id="vere-disk-loom" value="29">
+<label>vere disk WASM overhead MiB</label>
+<input id="vere-disk-overhead-mib" value="512">
+<label>vere disk WASM maximum MiB</label>
+<input id="vere-disk-maximum-mib" value="1536">
 
 <label>peer ship atom</label>
 <input id="chum-remote" value="0x0">
@@ -68,7 +80,16 @@
 <button id="chum">dial + send encrypted chum poke</button>
 <button id="wasm-smoke">run WASM boot-lite</button>
 <button id="ivory-smoke">run WASM ivory boot</button>
+<button id="mars-smoke">run WASM mars boot</button>
+<button id="mars-real-pill-smoke">run WASM mars real pill</button>
+<button id="mars-run-boot-smoke">run WASM mars full boot</button>
 <button id="hostfs-smoke">run WASM hostfs</button>
+<button id="vere-disk-smoke">run WASM vere disk</button>
+<button id="vere-disk-run-boot-smoke">run WASM vere disk full boot</button>
+<button id="vere-disk-load-mesa-smoke">run WASM vere disk load mesa</button>
+<button id="vere-disk-peek-heer-smoke">run WASM vere disk mesa packet</button>
+<button id="vere-disk-keen-smoke">run WASM vere disk keen</button>
+<button id="vere-disk-keen-route-smoke">run WASM vere disk keen + route</button>
 <div id="log"></div>
 
 <script type="module">
@@ -87,7 +108,24 @@ import { patp, patpToAtom } from './ames-ship.mjs';
 import { bytesToHex, decodePact, encodePeek, hexToBytes } from './mesa-pact.mjs';
 import { termAtom, tuple } from './urbit-noun.mjs';
 import {
+  bornOvumJam,
+  keenOvumJam,
+  loadMesaOvumJam,
+  mateOvumJam,
+  mesaHeerOvumJam,
+} from './ames-wasm-events.mjs';
+import { extractMesaEffects } from './ames-wasm-effects.mjs';
+import {
+  MesaSessionRouteTable,
+  routeMesaEffects,
+} from './ames-wasm-router.mjs';
+import {
+  BoundedPacketQueue,
+  runQueuedWasmMesaLoop,
+} from './ames-wasm-runtime-loop.mjs';
+import {
   IndexedDBVereWasmFileStore,
+  instantiateVereDiskWasmRuntime,
   runVereWasmProbe,
   runVereWasmProbeWithFileStore,
 } from './vere-wasm-host.mjs';
@@ -95,6 +133,8 @@ import {
 const $ = id => document.getElementById(id);
 const IDENTITY_STORE_KEY = 'default-comet';
 const HOSTFS_STORE_SCOPE = 'demo-hostfs';
+const MARS_EVENT_STORE_SCOPE = 'demo-mars-event-log';
+const VERE_DISK_STORE_SCOPE = 'demo-vere-disk';
 const wasmTextDecoder = new TextDecoder();
 const log = (msg, cls='') => {
   const line = document.createElement('span');
@@ -124,6 +164,19 @@ const parseUint = (text, name) => {
   }
   return value;
 };
+
+const parseMiB = (text, name) => {
+  const value = parseUint(text, name);
+  return value * 1024 * 1024;
+};
+
+const memoryOptionsFromForm = () => ({
+  loomExponent: parseUint($('vere-disk-loom').value, 'vere disk WASM loom exponent'),
+  overheadBytes: parseMiB($('vere-disk-overhead-mib').value, 'vere disk WASM overhead MiB'),
+  maximumBytes: parseMiB($('vere-disk-maximum-mib').value, 'vere disk WASM maximum MiB'),
+});
+
+const bytesToMiB = bytes => Math.round(bytes / (1024 * 1024));
 
 const parseFixedBytes = (text, length, name) => {
   const raw = String(text ?? '').trim();
@@ -331,6 +384,73 @@ const logWasmBytes = (bytes, cls = '') => {
   }
 };
 
+function logMesaEffectSummary(label, bytes) {
+  if (!bytes) {
+    log(`${label} effects bytes=0; sends=0 mesa-pushes=0 binds=0 unknown=0`);
+    return;
+  }
+
+  const effects = extractMesaEffects(bytes);
+  log(
+    `${label} effects bytes=${bytes.length}; ` +
+    `sends=${effects.sends.length} mesa-pushes=${effects.pushes.length} ` +
+    `binds=${effects.binds.length} unknown=${effects.unknown.length}`,
+  );
+}
+
+const jsonLog = value => JSON.stringify(
+  value,
+  (_, item) => typeof item === 'bigint' ? item.toString() : item,
+);
+
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function routeWasmMesaEffects(label, bytes, opened, {
+  sessionRoutes,
+} = {}) {
+  if (!bytes) {
+    return { sent: [], dropped: [] };
+  }
+
+  return routeMesaEffects(bytes, {
+    sessionRoutes,
+    sendGalaxy: async (ship, packet) => {
+      log(`${label}: route galaxy ${patp(ship)} ${packet.length}B`);
+      const mode = await opened.client.send(packet);
+      log(`${label}: tx ${mode} ${packet.length}B: ${bytesToHex(packet)}`, 'tx');
+      return mode;
+    },
+    sendSession: sessionRoutes
+      ? async (sessionId, packet, push) => {
+        log(`${label}: route session ${sessionId.toString()} ${packet.length}B`);
+        const mode = await sessionRoutes.sendSession(sessionId, packet, push);
+        log(`${label}: tx ${mode} ${packet.length}B: ${bytesToHex(packet)}`, 'tx');
+        return mode;
+      }
+      : undefined,
+    onBind: binding => {
+      log(
+        `${label}: bind ${patp(binding.ship)} -> session ` +
+        `${binding.sessionId.toString()} ` +
+        `fresh=${binding.rift.toString()}/` +
+        `${binding.bone.toString()}/` +
+        `${binding.sequence.toString()}`,
+        'rx',
+      );
+    },
+    onDropBind: ({ reason, bind, lane }) => {
+      log(
+        `${label}: drop bind ${patp(bind.ship)} reason=${reason} ` +
+        `lane=${jsonLog(lane)}`,
+        'err',
+      );
+    },
+    onDrop: ({ lane, push }) => {
+      log(`${label}: drop lane=${jsonLog(lane)} packet=${push.packet.length}B`, 'err');
+    },
+  });
+}
+
 $('forget-comet').onclick = async () => {
   $('log').textContent = '';
   try {
@@ -343,7 +463,11 @@ $('forget-comet').onclick = async () => {
   }
 };
 
-async function openClient({ requireChum = false } = {}) {
+async function openClient({
+  requireChum = false,
+  learnProofs = true,
+  onPacket = () => {},
+} = {}) {
   const url = $('url').value.trim();
   if (client) {
     try {
@@ -381,10 +505,13 @@ async function openClient({ requireChum = false } = {}) {
       if (status.type === 'closed' && !status.terminal) log('session closed');
     },
     onPacket: event => {
+      onPacket(event);
       void nextResponder.handlePacket(event);
-      void learnCometProofPage(event).catch(error => {
-        log(`peer proof learn failed: ${error}`, 'err');
-      });
+      if (learnProofs) {
+        void learnCometProofPage(event).catch(error => {
+          log(`peer proof learn failed: ${error}`, 'err');
+        });
+      }
       chumPeer?.handlePacket(event);
     },
     onError: ({ type, error }) => {
@@ -534,6 +661,601 @@ $('ivory-smoke').onclick = async () => {
     log('wasm ivory boot failed: ' + e, 'err');
   }
 };
+
+$('mars-smoke').onclick = async () => {
+  $('log').textContent = '';
+  const wasmUrl = $('mars-wasm-url').value.trim();
+  try {
+    log(`loading ${wasmUrl} ...`);
+    const { exitCode, plan } = await runVereWasmProbe(wasmUrl, {
+      memoryOptions: {
+        loomExponent: 24,
+        maximumBytes: 128 * 1024 * 1024,
+      },
+      onStdout: bytes => logWasmBytes(bytes, 'rx'),
+      onStderr: bytes => logWasmBytes(bytes),
+    });
+    log(
+      `wasm mars boot exited ${exitCode}; ` +
+      `initial=${plan.initialBytes} max=${plan.maximumBytes}`,
+      exitCode === 0 ? 'rx' : 'err',
+    );
+  } catch (e) {
+    log('wasm mars boot failed: ' + e, 'err');
+  }
+};
+
+async function runMarsRealPill({ runBoot = false, persistEvents = false } = {}) {
+  $('log').textContent = '';
+  const wasmUrl = $('mars-wasm-url').value.trim();
+  const pillUrl = $('mars-pill-url').value.trim();
+  try {
+    log(`loading ${pillUrl} ...`);
+    const response = await fetch(pillUrl);
+    if (!response.ok) {
+      throw new Error(`fetch pill failed: ${response.status}`);
+    }
+    const pillBytes = new Uint8Array(await response.arrayBuffer());
+    log(`loaded brass pill ${pillBytes.length}B`);
+
+    const memoryOptions = memoryOptionsFromForm();
+    const baseOptions = {
+      initialFiles: {
+        '/brass.pill': pillBytes,
+      },
+      memoryOptions,
+      onStdout: bytes => logWasmBytes(bytes, 'rx'),
+      onStderr: bytes => logWasmBytes(bytes),
+    };
+
+    let exitCode;
+    let plan;
+    log(`loading ${wasmUrl} ...`);
+    if (persistEvents) {
+      const fileStore = new IndexedDBVereWasmFileStore({
+        scope: MARS_EVENT_STORE_SCOPE,
+      });
+      await fileStore.clear();
+      log('saving mars event log ...');
+      const saved = await runVereWasmProbeWithFileStore(wasmUrl, {
+        ...baseOptions,
+        fileStore,
+        args: ['--real-pill', '--save-events', '--loom', '29'],
+      });
+      log(
+        `wasm mars event log save exited ${saved.exitCode}; ` +
+        `initial=${saved.plan.initialBytes} max=${saved.plan.maximumBytes}`,
+        saved.exitCode === 0 ? 'rx' : 'err',
+      );
+      if (saved.exitCode !== 0) {
+        return;
+      }
+
+      log('loading mars event log ...');
+      ({ exitCode, plan } = await runVereWasmProbeWithFileStore(wasmUrl, {
+        ...baseOptions,
+        fileStore,
+        args: [
+          '--real-pill',
+          '--load-events',
+          ...(runBoot ? ['--run-boot'] : []),
+          '--loom',
+          '29',
+        ],
+      }));
+    } else {
+      ({ exitCode, plan } = await runVereWasmProbe(wasmUrl, {
+        ...baseOptions,
+        args: [
+          '--real-pill',
+          ...(runBoot ? ['--run-boot'] : []),
+          '--loom',
+          '29',
+        ],
+      }));
+    }
+
+    log(
+      `wasm mars ${runBoot ? 'full boot' : 'real pill'} exited ${exitCode}; ` +
+      `initial=${plan.initialBytes} max=${plan.maximumBytes}`,
+      exitCode === 0 ? 'rx' : 'err',
+    );
+  } catch (e) {
+    log(`wasm mars ${runBoot ? 'full boot' : 'real pill'} failed: ` + e, 'err');
+  }
+};
+
+$('mars-real-pill-smoke').onclick = () => runMarsRealPill();
+$('mars-run-boot-smoke').onclick = () => runMarsRealPill({
+  runBoot: true,
+  persistEvents: true,
+});
+
+async function runVereDisk({
+  runBoot = false,
+  pokeLoadMesa = false,
+  peekHeer = false,
+  keen = false,
+  routeMesa = false,
+} = {}) {
+  $('log').textContent = '';
+  const wasmUrl = $('vere-disk-wasm-url').value.trim();
+  const pillUrl = $('mars-pill-url').value.trim();
+  try {
+    log(`loading ${pillUrl} ...`);
+    const response = await fetch(pillUrl);
+    if (!response.ok) {
+      throw new Error(`fetch pill failed: ${response.status}`);
+    }
+    const pillBytes = new Uint8Array(await response.arrayBuffer());
+    log(`loaded brass pill ${pillBytes.length}B`);
+
+    const fileStore = new IndexedDBVereWasmFileStore({
+      scope: VERE_DISK_STORE_SCOPE,
+    });
+    await fileStore.clear();
+
+    const memoryOptions = memoryOptionsFromForm();
+    const ovumPath = '/in/load-mesa.ovum.jam';
+    const loadEffectsPath = '/out/load-mesa.effects.jam';
+    const bornPath = '/in/born.ovum.jam';
+    const bornEffectsPath = '/out/born.effects.jam';
+    const heerPath = '/in/peek-heer.ovum.jam';
+    const heerEffectsPath = '/out/peek-heer.effects.jam';
+    const matePath = '/in/mate.ovum.jam';
+    const mateEffectsPath = '/out/mate.effects.jam';
+    const keenPath = '/in/keen.ovum.jam';
+    const keenEffectsPath = '/out/keen.effects.jam';
+    const injectBorn = keen;
+    const injectMate = keen;
+    const injectMesa = pokeLoadMesa || peekHeer || keen;
+    const fakeShip = keen ? parseAtom($('ship').value) : 0n;
+    const runtimeArgs = [
+      '--loom',
+      String(memoryOptions.loomExponent),
+      ...(fakeShip === 0n ? [] : ['--fake-ship', fakeShip.toString()]),
+    ];
+    const peekPacket = encodePeek({
+      ship: parseAtom($('ship').value),
+      path: $('path').value.trim(),
+      rift: parseUint($('local-rift').value, 'source rift'),
+    });
+    const keenPeer = parseAtom($('receiver').value);
+    const keenScryPath = $('path').value.trim().startsWith('/~')
+      ? '/c/x/1/kids/sys/kelvin'
+      : $('path').value.trim();
+    const baseOptions = {
+      fileStore,
+      initialFiles: {
+        '/brass.pill': pillBytes,
+        ...(injectMesa ? { [ovumPath]: loadMesaOvumJam() } : {}),
+        ...(injectBorn ? { [bornPath]: bornOvumJam() } : {}),
+        ...(peekHeer ? { [heerPath]: mesaHeerOvumJam({ packet: peekPacket }) } : {}),
+        ...(injectMate ? { [matePath]: mateOvumJam({ ship: keenPeer }) } : {}),
+        ...(keen ? { [keenPath]: keenOvumJam({ ship: keenPeer, path: keenScryPath }) } : {}),
+      },
+      memoryOptions,
+      onStdout: bytes => logWasmBytes(bytes, 'rx'),
+      onStderr: bytes => logWasmBytes(bytes),
+    };
+
+    log(`loading ${wasmUrl} ...`);
+    log(
+      `memory plan: --loom ${memoryOptions.loomExponent}, ` +
+      `overhead=${bytesToMiB(memoryOptions.overheadBytes)}MiB ` +
+      `max=${bytesToMiB(memoryOptions.maximumBytes)}MiB`,
+    );
+
+    if (routeMesa) {
+      let runtime = null;
+      try {
+        log('starting resident vere disk runtime ...');
+        runtime = await instantiateVereDiskWasmRuntime(wasmUrl, {
+          ...baseOptions,
+          initialFiles: {
+            '/brass.pill': pillBytes,
+          },
+        });
+        runtime.init({
+          loomExponent: memoryOptions.loomExponent,
+          ship: fakeShip,
+        });
+        log(
+          `wasm vere disk resident initialized event=${runtime.event()}; ` +
+          `initial=${runtime.plan.initialBytes} max=${runtime.plan.maximumBytes}`,
+          'rx',
+        );
+
+        runtime.pokeLoadMesa({ effectsPath: loadEffectsPath });
+        log(
+          `wasm vere disk resident load mesa event=${runtime.event()}`,
+          'rx',
+        );
+        runtime.host.files.set(bornPath, bornOvumJam());
+        runtime.pokeOvum({
+          ovumPath: bornPath,
+          effectsPath: bornEffectsPath,
+        });
+        log(`wasm vere disk resident born event=${runtime.event()}`, 'rx');
+        runtime.host.files.set(matePath, mateOvumJam({ ship: keenPeer }));
+        runtime.pokeOvum({
+          ovumPath: matePath,
+          effectsPath: mateEffectsPath,
+        });
+        log(`wasm vere disk resident mate event=${runtime.event()}`, 'rx');
+        runtime.host.files.set(keenPath, keenOvumJam({
+          ship: keenPeer,
+          path: keenScryPath,
+        }));
+        runtime.pokeOvum({
+          ovumPath: keenPath,
+          effectsPath: keenEffectsPath,
+        });
+        log(`wasm vere disk resident keen event=${runtime.event()}`, 'rx');
+
+        logMesaEffectSummary('mesa-load', runtime.host.files.get(loadEffectsPath));
+        logMesaEffectSummary('mesa-born', runtime.host.files.get(bornEffectsPath));
+        const mateEffectsBytes = runtime.host.files.get(mateEffectsPath);
+        const keenEffectsBytes = runtime.host.files.get(keenEffectsPath);
+        logMesaEffectSummary('mesa-mate', mateEffectsBytes);
+        logMesaEffectSummary('mesa-keen', keenEffectsBytes);
+
+        const inboundPackets = new BoundedPacketQueue({
+          maxPackets: 32,
+          onDrop: () => log('dropped inbound WebTransport packet', 'err'),
+        });
+        log('routing Mesa %push effects over WebTransport ...');
+        const opened = await openClient({
+          learnProofs: false,
+          onPacket: ({ packet }) => {
+            inboundPackets.push(packet);
+          },
+        });
+        const sessionRoutes = new MesaSessionRouteTable();
+        sessionRoutes.registerSession(1n, {
+          send: packet => opened.client.send(packet),
+        });
+        const mateRoutes = await routeWasmMesaEffects(
+          'mesa-mate',
+          mateEffectsBytes,
+          opened,
+          { sessionRoutes },
+        );
+        const keenRoutes = await routeWasmMesaEffects(
+          'mesa-keen',
+          keenEffectsBytes,
+          opened,
+          { sessionRoutes },
+        );
+        log(
+          `routed Mesa pushes sent=${mateRoutes.sent.length + keenRoutes.sent.length} ` +
+          `dropped=${mateRoutes.dropped.length + keenRoutes.dropped.length}`,
+        );
+
+        const loop = await runQueuedWasmMesaLoop({
+          queue: inboundPackets,
+          maxRounds: 4,
+          idleRoundsToStop: 3,
+          firstDelayMs: 3000,
+          delayMs: 3000,
+          delay,
+          onIdle: ({ rounds, idleRounds }) => {
+            log(
+              `WebTransport reply loop idle after ${rounds} rounds ` +
+              `idle=${idleRounds}`,
+            );
+          },
+          onRoundStart: ({ round, packets }) => {
+            log(
+              `captured WebTransport replies round=${round} ` +
+              `count=${packets.length}`,
+            );
+          },
+          runBatch: async ({ startIndex, packets }) => {
+            const effects = [];
+            log('injecting WebTransport replies into resident WASM as %heer ...');
+
+            for (const [index, packet] of packets.entries()) {
+              const replyIndex = startIndex + index;
+              const ovumPath = `/in/reply-${replyIndex}.ovum.jam`;
+              const effectsPath = `/out/reply-${replyIndex}.effects.jam`;
+              runtime.host.files.set(ovumPath, mesaHeerOvumJam({ packet }));
+              runtime.pokeOvum({
+                ovumPath,
+                effectsPath,
+              });
+              effects.push({
+                label: `mesa-reply-${replyIndex}`,
+                effectsBytes: runtime.host.files.get(effectsPath),
+              });
+            }
+
+            log(
+              `wasm vere disk resident replies applied event=${runtime.event()}; ` +
+              `initial=${runtime.plan.initialBytes} max=${runtime.plan.maximumBytes}`,
+              'rx',
+            );
+            return { ok: true, effects };
+          },
+          routeEffects: async ({ label, effectsBytes }) => {
+            logMesaEffectSummary(label, effectsBytes);
+            return routeWasmMesaEffects(label, effectsBytes, opened, {
+              sessionRoutes,
+            });
+          },
+          onRoundComplete: ({ round, sent, dropped }) => {
+            log(
+              `reply round ${round} routed Mesa pushes ` +
+              `sent=${sent} dropped=${dropped}`,
+            );
+          },
+        });
+
+        log(
+          `WebTransport reply loop complete packets=${loop.packets} ` +
+          `dropped-inbound=${loop.droppedInbound} queued=${loop.queued} ` +
+          `stopped=${loop.stoppedBy}`,
+        );
+        if (loop.droppedInbound) {
+          log(`dropped inbound WebTransport packets=${loop.droppedInbound}`, 'err');
+        }
+        sessionRoutes.unregisterSession(1n);
+        await opened.client.close({ reason: 'route smoke complete' });
+
+        await runtime.save();
+        runtime.shutdown();
+        runtime = null;
+
+        log('replaying runtime event from resident vere disk pier ...');
+        const replayed = await runVereWasmProbeWithFileStore(wasmUrl, {
+          ...baseOptions,
+          args: [...runtimeArgs, '--load-only', '--run-boot'],
+        });
+        log(
+          `wasm vere disk replay exited ${replayed.exitCode}; ` +
+          `initial=${replayed.plan.initialBytes} max=${replayed.plan.maximumBytes}`,
+          replayed.exitCode === 0 ? 'rx' : 'err',
+        );
+        return;
+      } finally {
+        if (runtime) {
+          try {
+            runtime.shutdown();
+          } catch (e) {
+            log('resident vere disk shutdown failed: ' + e, 'err');
+          }
+        }
+      }
+    }
+
+    log('saving vere disk pier ...');
+    const saved = await runVereWasmProbeWithFileStore(wasmUrl, {
+      ...baseOptions,
+      args: runtimeArgs,
+    });
+    log(
+      `wasm vere disk save exited ${saved.exitCode}; ` +
+      `initial=${saved.plan.initialBytes} max=${saved.plan.maximumBytes}`,
+      saved.exitCode === 0 ? 'rx' : 'err',
+    );
+    if (saved.exitCode !== 0) {
+      return;
+    }
+
+    const persisted = await fileStore.load();
+    const eventLog = persisted.files.get('/pier/.urb/log/0i0/events.bin');
+    const meta = persisted.files.get('/pier/.urb/log/meta.bin');
+    log(`persisted event log bytes=${eventLog?.length ?? 0}`);
+    log(`persisted metadata bytes=${meta?.length ?? 0}`);
+
+    log(
+      `loading vere disk pier${runBoot || injectMesa ? ' and booting' : ''}` +
+      `${injectMesa ? ' with %load %mesa' : ''}` +
+      `${peekHeer ? ' and %heer packet' : ''}` +
+      `${keen ? ' and %mate/%keen request' : ''} ...`,
+    );
+    const loaded = await runVereWasmProbeWithFileStore(wasmUrl, {
+      ...baseOptions,
+      args: [
+        ...runtimeArgs,
+        '--load-only',
+        ...(runBoot || injectMesa ? ['--run-boot'] : []),
+        ...(injectMesa
+          ? ['--poke-ovum', ovumPath, '--effects-out', loadEffectsPath]
+          : []),
+        ...(injectBorn
+          ? ['--poke-ovum', bornPath, '--effects-out', bornEffectsPath]
+          : []),
+        ...(peekHeer
+          ? ['--poke-ovum', heerPath, '--effects-out', heerEffectsPath]
+          : []),
+        ...(injectMate
+          ? ['--poke-ovum', matePath, '--effects-out', mateEffectsPath]
+          : []),
+        ...(keen
+          ? ['--poke-ovum', keenPath, '--effects-out', keenEffectsPath]
+          : []),
+      ],
+    });
+    log(
+      `wasm vere disk ${
+        keen ? 'keen' : peekHeer ? 'mesa packet' : pokeLoadMesa ? 'load mesa' : runBoot ? 'full boot' : 'load'
+      } exited ${loaded.exitCode}; ` +
+      `initial=${loaded.plan.initialBytes} max=${loaded.plan.maximumBytes}`,
+      loaded.exitCode === 0 ? 'rx' : 'err',
+    );
+    if (injectMesa) {
+      logMesaEffectSummary('mesa-load', loaded.host.files.get(loadEffectsPath));
+    }
+    if (injectBorn) {
+      logMesaEffectSummary('mesa-born', loaded.host.files.get(bornEffectsPath));
+    }
+    if (peekHeer) {
+      logMesaEffectSummary('mesa-packet', loaded.host.files.get(heerEffectsPath));
+    }
+    const mateEffectsBytes = loaded.host.files.get(mateEffectsPath);
+    const keenEffectsBytes = loaded.host.files.get(keenEffectsPath);
+    if (injectMate) {
+      logMesaEffectSummary('mesa-mate', mateEffectsBytes);
+    }
+    if (keen) {
+      logMesaEffectSummary('mesa-keen', keenEffectsBytes);
+    }
+
+    if (routeMesa && loaded.exitCode === 0) {
+      const inboundPackets = new BoundedPacketQueue({
+        maxPackets: 32,
+        onDrop: () => log('dropped inbound WebTransport packet', 'err'),
+      });
+      log('routing Mesa %push effects over WebTransport ...');
+      const opened = await openClient({
+        learnProofs: false,
+        onPacket: ({ packet }) => {
+          inboundPackets.push(packet);
+        },
+      });
+      const sessionRoutes = new MesaSessionRouteTable();
+      sessionRoutes.registerSession(1n, {
+        send: packet => opened.client.send(packet),
+      });
+      const mateRoutes = injectMate
+        ? await routeWasmMesaEffects('mesa-mate', mateEffectsBytes, opened, {
+          sessionRoutes,
+        })
+        : { sent: [], dropped: [] };
+      const keenRoutes = keen
+        ? await routeWasmMesaEffects('mesa-keen', keenEffectsBytes, opened, {
+          sessionRoutes,
+        })
+        : { sent: [], dropped: [] };
+      log(
+        `routed Mesa pushes sent=${mateRoutes.sent.length + keenRoutes.sent.length} ` +
+        `dropped=${mateRoutes.dropped.length + keenRoutes.dropped.length}`,
+      );
+
+      const loop = await runQueuedWasmMesaLoop({
+        queue: inboundPackets,
+        maxRounds: 4,
+        firstDelayMs: 3000,
+        delayMs: 1000,
+        delay,
+        onIdle: ({ rounds }) => {
+          log(`WebTransport reply loop idle after ${rounds} rounds`);
+        },
+        onRoundStart: ({ round, packets }) => {
+          log(
+            `captured WebTransport replies round=${round} ` +
+            `count=${packets.length}`,
+          );
+        },
+        runBatch: async ({ startIndex, packets }) => {
+          const replyFiles = Object.fromEntries(
+            packets.map((packet, index) => [
+              `/in/reply-${startIndex + index}.ovum.jam`,
+              mesaHeerOvumJam({ packet }),
+            ]),
+          );
+          const replyArgs = packets.flatMap((_, index) => [
+            '--poke-ovum',
+            `/in/reply-${startIndex + index}.ovum.jam`,
+            '--effects-out',
+            `/out/reply-${startIndex + index}.effects.jam`,
+          ]);
+
+          log('injecting WebTransport replies back into WASM as %heer ...');
+          const heard = await runVereWasmProbeWithFileStore(wasmUrl, {
+            ...baseOptions,
+            initialFiles: {
+              ...baseOptions.initialFiles,
+              ...replyFiles,
+            },
+            args: [
+              ...runtimeArgs,
+              '--load-only',
+              '--run-boot',
+              ...replyArgs,
+            ],
+          });
+          log(
+            `wasm vere disk replies exited ${heard.exitCode}; ` +
+            `initial=${heard.plan.initialBytes} max=${heard.plan.maximumBytes}`,
+            heard.exitCode === 0 ? 'rx' : 'err',
+          );
+
+          return {
+            ok: heard.exitCode === 0,
+            effects: packets.map((_, index) => {
+              const replyIndex = startIndex + index;
+              return {
+                label: `mesa-reply-${replyIndex}`,
+                effectsBytes: heard.host.files.get(
+                  `/out/reply-${replyIndex}.effects.jam`,
+                ),
+              };
+            }),
+          };
+        },
+        routeEffects: async ({ label, effectsBytes }) => {
+          logMesaEffectSummary(label, effectsBytes);
+          return routeWasmMesaEffects(label, effectsBytes, opened, {
+            sessionRoutes,
+          });
+        },
+        onRoundComplete: ({ round, sent, dropped }) => {
+          log(
+            `reply round ${round} routed Mesa pushes ` +
+            `sent=${sent} dropped=${dropped}`,
+          );
+        },
+      });
+
+      log(
+        `WebTransport reply loop complete packets=${loop.packets} ` +
+        `dropped-inbound=${loop.droppedInbound} queued=${loop.queued} ` +
+        `stopped=${loop.stoppedBy}`,
+      );
+      if (loop.droppedInbound) {
+        log(`dropped inbound WebTransport packets=${loop.droppedInbound}`, 'err');
+      }
+    }
+
+    if (injectMesa && loaded.exitCode === 0) {
+      log('replaying runtime event from vere disk pier ...');
+      const replayed = await runVereWasmProbeWithFileStore(wasmUrl, {
+        ...baseOptions,
+        args: [...runtimeArgs, '--load-only', '--run-boot'],
+      });
+      log(
+        `wasm vere disk replay exited ${replayed.exitCode}; ` +
+        `initial=${replayed.plan.initialBytes} max=${replayed.plan.maximumBytes}`,
+        replayed.exitCode === 0 ? 'rx' : 'err',
+      );
+    }
+  } catch (e) {
+    log(
+      `wasm vere disk ${
+        keen ? 'keen' : peekHeer ? 'mesa packet' : pokeLoadMesa ? 'load mesa' : runBoot ? 'full boot' : 'load'
+      } failed: ` + e,
+      'err',
+    );
+  }
+}
+
+$('vere-disk-smoke').onclick = () => runVereDisk();
+$('vere-disk-run-boot-smoke').onclick = () => runVereDisk({ runBoot: true });
+$('vere-disk-load-mesa-smoke').onclick = () => runVereDisk({
+  pokeLoadMesa: true,
+});
+$('vere-disk-peek-heer-smoke').onclick = () => runVereDisk({
+  peekHeer: true,
+});
+$('vere-disk-keen-smoke').onclick = () => runVereDisk({
+  keen: true,
+});
+$('vere-disk-keen-route-smoke').onclick = () => runVereDisk({
+  keen: true,
+  routeMesa: true,
+});
 
 $('hostfs-smoke').onclick = async () => {
   $('log').textContent = '';

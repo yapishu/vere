@@ -1,0 +1,134 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>vere wasm fake-galaxy route smoke</title>
+<pre id="out" data-status="running">running
+</pre>
+<script type="module">
+import {
+  runRuntimeServiceRouteDemo,
+  runRuntimeWorkerRouteDemo,
+} from './ames-wasm-runtime-route-demo.mjs';
+
+const out = document.getElementById('out');
+const params = new URLSearchParams(location.search);
+
+function numberParam(name, fallback) {
+  const raw = params.get(name);
+  if (raw == null || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
+  }
+  return value;
+}
+
+function bigintParam(name, fallback) {
+  const raw = params.get(name);
+  return BigInt(raw == null || raw === '' ? fallback : raw);
+}
+
+function write(line) {
+  out.textContent += `${line}\n`;
+}
+
+function createConfig() {
+  const wasmUrl = new URL(
+    params.get('wasm') || '../../../zig-out/bin/vere-disk-wasm.wasm',
+    import.meta.url,
+  );
+  const pillUrl = new URL(
+    params.get('pill') || '../../../../urbit/bin/brass.pill',
+    import.meta.url,
+  );
+  const bridgeUrl = params.get('url') || 'https://127.0.0.1:8443/~_~/ames';
+  const loomExponent = numberParam('loom', 29);
+  const overheadMiB = numberParam('overhead-mib', 512);
+  const maximumMiB = numberParam('maximum-mib', 1536);
+  const fakeShip = bigintParam('fake-ship', '0x100');
+  const peer = bigintParam('peer', '0');
+  const matePeer = bigintParam('mate-peer', peer.toString());
+  const sessionId = bigintParam('session-id', '1');
+
+  return {
+    wasmUrl: wasmUrl.href,
+    pillUrl: pillUrl.href,
+    bridgeUrl,
+    certificateHash: params.get('hash') || '',
+    loomExponent,
+    overheadMiB,
+    maximumMiB,
+    fakeShip: fakeShip.toString(),
+    peer: peer.toString(),
+    matePeer: matePeer.toString(),
+    sessionId: sessionId.toString(),
+    keenPath: params.get('keen-path') || '/c/x/1/kids/sys/kelvin',
+    maxRounds: numberParam('max-rounds', 8),
+    idleRoundsToStop: numberParam('idle-rounds', 20),
+    firstDelayMs: numberParam('first-delay-ms', 12000),
+    delayMs: numberParam('delay-ms', 1500),
+    minReplies: numberParam('min-replies', 1),
+    scope: params.get('scope') || 'vere-disk-route-smoke',
+  };
+}
+
+function setStatus(status) {
+  out.dataset.status = status;
+}
+
+async function runInline(config) {
+  await runRuntimeServiceRouteDemo(config, {
+    emit: message => {
+      if (message.type === 'log') {
+        write(message.message);
+      }
+    },
+  });
+}
+
+function runWorker(config) {
+  return runRuntimeWorkerRouteDemo(config, {
+    emit: message => {
+      if (message.type === 'log') {
+        write(message.message);
+      }
+    },
+  });
+}
+
+try {
+  const config = createConfig();
+  const workerMode = params.get('worker') || 'auto';
+  const useWorker = workerMode !== '0';
+  write(`worker=${workerMode}`);
+
+  if (useWorker) {
+    if (typeof Worker !== 'function') {
+      throw new Error('Worker is required for default route smoke; use ?worker=0 for inline fallback');
+    }
+    try {
+      await runWorker(config);
+      setStatus('ok');
+    }
+    catch (error) {
+      if (workerMode !== 'auto') {
+        throw error;
+      }
+      write('worker failed; retrying inline');
+      await runInline(config);
+      setStatus('ok');
+    }
+  }
+  else {
+    await runInline(config);
+    setStatus('ok');
+  }
+} catch (error) {
+  write(String(error?.stack ?? error));
+  if (error?.summary?.failures) {
+    for (const failure of error.summary.failures) {
+      write(`failure=${failure}`);
+    }
+  }
+  setStatus('fail');
+}
+</script>

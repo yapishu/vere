@@ -449,6 +449,33 @@ _log_mesa_data(u3_mesa_data dat_u)
   u3l_log("frag len: %u", dat_u.len_w);
 }
 
+static c3_o
+_mesa_quic_log_runtime(u3_mesa* sam_u)
+{
+  return __( (NULL != sam_u)
+          && (NULL != sam_u->pir_u)
+          && (NULL != sam_u->pir_u->pax_c)
+          && (c3y == u3_Host.ops_u.qlg) );
+}
+
+static void
+_mesa_quic_log_session_pact(u3_mesa*      sam_u,
+                            u3_mesa_lane  lan_u,
+                            const c3_c*   typ_c,
+                            u3_ship       her_u,
+                            c3_y          hop_y,
+                            c3_o          our_o)
+{
+  if (  (U3_MESA_LANE_SESS == lan_u.kin_e)
+     && (c3y == _mesa_quic_log_runtime(sam_u)) )
+  {
+    u3l_log("mesa: session hear %s 0x%" PRIx64 ".%016" PRIx64
+            " sid=%" PRIu64 " hop=%u our=%s",
+            typ_c, her_u[1], her_u[0], lan_u.ses_u->sid_d, hop_y,
+            (c3y == our_o) ? "yes" : "no");
+  }
+}
+
 /* _mesa_lop(): find beginning of page containing fra_d
 */
 static inline c3_d
@@ -486,7 +513,8 @@ static c3_o
 _mesa_is_direct_mode(u3_peer* per_u)
 {
   c3_d now_d = _get_now_micros();
-  return __(per_u->dir_u.her_d + DIRECT_ROUTE_TIMEOUT_MICROS > now_d);
+  return __( (0 != per_u->dan_u.sin_port) &&
+             (per_u->dir_u.her_d + DIRECT_ROUTE_TIMEOUT_MICROS > now_d) );
 }
 
 /*  _mesa_encode_path(): produce buf_y as a parsed path
@@ -1844,12 +1872,19 @@ static c3_o _mesa_kick(u3_mesa* sam_u, u3_noun tag, u3_noun dat)
       if ( NULL != ses_u ) {
         u3_ship her_u;
         u3_ship_of_noun(her_u, her);
-        u3_sess_bind(sam_u->sab_u,
-                     her_u,
-                     (u3_sess_fresh){ .rif_w = rif_w,
-                                      .bon_d = bon_d,
-                                      .seq_d = seq_d },
-                     ses_u);
+        if ( c3y == u3_sess_bind(sam_u->sab_u,
+                                 her_u,
+                                 (u3_sess_fresh){ .rif_w = rif_w,
+                                                  .bon_d = bon_d,
+                                                  .seq_d = seq_d },
+                                 ses_u) )
+        {
+          if ( c3y == _mesa_quic_log_runtime(sam_u) ) {
+            u3l_log("mesa: session bind 0x%" PRIx64 ".%016" PRIx64
+                    " -> %" PRIu64,
+                    her_u[1], her_u[0], ses_u->sid_d);
+          }
+        }
       }
       ret_o = c3y;
     } break;
@@ -2678,6 +2713,15 @@ _mesa_forward_request(u3_mesa* sam_u, u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
         u3l_log("mesa: sending packet to %s:%u", sip_c, ntohs(lin_u.sin_port));
       #endif
     }
+    else if ( c3y == _mesa_quic_log_runtime(sam_u) ) {
+      u3_ship her_u = {
+        pac_u->pek_u.nam_u.her_u[0],
+        pac_u->pek_u.nam_u.her_u[1],
+      };
+      u3l_log("mesa: forward 0x%" PRIx64 ".%016" PRIx64
+              " over session %" PRIu64,
+              her_u[1], her_u[0], out_u.ses_u->sid_d);
+    }
     inc_hopcount(&pac_u->hed_u);
     #ifdef MESA_DEBUG
       u3l_log("mesa: forward_request()");
@@ -2713,6 +2757,8 @@ _mesa_hear_page(u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
 
   c3_o dir_o = __(pac_u->hed_u.hop_y == 0);
   _hear_peer(sam_u, per_u, lan_u, dir_o);
+  _mesa_quic_log_session_pact(sam_u, lan_u, "page", nam_u->her_u,
+                              pac_u->hed_u.hop_y, our_o);
 
   _mesa_put_peer(sam_u, nam_u->her_u, per_u);
 
@@ -2868,6 +2914,9 @@ _mesa_hear_peek(u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
   c3_o our_o = u3_ships_equal(pac_u->pek_u.nam_u.her_u, sam_u->pir_u->who_d);
 
   if ( c3n == our_o ) {
+    _mesa_quic_log_session_pact(sam_u, lan_u, "peek",
+                                pac_u->pek_u.nam_u.her_u,
+                                pac_u->hed_u.hop_y, our_o);
     _mesa_forward_request(sam_u, pic_u, lan_u);
     return;
   }
@@ -2939,9 +2988,16 @@ _mesa_hear_poke(u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
   c3_o our_o = u3_ships_equal(pac_u->pek_u.nam_u.her_u, sam_u->pir_u->who_d);
 
   if ( c3n == our_o ) {
+    _mesa_quic_log_session_pact(sam_u, lan_u, "poke",
+                                pac_u->pek_u.nam_u.her_u,
+                                pac_u->hed_u.hop_y, our_o);
     _mesa_forward_request(sam_u, pic_u, lan_u);
     return;
   }
+
+  _mesa_quic_log_session_pact(sam_u, lan_u, "poke",
+                              pac_u->pek_u.nam_u.her_u,
+                              pac_u->hed_u.hop_y, our_o);
 
   if ( POKE_QUEUE_MAX <= sam_u->car_u.dep_w ) {
     // XX log drop

@@ -253,6 +253,7 @@ const c_source_files = [_][]const u8{
     "king.c",
     "lord.c",
     "mars.c",
+    "mars_boot.c",
     "mdns.c",
     "melt.c",
     "newt.c",
@@ -272,6 +273,7 @@ const install_headers = [_][]const u8{
     "io/serial.h",
     "arena.h",
     "mars.h",
+    "mars_boot.h",
     "mdns.h",
     "vere.h",
 };

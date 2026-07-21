@@ -223,6 +223,9 @@ pub fn build(b: *std.Build) !void {
     else
         VERSION;
 
+    try addMarsBootWasmStep(b, optimize, pace, version);
+    try addVereDiskWasmStep(b, optimize, pace, version);
+
     const gen_cdb = b.option(bool, "generate-commands", "generate compile_commands.json fragments") orelse false;
 
     //
@@ -561,6 +564,181 @@ fn addNounIvoryBootWasmStep(
     const step = b.step(
         "noun-ivory-boot-wasm",
         "Build a linked Ivory-pill noun runtime probe for wasm32-wasi",
+    );
+    step.dependOn(&install.step);
+}
+
+fn addMarsBootWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+    pace: []const u8,
+    version: []const u8,
+) !void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+        .cpu_features_add = std.Target.wasm.featureSet(&.{
+            .exception_handling,
+        }),
+    });
+
+    var flags_list = std.array_list.Managed([]const u8).init(b.allocator);
+    try flags_list.appendSlice(&.{
+        "-std=gnu23",
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-gnu-statement-expression",
+        "-mexception-handling",
+        "-mllvm",
+        "-wasm-enable-sjlj",
+        "-fno-sanitize=all",
+        "-DU3_OS_wasm=1",
+        "-DU3_OS_ENDIAN_little=1",
+        "-D__wasm_exception_handling__=1",
+    });
+    try flags_list.append(b.fmt("-DU3_VERE_PACE=\"{s}\"", .{pace}));
+    try flags_list.append(b.fmt("-DURBIT_VERSION=\"{s}\"", .{version}));
+    const flags = try flags_list.toOwnedSlice();
+
+    const pkg_noun = b.dependency("pkg_noun", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const pkg_ur = b.dependency("pkg_ur", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const gmp = b.dependency("gmp", .{
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "mars-boot-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    configureBrowserWasmMemory(exe);
+    exe.linkLibC();
+    exe.linkLibrary(pkg_noun.artifact("noun"));
+    exe.addIncludePath(pkg_ur.artifact("ur").getEmittedIncludeTree());
+    exe.addIncludePath(gmp.artifact("gmp").getEmittedIncludeTree());
+    exe.addIncludePath(b.path("pkg"));
+    exe.addIncludePath(b.path("pkg/noun"));
+    exe.addIncludePath(b.path("pkg/vere"));
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "pkg/vere/mars_boot_wasm_probe.c",
+            "pkg/vere/mars_boot.c",
+        },
+        .flags = flags,
+    });
+
+    const install = b.addInstallArtifact(exe, .{});
+    const step = b.step(
+        "mars-boot-wasm",
+        "Build the diskless fake-ship boot constructor for wasm32-wasi",
+    );
+    step.dependOn(&install.step);
+}
+
+fn addVereDiskWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+    pace: []const u8,
+    version: []const u8,
+) !void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+        .cpu_features_add = std.Target.wasm.featureSet(&.{
+            .exception_handling,
+        }),
+    });
+
+    var flags_list = std.array_list.Managed([]const u8).init(b.allocator);
+    try flags_list.appendSlice(&.{
+        "-std=gnu23",
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-gnu-statement-expression",
+        "-mexception-handling",
+        "-mllvm",
+        "-wasm-enable-sjlj",
+        "-fno-sanitize=all",
+        "-D_WASI_EMULATED_SIGNAL",
+        "-DU3_OS_wasm=1",
+        "-DU3_OS_ENDIAN_little=1",
+        "-D__wasm_exception_handling__=1",
+    });
+    try flags_list.append(b.fmt("-DU3_VERE_PACE=\"{s}\"", .{pace}));
+    try flags_list.append(b.fmt("-DURBIT_VERSION=\"{s}\"", .{version}));
+    const flags = try flags_list.toOwnedSlice();
+
+    const pkg_noun = b.dependency("pkg_noun", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const pkg_ur = b.dependency("pkg_ur", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const gmp = b.dependency("gmp", .{
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    const lmdb = b.dependency("lmdb", .{
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+    const libuv = b.dependency("libuv", .{
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "vere-disk-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    configureBrowserWasmMemory(exe);
+    exe.linkLibC();
+    exe.linkLibrary(pkg_noun.artifact("noun"));
+    exe.addIncludePath(pkg_ur.artifact("ur").getEmittedIncludeTree());
+    exe.addIncludePath(gmp.artifact("gmp").getEmittedIncludeTree());
+    exe.addIncludePath(lmdb.artifact("lmdb").getEmittedIncludeTree());
+    exe.addIncludePath(libuv.artifact("libuv").getEmittedIncludeTree());
+    exe.addIncludePath(b.path("pkg"));
+    exe.addIncludePath(b.path("pkg/noun"));
+    exe.addIncludePath(b.path("pkg/vere"));
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "pkg/vere/disk_wasm_probe.c",
+            "pkg/vere/disk_wasm.c",
+            "pkg/vere/mars_boot.c",
+            "pkg/vere/ward.c",
+        },
+        .flags = flags,
+    });
+
+    const install = b.addInstallArtifact(exe, .{});
+    const step = b.step(
+        "vere-disk-wasm",
+        "Build the hostfs-backed u3_disk backend probe for wasm32-wasi",
     );
     step.dependOn(&install.step);
 }

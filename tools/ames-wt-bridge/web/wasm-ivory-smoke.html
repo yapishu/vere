@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>vere wasm ivory smoke</title>
+<pre id="out" data-status="running">running
+</pre>
+<script type="module">
+import { runVereWasmProbe } from './vere-wasm-host.mjs';
+
+const out = document.getElementById('out');
+const decoder = new TextDecoder();
+
+function write(line) {
+  out.textContent += `${line}\n`;
+}
+
+function writeBytes(bytes) {
+  const text = decoder.decode(bytes).replace(/\r/g, '');
+  for (const line of text.split('\n')) {
+    if (line) write(`wasm: ${line}`);
+  }
+}
+
+try {
+  const wasmUrl = new URL('../../../zig-out/bin/noun-ivory-boot-wasm.wasm', import.meta.url);
+  const { exitCode, plan } = await runVereWasmProbe(wasmUrl, {
+    memoryOptions: {
+      loomExponent: 26,
+      overheadBytes: 256 * 1024 * 1024,
+      maximumBytes: 512 * 1024 * 1024,
+    },
+    onStdout: writeBytes,
+    onStderr: writeBytes,
+  });
+  write(`exit=${exitCode}`);
+  write(`initial=${plan.initialBytes}`);
+  write(`maximum=${plan.maximumBytes}`);
+  out.dataset.status = exitCode === 0 ? 'ok' : 'fail';
+} catch (error) {
+  write(String(error?.stack ?? error));
+  out.dataset.status = 'fail';
+}
+</script>

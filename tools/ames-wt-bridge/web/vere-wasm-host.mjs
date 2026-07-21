@@ -129,6 +129,23 @@ function copyIn(memory, ptr, len) {
   return new Uint8Array(mem.subarray(start, end));
 }
 
+function copyCString(memory, ptr, maxBytes, value) {
+  const bytes = textEncoder.encode(String(value ?? ''));
+  const start = toSize(ptr, 'string pointer');
+  const cap = toSize(maxBytes, 'string capacity');
+  if (bytes.length + 1 > cap) {
+    throw new Error(`wasm string exceeds ${cap} byte buffer`);
+  }
+
+  const mem = new Uint8Array(memory.buffer);
+  const end = start + bytes.length;
+  if (start + cap > mem.length) {
+    throw new Error('wasm string buffer exceeds memory');
+  }
+  mem.set(bytes, start);
+  mem[end] = 0;
+}
+
 function dataView(memory) {
   return new DataView(memory.buffer);
 }
@@ -767,6 +784,140 @@ export async function instantiateVereWasmProbe(
     }
   }
   return { exitCode, instance, memory, plan, host };
+}
+
+function requiredExport(instance, name) {
+  const value = instance.exports[name];
+  if (typeof value !== 'function') {
+    throw new Error(`wasm export ${name} is required`);
+  }
+  return value;
+}
+
+function splitShipChubs(ship) {
+  const value = BigInt(ship);
+  if (value < 0n || value >= (1n << 128n)) {
+    throw new Error('ship must fit in 128 bits');
+  }
+  return [
+    BigInt.asUintN(64, value),
+    BigInt.asUintN(64, value >> 64n),
+  ];
+}
+
+export async function instantiateVereDiskWasmRuntime(
+  wasmSource,
+  {
+    args = [],
+    env = {},
+    preopens = {},
+    fileStore,
+    initialFiles = {},
+    initialDirectories = [],
+    memoryOptions = {},
+    onStdout = () => {},
+    onStderr = () => {},
+    now,
+    randomFill,
+  } = {},
+) {
+  const bytes = await loadWasmBytes(wasmSource);
+  const { memory, plan } = createVereWasmMemory(memoryOptions);
+  const loaded = copyHostfsSnapshot(fileStore ? await fileStore.load() : {});
+  for (const path of directoryValues(initialDirectories)) {
+    loaded.directories.add(String(path));
+  }
+  for (const [path, fileBytes] of fileEntries(initialFiles)) {
+    loaded.files.set(String(path), asBytes(fileBytes));
+  }
+
+  const host = createVereWasmHost({
+    memory,
+    initialFiles: loaded.files,
+    initialDirectories: loaded.directories,
+  });
+  const wasi = createWasiPreview1Host({
+    memory,
+    args: [String(wasmSource), ...args],
+    env,
+    preopens,
+    onStdout,
+    onStderr,
+    now,
+    randomFill,
+  });
+
+  const { instance } = await WebAssembly.instantiate(bytes, {
+    ...wasi,
+    env: host.env,
+  });
+
+  const initExport = requiredExport(instance, 'u3_disk_wasm_init');
+  const pokeLoadMesaExport = requiredExport(instance, 'u3_disk_wasm_poke_load_mesa');
+  const pokeOvumExport = requiredExport(instance, 'u3_disk_wasm_poke_ovum');
+  const eventExport = requiredExport(instance, 'u3_disk_wasm_event');
+  const shutdownExport = requiredExport(instance, 'u3_disk_wasm_shutdown');
+  const argBytes = requiredExport(instance, 'u3_disk_wasm_arg_bytes')();
+  const arg0Ptr = requiredExport(instance, 'u3_disk_wasm_arg0_ptr')();
+  const arg1Ptr = requiredExport(instance, 'u3_disk_wasm_arg1_ptr')();
+
+  function writeArg0(value) {
+    copyCString(memory, arg0Ptr, argBytes, value);
+  }
+
+  function writeArg1(value) {
+    copyCString(memory, arg1Ptr, argBytes, value);
+  }
+
+  function checkReturn(code, label) {
+    if (code !== 0) {
+      throw new Error(`${label} failed with code ${code}`);
+    }
+  }
+
+  return {
+    instance,
+    memory,
+    plan,
+    host,
+    async save() {
+      if (!fileStore) {
+        return;
+      }
+      await fileStore.save({
+        files: host.files,
+        directories: host.directories,
+      });
+    },
+    init({
+      loomExponent = plan.loomExponent,
+      ship = 0n,
+    } = {}) {
+      const [shipLo, shipHi] = splitShipChubs(ship);
+      checkReturn(
+        initExport(toSize(loomExponent, 'loom exponent'), shipLo, shipHi),
+        'u3_disk_wasm_init',
+      );
+    },
+    pokeLoadMesa({ effectsPath = '' } = {}) {
+      writeArg0(effectsPath);
+      checkReturn(pokeLoadMesaExport(), 'u3_disk_wasm_poke_load_mesa');
+    },
+    pokeOvum({ ovumPath, effectsPath = '' } = {}) {
+      if (!ovumPath) {
+        throw new Error('ovumPath is required');
+      }
+      writeArg0(ovumPath);
+      writeArg1(effectsPath);
+      checkReturn(pokeOvumExport(), 'u3_disk_wasm_poke_ovum');
+    },
+    event() {
+      return eventExport();
+    },
+    shutdown() {
+      checkReturn(shutdownExport(), 'u3_disk_wasm_shutdown');
+    },
+  };
 }
 
 export async function runVereWasmProbe(

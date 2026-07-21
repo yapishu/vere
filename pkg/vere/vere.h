@@ -311,6 +311,8 @@
         c3_s    poq_s;                      //      ames quic port
         c3_o    qsp;                        //      sponsor lanes over quic
         c3_s    qsp_s;                      //      sponsor quic fallback port
+        c3_o    qlg;                        //      log Ames QUIC routing
+        c3_o    nmd;                        //      disable Ames mDNS
         c3_w    sap_w;                      //      Snapshot timer legth (seconds)
         c3_o    qui;                        //  -q, quiet
         c3_o    rep;                        //  -R, report build info

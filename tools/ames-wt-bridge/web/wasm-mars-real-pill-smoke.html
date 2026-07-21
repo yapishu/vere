@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>vere wasm mars real pill smoke</title>
+<pre id="out" data-status="running">running
+</pre>
+<script type="module">
+import {
+  IndexedDBVereWasmFileStore,
+  runVereWasmProbe,
+  runVereWasmProbeWithFileStore,
+} from './vere-wasm-host.mjs';
+
+const out = document.getElementById('out');
+const decoder = new TextDecoder();
+const params = new URLSearchParams(location.search);
+const memoryOptions = {
+  loomExponent: 29,
+  overheadBytes: 512 * 1024 * 1024,
+  maximumBytes: 1536 * 1024 * 1024,
+};
+
+function write(line) {
+  out.textContent += `${line}\n`;
+}
+
+function writeBytes(bytes) {
+  const text = decoder.decode(bytes).replace(/\r/g, '');
+  for (const line of text.split('\n')) {
+    if (line) write(`wasm: ${line}`);
+  }
+}
+
+try {
+  const wasmUrl = new URL(
+    params.get('wasm') || '../../../zig-out/bin/mars-boot-wasm.wasm',
+    import.meta.url,
+  );
+  const pillUrl = new URL(
+    params.get('pill') || '../../../../urbit/bin/brass.pill',
+    import.meta.url,
+  );
+
+  write(`pill=${pillUrl.href}`);
+  const response = await fetch(pillUrl);
+  if (!response.ok) {
+    throw new Error(`fetch pill failed: ${response.status}`);
+  }
+  const pillBytes = new Uint8Array(await response.arrayBuffer());
+  write(`pill-bytes=${pillBytes.length}`);
+  const runBoot = params.get('run-boot') === '1';
+  if (runBoot) {
+    write('mode=run-boot');
+  }
+  const persistEvents = params.get('persist-events') === '1';
+  if (persistEvents) {
+    write('mode=persist-events');
+  }
+
+  const baseOptions = {
+    initialFiles: {
+      '/brass.pill': pillBytes,
+    },
+    memoryOptions,
+    onStdout: writeBytes,
+    onStderr: writeBytes,
+  };
+
+  let exitCode;
+  let plan;
+  if (persistEvents) {
+    const fileStore = new IndexedDBVereWasmFileStore({
+      scope: params.get('scope') || 'mars-real-pill-smoke',
+    });
+    await fileStore.clear();
+
+    const saved = await runVereWasmProbeWithFileStore(wasmUrl, {
+      ...baseOptions,
+      fileStore,
+      args: ['--real-pill', '--save-events', '--loom', '29'],
+    });
+    write(`save-exit=${saved.exitCode}`);
+    if (saved.exitCode !== 0) {
+      throw new Error(`save events failed: ${saved.exitCode}`);
+    }
+
+    ({ exitCode, plan } = await runVereWasmProbeWithFileStore(wasmUrl, {
+      ...baseOptions,
+      fileStore,
+      args: [
+        '--real-pill',
+        '--load-events',
+        ...(runBoot ? ['--run-boot'] : []),
+        '--loom',
+        '29',
+      ],
+    }));
+  } else {
+    ({ exitCode, plan } = await runVereWasmProbe(wasmUrl, {
+      ...baseOptions,
+      args: [
+        '--real-pill',
+        ...(runBoot ? ['--run-boot'] : []),
+        '--loom',
+        '29',
+      ],
+    }));
+  }
+  write(`exit=${exitCode}`);
+  write(`initial=${plan.initialBytes}`);
+  write(`maximum=${plan.maximumBytes}`);
+  out.dataset.status = exitCode === 0 ? 'ok' : 'fail';
+} catch (error) {
+  write(String(error?.stack ?? error));
+  out.dataset.status = 'fail';
+}
+</script>

@@ -2342,7 +2342,13 @@ _ames_io_start(u3_ames* sam_u)
     u3z(our);
 
 #ifndef U3_OS_windows
-    mdns_init(por_s, !sam_u->pir_u->fak_o, our_s, _ames_put_dear, (void *)sam_u);
+    if ( c3n == u3_Host.ops_u.nmd ) {
+      mdns_init(por_s, !sam_u->pir_u->fak_o, our_s,
+                _ames_put_dear, (void *)sam_u);
+    }
+    else {
+      u3l_log("ames: mdns disabled");
+    }
 
     if ( c3n == sam_u->pir_u->fak_o ) {
       uv_timer_start(&sam_u->nat_u.tim_u, natpmp_init, 0, 0);

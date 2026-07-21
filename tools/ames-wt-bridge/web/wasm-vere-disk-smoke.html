@@ -1,0 +1,245 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>vere wasm disk smoke</title>
+<pre id="out" data-status="running">running
+</pre>
+<script type="module">
+import {
+  IndexedDBVereWasmFileStore,
+  runVereWasmProbeWithFileStore,
+} from './vere-wasm-host.mjs';
+import {
+  bornOvumJam,
+  keenOvumJam,
+  loadMesaOvumJam,
+  mateOvumJam,
+  mesaHeerOvumJam,
+} from './ames-wasm-events.mjs';
+import { extractMesaEffects } from './ames-wasm-effects.mjs';
+import { encodePeek } from './mesa-pact.mjs';
+
+const out = document.getElementById('out');
+const decoder = new TextDecoder();
+const params = new URLSearchParams(location.search);
+const loomExponent = Number(params.get('loom') || '29');
+const overheadMiB = Number(params.get('overhead-mib') || '512');
+const maximumMiB = Number(params.get('maximum-mib') || '1536');
+const memoryOptions = {
+  loomExponent,
+  overheadBytes: overheadMiB * 1024 * 1024,
+  maximumBytes: maximumMiB * 1024 * 1024,
+};
+
+function write(line) {
+  out.textContent += `${line}\n`;
+}
+
+function writeBytes(bytes) {
+  const text = decoder.decode(bytes).replace(/\r/g, '');
+  for (const line of text.split('\n')) {
+    if (line) write(`wasm: ${line}`);
+  }
+}
+
+function writeMesaEffectSummary(label, bytes) {
+  if (!bytes) {
+    write(`${label}=sends=0 pushes=0 binds=0 unknown=0`);
+    return;
+  }
+
+  const effects = extractMesaEffects(bytes);
+  write(
+    `${label}=sends=${effects.sends.length} pushes=${effects.pushes.length} ` +
+    `binds=${effects.binds.length} unknown=${effects.unknown.length}`,
+  );
+}
+
+try {
+  const wasmUrl = new URL(
+    params.get('wasm') || '../../../zig-out/bin/vere-disk-wasm.wasm',
+    import.meta.url,
+  );
+  const pillUrl = new URL(
+    params.get('pill') || '../../../../urbit/bin/brass.pill',
+    import.meta.url,
+  );
+  const runBoot = params.get('run-boot') === '1';
+  const pokeLoadMesa = params.get('poke-load-mesa') === '1';
+  const peekHeer = params.get('peek-heer') === '1';
+  const keen = params.get('keen') === '1';
+  const injectBorn = keen;
+  const injectMate = keen && params.get('mate') !== '0';
+  const injectMesa = pokeLoadMesa || peekHeer || keen;
+  const fakeShip = BigInt(params.get('fake-ship') || '0');
+  const runtimeArgs = [
+    '--loom',
+    String(memoryOptions.loomExponent),
+    ...(fakeShip === 0n ? [] : ['--fake-ship', fakeShip.toString()]),
+  ];
+
+  write(`wasm=${wasmUrl.href}`);
+  write(`pill=${pillUrl.href}`);
+  write(
+    `memory=loom-${memoryOptions.loomExponent} ` +
+    `overhead-${overheadMiB}MiB maximum-${maximumMiB}MiB`,
+  );
+  if (runBoot) {
+    write('mode=run-boot');
+  }
+  if (pokeLoadMesa) {
+    write('mode=poke-load-mesa');
+  }
+  if (peekHeer) {
+    write('mode=peek-heer');
+  }
+  if (keen) {
+    write('mode=keen');
+  }
+  write(`fake-ship=${fakeShip}`);
+
+  const response = await fetch(pillUrl);
+  if (!response.ok) {
+    throw new Error(`fetch pill failed: ${response.status}`);
+  }
+  const pillBytes = new Uint8Array(await response.arrayBuffer());
+  write(`pill-bytes=${pillBytes.length}`);
+
+  const fileStore = new IndexedDBVereWasmFileStore({
+    scope: params.get('scope') || 'vere-disk-smoke',
+  });
+  await fileStore.clear();
+  const loadOvumPath = '/in/load-mesa.ovum.jam';
+  const loadEffectsPath = '/out/load-mesa.effects.jam';
+  const bornOvumPath = '/in/born.ovum.jam';
+  const bornEffectsPath = '/out/born.effects.jam';
+  const heerOvumPath = '/in/peek-heer.ovum.jam';
+  const heerEffectsPath = '/out/peek-heer.effects.jam';
+  const mateOvumPath = '/in/mate.ovum.jam';
+  const mateEffectsPath = '/out/mate.effects.jam';
+  const keenOvumPath = '/in/keen.ovum.jam';
+  const keenEffectsPath = '/out/keen.effects.jam';
+  const peekPacket = encodePeek({
+    ship: BigInt(params.get('ship') || '0x100'),
+    path: params.get('path') || '/~zod/0/1/c/x/1/base/sys/kelvin',
+  });
+  const keenPeer = BigInt(params.get('peer') || '0');
+  const keenPath = params.get('keen-path') || '/c/x/1/kids/sys/kelvin';
+  const matePeer = BigInt(params.get('mate-peer') || keenPeer.toString());
+  if (injectMate) {
+    write(`mate-peer=${matePeer}`);
+  }
+  if (keen) {
+    write(`keen-peer=${keenPeer}`);
+    write(`keen-path=${keenPath}`);
+  }
+
+  const baseOptions = {
+    fileStore,
+    initialFiles: {
+      '/brass.pill': pillBytes,
+      ...(injectMesa ? { [loadOvumPath]: loadMesaOvumJam() } : {}),
+      ...(injectBorn ? { [bornOvumPath]: bornOvumJam() } : {}),
+      ...(peekHeer ? { [heerOvumPath]: mesaHeerOvumJam({ packet: peekPacket }) } : {}),
+      ...(injectMate ? { [mateOvumPath]: mateOvumJam({ ship: matePeer }) } : {}),
+      ...(keen ? { [keenOvumPath]: keenOvumJam({ ship: keenPeer, path: keenPath }) } : {}),
+    },
+    memoryOptions,
+    onStdout: writeBytes,
+    onStderr: writeBytes,
+  };
+
+  write('mode=save');
+  const saved = await runVereWasmProbeWithFileStore(wasmUrl, {
+    ...baseOptions,
+    args: runtimeArgs,
+  });
+  write(`save-exit=${saved.exitCode}`);
+  if (saved.exitCode !== 0) {
+    throw new Error(`disk save failed: ${saved.exitCode}`);
+  }
+
+  const persisted = await fileStore.load();
+  const eventLog = persisted.files.get('/pier/.urb/log/0i0/events.bin');
+  const meta = persisted.files.get('/pier/.urb/log/meta.bin');
+  write(`events-bytes=${eventLog?.length ?? 0}`);
+  write(`meta-bytes=${meta?.length ?? 0}`);
+  if (!eventLog || !meta) {
+    throw new Error('persisted pier is incomplete');
+  }
+
+  write('mode=load-only');
+  const loaded = await runVereWasmProbeWithFileStore(wasmUrl, {
+    ...baseOptions,
+    args: [
+      ...runtimeArgs,
+      '--load-only',
+      ...(runBoot || injectMesa ? ['--run-boot'] : []),
+      ...(injectMesa
+        ? ['--poke-ovum', loadOvumPath, '--effects-out', loadEffectsPath]
+        : []),
+      ...(injectBorn
+        ? ['--poke-ovum', bornOvumPath, '--effects-out', bornEffectsPath]
+        : []),
+      ...(peekHeer
+        ? ['--poke-ovum', heerOvumPath, '--effects-out', heerEffectsPath]
+        : []),
+      ...(injectMate
+        ? ['--poke-ovum', mateOvumPath, '--effects-out', mateEffectsPath]
+        : []),
+      ...(keen
+        ? ['--poke-ovum', keenOvumPath, '--effects-out', keenEffectsPath]
+        : []),
+    ],
+  });
+
+  write(`load-exit=${loaded.exitCode}`);
+  write(`initial=${loaded.plan.initialBytes}`);
+  write(`maximum=${loaded.plan.maximumBytes}`);
+  if (injectMesa) {
+    const loadEffects = loaded.host.files.get(loadEffectsPath);
+    write(`load-effects-bytes=${loadEffects?.length ?? 0}`);
+    writeMesaEffectSummary('load-effects-mesa', loadEffects);
+  }
+  if (injectBorn) {
+    const bornEffects = loaded.host.files.get(bornEffectsPath);
+    write(`born-effects-bytes=${bornEffects?.length ?? 0}`);
+    writeMesaEffectSummary('born-effects-mesa', bornEffects);
+  }
+  if (peekHeer) {
+    const peekEffects = loaded.host.files.get(heerEffectsPath);
+    write(`peek-effects-bytes=${peekEffects?.length ?? 0}`);
+    writeMesaEffectSummary('peek-effects-mesa', peekEffects);
+  }
+  if (injectMate) {
+    const mateEffects = loaded.host.files.get(mateEffectsPath);
+    write(`mate-effects-bytes=${mateEffects?.length ?? 0}`);
+    writeMesaEffectSummary('mate-effects-mesa', mateEffects);
+  }
+  if (keen) {
+    const keenEffects = loaded.host.files.get(keenEffectsPath);
+    write(`keen-effects-bytes=${keenEffects?.length ?? 0}`);
+    writeMesaEffectSummary('keen-effects-mesa', keenEffects);
+  }
+  if (loaded.exitCode !== 0) {
+    out.dataset.status = 'fail';
+  }
+  else if (injectMesa) {
+    write('mode=replay');
+    const replayed = await runVereWasmProbeWithFileStore(wasmUrl, {
+      ...baseOptions,
+      args: [...runtimeArgs, '--load-only', '--run-boot'],
+    });
+
+    write(`replay-exit=${replayed.exitCode}`);
+    write(`replay-initial=${replayed.plan.initialBytes}`);
+    write(`replay-maximum=${replayed.plan.maximumBytes}`);
+    out.dataset.status = replayed.exitCode === 0 ? 'ok' : 'fail';
+  }
+  else {
+    out.dataset.status = 'ok';
+  }
+} catch (error) {
+  write(String(error?.stack ?? error));
+  out.dataset.status = 'fail';
+}
+</script>

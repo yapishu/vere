@@ -85,6 +85,7 @@ struct _u3_mesa_quic_conn {
   u3_mesa_quic_out*          out_u;
   u3_mesa_quic_pkt*          pen_u;
   uint64_t                   dgr_d;
+  ngtcp2_tstamp              tms_d;
   c3_w                       pen_w;
   c3_o                       han_o;
 
@@ -117,18 +118,15 @@ struct _u3_mesa_quic {
   u3_mesa_quic_conn*               con_u;
 };
 
-static void _quic_flush_conn(u3_mesa_quic_conn* qoc_u, ngtcp2_tstamp now_d);
-static void _quic_flush_pending(u3_mesa_quic_conn* qoc_u,
-                                ngtcp2_tstamp      now_d);
+static void _quic_flush_conn(u3_mesa_quic_conn* qoc_u);
+static void _quic_flush_pending(u3_mesa_quic_conn* qoc_u);
 static c3_w _quic_max_datagram_payload(u3_mesa_quic_conn* qoc_u);
 static void _quic_send_datagram(u3_mesa_quic_conn* qoc_u,
                                 c3_y*              buf_y,
-                                c3_w               len_w,
-                                ngtcp2_tstamp      now_d);
+                                c3_w               len_w);
 static void _quic_send_conn(u3_mesa_quic_conn* qoc_u,
                             c3_y*              buf_y,
-                            c3_w               len_w,
-                            ngtcp2_tstamp      now_d);
+                            c3_w               len_w);
 static void _quic_schedule(u3_mesa_quic* qic_u);
 
 u3_mesa_quic_send_kind
@@ -162,6 +160,18 @@ _quic_now(void)
 
   return (((uint64_t)tim_u.tv_sec) * NGTCP2_SECONDS) +
          ((uint64_t)tim_u.tv_nsec);
+}
+
+static ngtcp2_tstamp
+_quic_conn_now(u3_mesa_quic_conn* qoc_u)
+{
+  ngtcp2_tstamp now_d = _quic_now();
+
+  if ( now_d < qoc_u->tms_d ) {
+    now_d = qoc_u->tms_d;
+  }
+  qoc_u->tms_d = now_d;
+  return now_d;
 }
 
 static void
@@ -921,7 +931,7 @@ _quic_conn_new(u3_mesa_quic*            qic_u,
   ngtcp2_callbacks         cal_u;
   ngtcp2_settings          set_u;
   ngtcp2_transport_params  par_u;
-  ngtcp2_tstamp            now_d = _quic_now();
+  ngtcp2_tstamp            now_d;
   c3_i                     loc_i;
   int                      ret_i;
 
@@ -937,6 +947,7 @@ _quic_conn_new(u3_mesa_quic*            qic_u,
   qoc_u->han_o = c3n;
   qoc_u->ref_u.get_conn = _quic_get_conn_from_ref;
   qoc_u->ref_u.user_data = qoc_u;
+  now_d = _quic_conn_now(qoc_u);
 
   loc_i = sizeof(qoc_u->loc_stu);
   if ( 0 != uv_udp_getsockname(&qic_u->udp_u,
@@ -1016,7 +1027,7 @@ _quic_conn_dial(u3_mesa_quic* qic_u, const struct sockaddr* rem_u)
   ngtcp2_callbacks         cal_u;
   ngtcp2_settings          set_u;
   ngtcp2_transport_params  par_u;
-  ngtcp2_tstamp            now_d = _quic_now();
+  ngtcp2_tstamp            now_d;
   ngtcp2_socklen           rem_i;
   c3_i                     loc_i;
   int                      ret_i;
@@ -1031,6 +1042,7 @@ _quic_conn_dial(u3_mesa_quic* qic_u, const struct sockaddr* rem_u)
   qoc_u->han_o = c3n;
   qoc_u->ref_u.get_conn = _quic_get_conn_from_ref;
   qoc_u->ref_u.user_data = qoc_u;
+  now_d = _quic_conn_now(qoc_u);
 
   loc_i = sizeof(qoc_u->loc_stu);
   if ( 0 != uv_udp_getsockname(&qic_u->udp_u,
@@ -1089,7 +1101,7 @@ _quic_conn_dial(u3_mesa_quic* qic_u, const struct sockaddr* rem_u)
   qoc_u->nex_u = qic_u->con_u;
   qic_u->con_u = qoc_u;
   _quic_log_addr("dialing connection", rem_u);
-  _quic_flush_conn(qoc_u, now_d);
+  _quic_flush_conn(qoc_u);
   _quic_schedule(qic_u);
   return qoc_u;
 }
@@ -1153,7 +1165,7 @@ _quic_udp_send(u3_mesa_quic_conn* qoc_u,
 }
 
 static void
-_quic_drain_streams(u3_mesa_quic_conn* qoc_u, ngtcp2_tstamp now_d)
+_quic_drain_streams(u3_mesa_quic_conn* qoc_u)
 {
   size_t lim_i;
 
@@ -1164,6 +1176,7 @@ _quic_drain_streams(u3_mesa_quic_conn* qoc_u, ngtcp2_tstamp now_d)
     ngtcp2_ssize     wrt_i;
     ngtcp2_ssize     dat_i = 0;
     u3_mesa_quic_out*out_u = qoc_u->out_u;
+    ngtcp2_tstamp    now_d = _quic_conn_now(qoc_u);
     uint32_t          flg_w = NGTCP2_WRITE_STREAM_FLAG_NONE;
 
     if ( out_u->off_w == out_u->len_w ) {
@@ -1217,17 +1230,18 @@ _quic_drain_streams(u3_mesa_quic_conn* qoc_u, ngtcp2_tstamp now_d)
 }
 
 static void
-_quic_flush_conn(u3_mesa_quic_conn* qoc_u, ngtcp2_tstamp now_d)
+_quic_flush_conn(u3_mesa_quic_conn* qoc_u)
 {
   size_t lim_i;
 
-  _quic_drain_streams(qoc_u, now_d);
+  _quic_drain_streams(qoc_u);
 
   for ( lim_i = 0; lim_i < 32; ++lim_i ) {
     c3_y                 dat_y[U3_MESA_QUIC_MAX_UDP];
     ngtcp2_path_storage  ps_u;
     ngtcp2_pkt_info      pin_u = { 0 };
     ngtcp2_ssize         wrt_i;
+    ngtcp2_tstamp        now_d = _quic_conn_now(qoc_u);
 
     ngtcp2_path_storage_zero(&ps_u);
     wrt_i = ngtcp2_conn_write_pkt(qoc_u->con_u, &ps_u.path, &pin_u,
@@ -1258,7 +1272,7 @@ _quic_read_conn(u3_mesa_quic_conn* qoc_u,
 {
   ngtcp2_path      pat_u;
   ngtcp2_pkt_info  pin_u = { 0 };
-  ngtcp2_tstamp    now_d = _quic_now();
+  ngtcp2_tstamp    now_d = _quic_conn_now(qoc_u);
   int              ret_i;
 
   memcpy(&qoc_u->rem_stu, rem_u, _quic_sockaddr_len(rem_u));
@@ -1292,8 +1306,8 @@ _quic_read_conn(u3_mesa_quic_conn* qoc_u,
     return;
   }
 
-  _quic_flush_pending(qoc_u, now_d);
-  _quic_flush_conn(qoc_u, now_d);
+  _quic_flush_pending(qoc_u);
+  _quic_flush_conn(qoc_u);
 }
 
 static void
@@ -1412,13 +1426,13 @@ _quic_max_datagram_payload(u3_mesa_quic_conn* qoc_u)
 static void
 _quic_send_datagram(u3_mesa_quic_conn* qoc_u,
                     c3_y*              buf_y,
-                    c3_w               len_w,
-                    ngtcp2_tstamp      now_d)
+                    c3_w               len_w)
 {
   c3_y                 dat_y[U3_MESA_QUIC_MAX_UDP];
   ngtcp2_path_storage  ps_u;
   ngtcp2_pkt_info      pin_u = { 0 };
   ngtcp2_ssize         wrt_i;
+  ngtcp2_tstamp        now_d = _quic_conn_now(qoc_u);
   int                  acc_i = 0;
 
   ngtcp2_path_storage_zero(&ps_u);
@@ -1507,7 +1521,7 @@ _quic_queue_pending(u3_mesa_quic_conn* qoc_u, c3_y* buf_y, c3_w len_w)
 }
 
 static void
-_quic_flush_pending(u3_mesa_quic_conn* qoc_u, ngtcp2_tstamp now_d)
+_quic_flush_pending(u3_mesa_quic_conn* qoc_u)
 {
   while (  _(qoc_u->han_o)
         && (NULL != qoc_u->pen_u) )
@@ -1521,15 +1535,14 @@ _quic_flush_pending(u3_mesa_quic_conn* qoc_u, ngtcp2_tstamp now_d)
     pkt_u->buf_y = NULL;
     c3_free(pkt_u);
 
-    _quic_send_conn(qoc_u, buf_y, len_w, now_d);
+    _quic_send_conn(qoc_u, buf_y, len_w);
   }
 }
 
 static void
 _quic_send_conn(u3_mesa_quic_conn* qoc_u,
                 c3_y*              buf_y,
-                c3_w               len_w,
-                ngtcp2_tstamp      now_d)
+                c3_w               len_w)
 {
   u3_mesa_quic*           qic_u;
   u3_mesa_quic_send_kind  kin_e;
@@ -1546,7 +1559,7 @@ _quic_send_conn(u3_mesa_quic_conn* qoc_u,
   qic_u = qoc_u->qic_u;
   if ( c3n == qoc_u->han_o ) {
     _quic_queue_pending(qoc_u, buf_y, len_w);
-    _quic_flush_conn(qoc_u, now_d);
+    _quic_flush_conn(qoc_u);
     _quic_schedule(qic_u);
     return;
   }
@@ -1556,12 +1569,12 @@ _quic_send_conn(u3_mesa_quic_conn* qoc_u,
 
   switch ( kin_e ) {
     case U3_MESA_QUIC_SEND_DATAGRAM: {
-      _quic_send_datagram(qoc_u, buf_y, len_w, now_d);
+      _quic_send_datagram(qoc_u, buf_y, len_w);
     } break;
 
     case U3_MESA_QUIC_SEND_STREAM: {
       _quic_queue_stream(qoc_u, buf_y, len_w);
-      _quic_flush_conn(qoc_u, now_d);
+      _quic_flush_conn(qoc_u);
     } break;
   }
 
@@ -1589,7 +1602,7 @@ _quic_send_backend(void* bak_v, u3_sess* ses_u, c3_y* buf_y, c3_w len_w)
     return;
   }
 
-  _quic_send_conn(qoc_u, buf_y, len_w, _quic_now());
+  _quic_send_conn(qoc_u, buf_y, len_w);
 }
 
 static void
@@ -1627,7 +1640,7 @@ _quic_send_addr_backend(void*                  bak_v,
     return;
   }
 
-  _quic_send_conn(qoc_u, buf_y, len_w, _quic_now());
+  _quic_send_conn(qoc_u, buf_y, len_w);
 }
 
 static void
@@ -1642,14 +1655,15 @@ _quic_timer_cb(uv_timer_t* tim_u)
     ngtcp2_tstamp      exp_d = ngtcp2_conn_get_expiry2(qoc_u->con_u);
 
     if ( exp_d <= now_d ) {
-      int ret_i = ngtcp2_conn_handle_expiry(qoc_u->con_u, now_d);
+      int ret_i = ngtcp2_conn_handle_expiry(qoc_u->con_u,
+                                            _quic_conn_now(qoc_u));
 
       if ( 0 != ret_i ) {
         _quic_log_ngtcp2("ngtcp2_conn_handle_expiry", ret_i);
         _quic_conn_close(qoc_u);
       }
       else {
-        _quic_flush_conn(qoc_u, now_d);
+        _quic_flush_conn(qoc_u);
       }
     }
 
