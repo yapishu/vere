@@ -6,7 +6,9 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <time.h>
+#ifndef U3_OS_wasm
 #include <signal.h>
+#endif
 
 #include "allocate.h"
 #include "imprison.h"
@@ -25,7 +27,9 @@ u3t_trace u3t_Trace;
 /// %spin stack shared-memory object name, saved for shm_unlink at teardown.
 /// stored because the serf keys the name on getppid(), which is unreliable
 /// at exit (the king may have died and reparented us to init).
+#ifndef U3_OS_wasm
 static c3_c _spin_nam_c[256] = {0};
+#endif
 
 static c3_o _ct_lop_o;
 
@@ -322,7 +326,11 @@ u3t_trace_open(const c3_c* dir_c)
   snprintf(lif_c, 2056, "%s/%d.json", fil_c, _file_cnt_w);
 
   _file_u = c3_fopen(lif_c, "w");
+#ifdef U3_OS_wasm
+  _nock_pid_i = 0;
+#else
   _nock_pid_i = (int)getpid();
+#endif
 
   if ( !_file_u ) {
     fprintf(stderr, "trace open: %s\r\n", strerror(errno));
@@ -567,7 +575,7 @@ u3t_file_cnt(void)
 void
 u3t_boot(void)
 {
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
   if ( u3C.wag_w & u3o_debug_cpu ) {
     _ct_lop_o = c3n;
 #if defined(U3_OS_PROF)
@@ -612,7 +620,7 @@ u3t_boot(void)
 void
 u3t_boff(void)
 {
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
   if ( u3C.wag_w & u3o_debug_cpu ) {
 #if defined(U3_OS_PROF)
     // Mask SIGPROF signals in this thread (and this is the only
@@ -1138,6 +1146,11 @@ u3t_etch_meme(c3_l mod_l)
 void
 u3t_sstack_init(c3_d* who_d)
 {
+#ifdef U3_OS_wasm
+  (void)who_d;
+  u3t_Spin = NULL;
+  return;
+#else
 #ifdef U3_OS_osx
   snprintf(_spin_nam_c, sizeof(_spin_nam_c), SLOW_STACK_NAME, getppid());
 #else
@@ -1202,6 +1215,7 @@ u3t_sstack_init(c3_d* who_d)
   //
   u3H->rod_u.off_w = u3t_Spin->off_w;
   u3H->rod_u.fow_w = u3t_Spin->fow_w;
+#endif
 }
 
 /* u3t_sstack_open: initalize a root node on the spin stack 
@@ -1209,6 +1223,10 @@ u3t_sstack_init(c3_d* who_d)
 u3t_spin*
 u3t_sstack_open(c3_d* who_d)
 {
+#ifdef U3_OS_wasm
+  (void)who_d;
+  return NULL;
+#else
   //Setup spin stack
 
 #ifdef U3_OS_osx
@@ -1262,6 +1280,7 @@ u3t_sstack_open(c3_d* who_d)
 #endif
 
   return stk_u;
+#endif
 }
 /* _sstack_unlink: remove the shm name so the region is reclaimed once every
 **                 mapping is gone (ie when both the serf and king are dead).
@@ -1270,7 +1289,7 @@ u3t_sstack_open(c3_d* who_d)
 static void
 _sstack_unlink(void)
 {
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
   if ( _spin_nam_c[0] ) {
     shm_unlink(_spin_nam_c);
   }
@@ -1282,11 +1301,15 @@ _sstack_unlink(void)
 void
 u3t_sstack_exit()
 {
+#ifdef U3_OS_wasm
+  u3t_Spin = NULL;
+#else
   if ( NULL != u3t_Spin ) {
     munmap(u3t_Spin, TRACE_PSIZE);
     u3t_Spin = NULL;
   }
   _sstack_unlink();
+#endif
 }
 
 /* u3t_sstack_close: tear down a spin stack mapping (king side).
@@ -1294,10 +1317,14 @@ u3t_sstack_exit()
 void
 u3t_sstack_close(u3t_spin* stk_u)
 {
+#ifdef U3_OS_wasm
+  (void)stk_u;
+#else
   if ( NULL != stk_u ) {
     munmap(stk_u, TRACE_PSIZE);
   }
   _sstack_unlink();
+#endif
 }
 
 /* the serf is the spin stack's sole writer; the king (urth) maps it read-only
@@ -1384,4 +1411,3 @@ u3t_sstack_pop()
   u3t_Spin->off_w -= (len_w + sizeof(c3_w));
   _sstack_writ_end();
 }
-

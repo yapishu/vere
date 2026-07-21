@@ -6,9 +6,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#ifndef U3_OS_windows
+#include <unistd.h>
+#endif
 
 #include "allocate.h"
 #include "hashtable.h"
+#include "hostfs.h"
 #include "imprison.h"
 #include "jets.h"
 #include "manage.h"
@@ -829,53 +833,7 @@ u3u_cram(c3_c* dir_c, c3_d eve_d)
 c3_o
 u3u_mmap_read(c3_c* cap_c, c3_c* pat_c, c3_d* out_d, c3_y** out_y)
 {
-  c3_i fid_i;
-  c3_d len_d;
-
-  //  open file
-  //
-  if ( -1 == (fid_i = c3_open(pat_c, O_RDONLY, 0644)) ) {
-    fprintf(stderr, "%s: c3_open failed (%s): %s\r\n",
-                    cap_c, pat_c, strerror(errno));
-    return c3n;
-  }
-
-  //  measure file
-  //
-  {
-    struct stat buf_b;
-
-    if ( -1 == fstat(fid_i, &buf_b) ) {
-      fprintf(stderr, "%s: stat failed (%s): %s\r\n",
-                      cap_c, pat_c, strerror(errno));
-      close(fid_i);
-      return c3n;
-    }
-
-    len_d = buf_b.st_size;
-  }
-
-  //  mmap file
-  //
-  {
-    void* ptr_v;
-
-    if ( MAP_FAILED == (ptr_v = mmap(0, len_d, PROT_READ, MAP_SHARED, fid_i, 0)) ) {
-      fprintf(stderr, "%s: mmap failed (%s): %s\r\n",
-                      cap_c, pat_c, strerror(errno));
-      close(fid_i);
-      return c3n;
-    }
-
-    *out_d = len_d;
-    *out_y = (c3_y*)ptr_v;
-  }
-
-  //  close file
-  //
-  close(fid_i);
-
-  return c3y;
+  return u3fs_mmap_read(cap_c, pat_c, out_d, out_y);
 }
 
 /* u3u_mmap(): open/create file-backed mmap at [pat_c] for read/write.
@@ -883,47 +841,7 @@ u3u_mmap_read(c3_c* cap_c, c3_c* pat_c, c3_d* out_d, c3_y** out_y)
 c3_o
 u3u_mmap(c3_c* cap_c, c3_c* pat_c, c3_d len_d, c3_y** out_y)
 {
-  c3_i fid_i;
-
-  //  open file
-  //
-  if ( -1 == (fid_i = c3_open(pat_c, O_RDWR | O_CREAT | O_TRUNC, 0644)) ) {
-    fprintf(stderr, "%s: c3_open failed (%s): %s\r\n",
-                    cap_c, pat_c, strerror(errno));
-    return c3n;
-  }
-
-  //  grow [fid_i] to [len_w]
-  //
-  //    XX build with _FILE_OFFSET_BITS == 64 ?
-  //
-  if ( 0 != ftruncate(fid_i, len_d) ) {
-    fprintf(stderr, "%s: ftruncate grow %s: %s\r\n",
-                    cap_c, pat_c, strerror(errno));
-    close(fid_i);
-    return c3n;
-  }
-
-  //  mmap file
-  //
-  {
-    void* ptr_v;
-
-    if ( MAP_FAILED == (ptr_v = mmap(0, len_d, PROT_READ|PROT_WRITE, MAP_SHARED, fid_i, 0)) ) {
-      fprintf(stderr, "%s: mmap failed (%s): %s\r\n",
-                      cap_c, pat_c, strerror(errno));
-      close(fid_i);
-      return c3n;
-    }
-
-    *out_y = (c3_y*)ptr_v;
-  }
-
-  //  close file
-  //
-  close(fid_i);
-
-  return c3y;
+  return u3fs_mmap(cap_c, pat_c, len_d, out_y);
 }
 
 /* u3u_mmap_save(): sync file-backed mmap.
@@ -931,12 +849,7 @@ u3u_mmap(c3_c* cap_c, c3_c* pat_c, c3_d len_d, c3_y** out_y)
 c3_o
 u3u_mmap_save(c3_c* cap_c, c3_c* pat_c, c3_d len_d, c3_y* byt_y)
 {
-  if ( 0 != msync(byt_y, len_d, MS_SYNC) ) {
-    fprintf(stderr, "%s: msync %s: %s\r\n", cap_c, pat_c, strerror(errno));
-    return c3n;
-  }
-
-  return c3y;
+  return u3fs_mmap_save(cap_c, pat_c, len_d, byt_y);
 }
 
 /* u3u_munmap(): unmap the region at [byt_y].
@@ -944,11 +857,7 @@ u3u_mmap_save(c3_c* cap_c, c3_c* pat_c, c3_d len_d, c3_y* byt_y)
 c3_o
 u3u_munmap(c3_d len_d, c3_y* byt_y)
 {
-  if ( 0 != munmap(byt_y, len_d) ) {
-    return c3n;
-  }
-
-  return c3y;
+  return u3fs_munmap(len_d, byt_y);
 }
 
 /* u3u_uncram(): restore persistent state from a rock.

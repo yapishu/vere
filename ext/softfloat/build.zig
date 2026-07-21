@@ -22,6 +22,7 @@ pub fn build(b: *std.Build) void {
         "-g",
         "-O2",
     };
+    const use_8086_sources = t.cpu.arch.isX86() or (t.cpu.arch == .wasm32);
 
     if (t.cpu.arch.isAARCH64()) {
         lib.addIncludePath(dep_c.path("source/ARM-VFPv2"));
@@ -271,13 +272,15 @@ pub fn build(b: *std.Build) void {
         });
         lib.installHeader(dep_c.path("build/Linux-ARM-VFPv2-GCC/platform.h"), "platform.h");
     }
-    if (t.cpu.arch.isX86()) {
+    if (use_8086_sources) {
         lib.addIncludePath(dep_c.path("source/8086-SSE"));
         lib.addIncludePath(dep_c.path("build/Linux-x86_64-GCC"));
 
-        lib.root_module.addCMacro("SOFTFLOAT_FAST_INT64", "");
-        lib.root_module.addCMacro("SOFTFLOAT_FAST_DIV32TO16", "");
-        lib.root_module.addCMacro("SOFTFLOAT_FAST_DIV64TO32", "");
+        if (t.cpu.arch.isX86() or (t.cpu.arch == .wasm32)) {
+            lib.root_module.addCMacro("SOFTFLOAT_FAST_INT64", "");
+            lib.root_module.addCMacro("SOFTFLOAT_FAST_DIV32TO16", "");
+            lib.root_module.addCMacro("SOFTFLOAT_FAST_DIV64TO32", "");
+        }
 
         lib.addCSourceFiles(.{
             .root = dep_c.path(""),

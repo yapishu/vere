@@ -22,6 +22,10 @@
 #     define FirstKernel   164
 #     define DefaultKernel 164
 
+    /* Native raw-QUIC Ames listener default.
+    */
+#     define U3_MESA_QUIC_DEFAULT_PORT 8443
+
   /** Data types.
   **/
 
@@ -304,6 +308,9 @@
         c3_s    per_s;                      //      http port
         c3_s    pes_s;                      //      https port
         c3_s    por_s;                      //  -p, ames port
+        c3_s    poq_s;                      //      ames quic port
+        c3_o    qsp;                        //      sponsor lanes over quic
+        c3_s    qsp_s;                      //      sponsor quic fallback port
         c3_w    sap_w;                      //      Snapshot timer legth (seconds)
         c3_o    qui;                        //  -q, quiet
         c3_o    rep;                        //  -R, report build info
@@ -663,6 +670,7 @@
           c3_s             per_s;               //  http port
           c3_s             pes_s;               //  htls port
           c3_s             por_s;               //  ames port
+          c3_s             poq_s;               //  ames quic port
           struct _u3_pier* nex_u;               //  next in list
           u3_noun            cax;               //  cache
         } u3_pier;

@@ -138,9 +138,11 @@ pub fn build(b: *std.Build) !void {
     pkg_noun.linkLibrary(gmp.artifact("gmp"));
 
     pkg_noun.linkLibrary(murmur3.artifact("murmur3"));
-    pkg_noun.linkLibrary(openssl.artifact("ssl"));
+    if (t.os.tag != .wasi) {
+        pkg_noun.linkLibrary(openssl.artifact("ssl"));
+    }
     pkg_noun.linkLibrary(pdjson.artifact("pdjson"));
-    if (t.os.tag != .windows) {
+    if ((t.os.tag != .windows) and (t.os.tag != .wasi)) {
         pkg_noun.linkLibrary(sigsegv.artifact("sigsegv"));
     }
     pkg_noun.linkLibrary(softblas.artifact("softblas"));
@@ -150,7 +152,9 @@ pub fn build(b: *std.Build) !void {
     pkg_noun.linkLibrary(urcrypt.artifact("urcrypt"));
     pkg_noun.linkLibrary(whereami.artifact("whereami"));
     pkg_noun.linkLibrary(zlib.artifact("z"));
-    pkg_noun.linkLibrary(wasm3.artifact("wasm3"));
+    if (t.os.tag != .wasi) {
+        pkg_noun.linkLibrary(wasm3.artifact("wasm3"));
+    }
 
     if (tracy_enabled) {
         pkg_noun.linkLibrary(tracy.?.artifact("tracy"));
@@ -164,6 +168,8 @@ pub fn build(b: *std.Build) !void {
         pkg_noun.addIncludePath(b.path("platform/linux"));
     if (t.os.tag == .windows)
         pkg_noun.addIncludePath(b.path("platform/windows"));
+    if (t.os.tag == .wasi)
+        pkg_noun.addIncludePath(b.path("platform/wasm"));
 
     var flags = std.array_list.Managed([]const u8).init(b.allocator);
     defer flags.deinit();
@@ -173,11 +179,54 @@ pub fn build(b: *std.Build) !void {
     });
     try flags.appendSlice(copts);
 
+    var files = std.array_list.Managed([]const u8).init(b.allocator);
+    defer files.deinit();
+    for (c_source_files) |file| {
+        if ((t.os.tag == .wasi) and std.mem.eql(u8, file, "jets/e/urwasm.c")) {
+            continue;
+        }
+        try files.append(file);
+    }
+
     pkg_noun.addCSourceFiles(.{
         .root = b.path(""),
-        .files = &c_source_files,
+        .files = files.items,
         .flags = flags.items,
     });
+
+    if (t.os.tag == .wasi) {
+        const manage_lib = b.addLibrary(.{
+            .name = "noun-manage-wasm",
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+
+        manage_lib.linkLibC();
+        manage_lib.addIncludePath(pkg_c3.artifact("c3").getEmittedIncludeTree());
+        manage_lib.addIncludePath(pkg_ent.artifact("ent").getEmittedIncludeTree());
+        manage_lib.addIncludePath(pkg_ur.artifact("ur").getEmittedIncludeTree());
+        manage_lib.addIncludePath(backtrace.artifact("backtrace").getEmittedIncludeTree());
+        manage_lib.addIncludePath(gmp.artifact("gmp").getEmittedIncludeTree());
+        manage_lib.addIncludePath(murmur3.artifact("murmur3").getEmittedIncludeTree());
+        manage_lib.addIncludePath(urcrypt.artifact("urcrypt").getEmittedIncludeTree());
+        manage_lib.addIncludePath(whereami.artifact("whereami").getEmittedIncludeTree());
+        manage_lib.addIncludePath(b.path(""));
+        manage_lib.addIncludePath(b.path("platform/wasm"));
+        manage_lib.addCSourceFiles(.{
+            .root = b.path(""),
+            .files = &.{"manage.c"},
+            .flags = flags.items,
+        });
+
+        const manage_step = b.step(
+            "noun-manage-wasm",
+            "Compile the noun manager/boot-lite boundary for wasm32-wasi",
+        );
+        manage_step.dependOn(&manage_lib.step);
+        b.installArtifact(manage_lib);
+    }
 
     if (t.os.tag == .windows) {
         pkg_noun.addCSourceFiles(.{
@@ -193,6 +242,7 @@ pub fn build(b: *std.Build) !void {
         .macos => "platform/darwin/rsignal.h",
         .linux => "platform/linux/rsignal.h",
         .windows => "platform/windows/rsignal.h",
+        .wasi => "platform/wasm/rsignal.h",
         else => "",
     }), "rsignal.h");
 
@@ -394,7 +444,9 @@ const c_source_files = [_][]const u8{
     "jets/136/tree.c",
     "jets/136/loot.c",
     "jets/135/tree.c",
+    "hostfs.c",
     "log.c",
+    "loom.c",
     "manage.c",
     "palloc.c",
     "nock.c",
@@ -420,7 +472,9 @@ const install_headers = [_][]const u8{
     "jets/q.h",
     "jets/w.h",
     "jets/136/w.h",
+    "hostfs.h",
     "log.h",
+    "loom.h",
     "manage.h",
     "nock.h",
     "noun.h",

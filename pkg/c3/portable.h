@@ -95,6 +95,16 @@
 #     include "mman.h"
 #     include "compat.h"
 
+#   elif defined(U3_OS_wasm)
+#     include <ctype.h>
+#     include <inttypes.h>
+#     include <stdlib.h>
+#     include <string.h>
+#     include <stdarg.h>
+#     include <stdint.h>
+#     include <assert.h>
+#     include <stdio.h>
+#     include <sys/types.h>
 
 #   else
 #error "port: headers"
@@ -128,6 +138,8 @@
 #     endif
 #   elif defined(U3_OS_windows)
 #define U3_OS_ARCH "windows-x86_64"
+#   elif defined(U3_OS_wasm)
+#define U3_OS_ARCH "wasm32-wasi"
 #   endif
 
 
@@ -174,6 +186,11 @@
 #   elif defined(U3_OS_windows)
 #       define U3_OS_LoomBase 0x28000000000
 #       define U3_OS_LoomBits 30
+#   elif defined(U3_OS_wasm)
+        //  WASM uses a runtime loom base allocated from linear memory.
+#       define U3_OS_LoomBase 0
+        //  wasm32 linear memory cannot host native Vere's 16GB loom range.
+#       define U3_OS_LoomBits 27
 #   else
 #     error "port: LoomBase"
 #   endif
@@ -208,6 +225,10 @@
 #       define c3_bswap_16(x)  NXSwapShort(x)
 #       define c3_bswap_32(x)  NXSwapInt(x)
 #       define c3_bswap_64(x)  NXSwapLongLong(x)
+#     elif defined(U3_OS_wasm)
+#       define c3_bswap_16(x)  __builtin_bswap16(x)
+#       define c3_bswap_32(x)  __builtin_bswap32(x)
+#       define c3_bswap_64(x)  __builtin_bswap64(x)
 #     else
 #       error "port: byte swap"
 #     endif
@@ -220,6 +241,8 @@
 #       define c3_sync(fd) (fcntl(fd, F_FULLFSYNC, 0))
 #     elif defined(U3_OS_bsd)
 #       define c3_sync(fd) (fsync(fd))
+#     elif defined(U3_OS_wasm)
+#       define c3_sync(fd) ((void)(fd), 0)
 #     else
 #       error "port: sync"
 #     endif
@@ -231,6 +254,8 @@
 #       define c3_fpurge __fpurge
 #     elif defined(U3_OS_bsd) || defined(U3_OS_osx) || defined(U3_OS_windows)
 #       define c3_fpurge fpurge
+#     elif defined(U3_OS_wasm)
+#       define c3_fpurge(fp) ((void)(fp), 0)
 #     else
 #       error "port: fpurge"
 #     endif
@@ -245,6 +270,8 @@
 #     elif defined(U3_OS_bsd)
 #       define c3_stat_mtime(dp) (u3m_time_in_ts(&((dp)->st_mtim)))
 #       define lseek64 lseek
+#     elif defined(U3_OS_wasm)
+#       define c3_stat_mtime(dp) ((void)(dp), 0)
 #     else
 #       error "port: timeconvert"
 #     endif
@@ -255,6 +282,8 @@
 #       define c3_dev_null "/dev/null"
 #     elif defined(U3_OS_windows)
 #       define c3_dev_null "nul"
+#     elif defined(U3_OS_wasm)
+#       define c3_dev_null "/dev/null"
 #     else
 #       error "port: /dev/null"
 #     endif

@@ -190,9 +190,6 @@ _qe_bytestream_can_octs(u3_noun octs_list) {
 
   u3_noun octs_list_start = octs_list;
   u3_noun octs = u3_none;
-  // Last non-zero octs
-  u3_noun last_octs = u3_none;
-
   while (octs_list != u3_nul) {
 
     octs = u3h(octs_list);
@@ -244,7 +241,7 @@ _qe_bytestream_can_octs(u3_noun octs_list) {
 
   c3_y* sea_y;
   u3_atom p_octs, q_octs;
-  c3_w p_octs_w, q_octs_w;
+  c3_w p_octs_w;
   c3_w len_w, lead_w;
 
   // Bytes written so far

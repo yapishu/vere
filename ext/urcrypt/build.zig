@@ -283,7 +283,17 @@ fn libblake3(
 
     const assembly_files = if (t.os.tag == .windows) windows_assembly else unix_assembly;
 
-    if (target.result.cpu.arch == .x86_64) {
+    if (target.result.cpu.arch == .wasm32) {
+        lib.addCSourceFiles(.{
+            .root = dep_c.path("blake3"),
+            .files = &common_files,
+            .flags = &.{
+                "-O2",
+                "-fno-omit-frame-pointer",
+                "-fno-sanitize=all",
+            },
+        });
+    } else if (target.result.cpu.arch == .x86_64) {
         lib.addCSourceFiles(.{
             .root = dep_c.path("blake3"),
             .files = &(common_files ++ assembly_files),
@@ -474,6 +484,7 @@ fn libscrypt(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) *std.Build.Step.Compile {
+    const t = target.result;
     const dep_c = b.dependency("urcrypt", .{
         .target = target,
         .optimize = optimize,
@@ -485,6 +496,10 @@ fn libscrypt(
     });
 
     lib.linkLibC();
+    if (t.os.tag == .wasi) {
+        lib.root_module.addCMacro("_WASI_EMULATED_MMAN", "");
+        lib.linkSystemLibrary("wasi-emulated-mman");
+    }
 
     lib.addIncludePath(dep_c.path("scrypt"));
 

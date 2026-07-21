@@ -169,36 +169,46 @@ pub fn build(b: *std.Build) void {
     lib.addConfigHeader(backtrace_supported_h);
     lib.addIncludePath(dep_c.path(""));
 
-    lib.addCSourceFiles(.{
-        .root = dep_c.path(""),
-        .files = &.{
-            // libbacktrace_la_SOURCES
-            "atomic.c",
-            "dwarf.c",
-            "fileline.c",
-            "posix.c",
-            "print.c",
-            "sort.c",
-            "state.c",
-            // BACKTRACE_FILES
-            "backtrace.c",
-            "simple.c",
-            "nounwind.c",
-            // FORMAT_FILES
-            "elf.c",
-            "macho.c",
-            "pecoff.c",
-            "unknown.c",
-            "xcoff.c",
-            // VIEW_FILES
-            if (t.os.tag == .windows) "read.c" else "mmapio.c",
-            // ALLOC_FILES
-            if (t.os.tag == .windows) "alloc.c" else "mmap.c",
-        },
-        .flags = &.{
-            "-fno-sanitize=all",
-        },
-    });
+    if (t.os.tag == .wasi) {
+        lib.addCSourceFiles(.{
+            .root = b.path(""),
+            .files = &.{"wasm_stub.c"},
+            .flags = &.{
+                "-fno-sanitize=all",
+            },
+        });
+    } else {
+        lib.addCSourceFiles(.{
+            .root = dep_c.path(""),
+            .files = &.{
+                // libbacktrace_la_SOURCES
+                "atomic.c",
+                "dwarf.c",
+                "fileline.c",
+                "posix.c",
+                "print.c",
+                "sort.c",
+                "state.c",
+                // BACKTRACE_FILES
+                "backtrace.c",
+                "simple.c",
+                "nounwind.c",
+                // FORMAT_FILES
+                "elf.c",
+                "macho.c",
+                "pecoff.c",
+                "unknown.c",
+                "xcoff.c",
+                // VIEW_FILES
+                if (t.os.tag == .windows) "read.c" else "mmapio.c",
+                // ALLOC_FILES
+                if (t.os.tag == .windows) "alloc.c" else "mmap.c",
+            },
+            .flags = &.{
+                "-fno-sanitize=all",
+            },
+        });
+    }
 
     lib.installHeader(dep_c.path("backtrace.h"), "backtrace.h");
 

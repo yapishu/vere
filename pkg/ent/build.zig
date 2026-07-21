@@ -15,6 +15,9 @@ pub fn build(b: *std.Build) !void {
         "-pedantic",
         "-std=gnu99",
     });
+    if (t.os.tag == .wasi) {
+        try flags.append("-DENT_GETENTROPY_UNISTD");
+    }
     try flags.appendSlice(copts);
 
     const pkg_ent = b.addLibrary(.{

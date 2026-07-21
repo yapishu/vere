@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const t = target.result;
+    const is_wasm32_wasi = (t.os.tag == .wasi) and (t.cpu.arch == .wasm32);
+    const limb_bits: u32 = if (is_wasm32_wasi) 32 else 64;
 
     const dep_c = b.dependency("gmp", .{
         .target = target,
@@ -27,7 +29,7 @@ pub fn build(b: *std.Build) void {
         }, .{
             .HAVE_HOST_CPU_FAMILY_power = 0,
             .HAVE_HOST_CPU_FAMILY_powerpc = 0,
-            .GMP_LIMB_BITS = 64,
+            .GMP_LIMB_BITS = limb_bits,
             .GMP_NAIL_BITS = 0,
             .DEFN_LONG_LONG_LIMB = "",
             .LIBGMP_DLL = 0,
@@ -37,6 +39,11 @@ pub fn build(b: *std.Build) void {
 
         lib.addConfigHeader(gmp_h);
         lib.installConfigHeader(gmp_h);
+    }
+
+    if (is_wasm32_wasi) {
+        lib.root_module.addCMacro("_WASI_EMULATED_SIGNAL", "");
+        lib.linkSystemLibrary("wasi-emulated-signal");
     }
 
     // Static headers
@@ -52,6 +59,8 @@ pub fn build(b: *std.Build) void {
         lib.addIncludePath(dep_c.path("mpn/arm64"));
     } else if (t.cpu.arch.isX86()) {
         lib.addIncludePath(dep_c.path("mpn/x86_64"));
+    } else if (is_wasm32_wasi) {
+        lib.addIncludePath(dep_c.path("mpn/generic"));
     }
 
     // Generated Sources
@@ -142,6 +151,42 @@ pub fn build(b: *std.Build) void {
         });
     }
 
+    if (is_wasm32_wasi) {
+        lib.addIncludePath(b.path("gen/wasm32-wasi"));
+        lib.addIncludePath(b.path("gen/wasm32-wasi/mpn"));
+        lib.addCSourceFiles(.{
+            .root = b.path("gen/wasm32-wasi"),
+            .files = &.{
+                "mpn/mp_bases.c",
+                "mpn/fib_table.c",
+            },
+            .flags = &.{
+                "-fno-sanitize=all",
+            },
+        });
+        lib.addCSourceFiles(.{
+            .root = dep_c.path(""),
+            .files = &.{
+                "mpn/generic/add_n.c",
+                "mpn/generic/addmul_1.c",
+                "mpn/generic/bdiv_dbm1c.c",
+                "mpn/generic/com.c",
+                "mpn/generic/cnd_add_n.c",
+                "mpn/generic/cnd_sub_n.c",
+                "mpn/generic/lshift.c",
+                "mpn/generic/lshiftc.c",
+                "mpn/generic/mod_34lsub1.c",
+                "mpn/generic/mul_1.c",
+                "mpn/generic/rshift.c",
+                "mpn/generic/sub_n.c",
+                "mpn/generic/submul_1.c",
+            },
+            .flags = &.{
+                "-fno-sanitize=all",
+            },
+        });
+    }
+
     // Generic C Sources
     lib.addCSourceFiles(.{
         .root = dep_c.path(""),
@@ -183,6 +228,9 @@ pub fn build(b: *std.Build) void {
 
     if (t.os.tag == .windows) {
         lib.installHeader(b.path("gen/x86_64-windows/gmp.h"), "gmp.h");
+    }
+    if (is_wasm32_wasi) {
+        lib.installHeader(b.path("gen/wasm32-wasi/config.h"), "config.h");
     }
 
     b.installArtifact(lib);

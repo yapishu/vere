@@ -15,6 +15,11 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const picotls = b.dependency("picotls", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const curl = b.dependency("curl", .{
         .target = target,
         .optimize = optimize,
@@ -200,110 +205,6 @@ pub fn build(b: *std.Build) !void {
         .include_extensions = &.{".h"},
     });
 
-    const cifra = b.addLibrary(.{
-        .name = "cifra",
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
-    });
-
-    cifra.linkLibC();
-
-    cifra.addIncludePath(h2o_c.path("deps/picotls/deps/cifra/src"));
-    cifra.addIncludePath(h2o_c.path("deps/picotls/deps/cifra/src/ext"));
-
-    cifra.addCSourceFiles(.{
-        .root = h2o_c.path("deps/picotls/deps/cifra/src"),
-        .files = &.{
-            "aes.c",
-            "sha256.c",
-            "sha512.c",
-            "chash.c",
-            "hmac.c",
-            "pbkdf2.c",
-            "modes.c",
-            "eax.c",
-            "gf128.c",
-            "blockwise.c",
-            "cmac.c",
-            "salsa20.c",
-            "chacha20.c",
-            "curve25519.c",
-            "gcm.c",
-            "cbcmac.c",
-            "ccm.c",
-            "sha3.c",
-            "sha1.c",
-            "poly1305.c",
-            "norx.c",
-            "chacha20poly1305.c",
-            "drbg.c",
-            "ocb.c",
-        },
-        .flags = &.{
-            "-fno-sanitize=all",
-        },
-    });
-
-    cifra.installHeadersDirectory(h2o_c.path("deps/picotls/deps/cifra/src"), "", .{
-        .include_extensions = &.{ ".h", "curve25519.tweetnacl.c" },
-    });
-
-    const micro_ecc = b.addLibrary(.{
-        .name = "micro_ecc",
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
-    });
-
-    micro_ecc.linkLibC();
-
-    micro_ecc.addIncludePath(h2o_c.path("deps/picotls/deps/micro-ecc"));
-
-    micro_ecc.addCSourceFiles(.{
-        .root = h2o_c.path("deps/picotls/deps/micro-ecc"),
-        .files = &.{"uECC.c"},
-    });
-
-    micro_ecc.installHeadersDirectory(h2o_c.path("deps/picotls/deps/micro-ecc"), "", .{
-        .include_extensions = &.{ ".h", ".inc" },
-    });
-
-    const picotls = b.addLibrary(.{
-        .name = "picotls",
-        .root_module = b.createModule(.{ .target = target, .optimize = optimize }),
-    });
-
-    picotls.linkLibrary(openssl.artifact("ssl"));
-    picotls.linkLibrary(cifra);
-    picotls.linkLibrary(micro_ecc);
-    picotls.linkLibC();
-
-    picotls.addIncludePath(h2o_c.path("deps/picotls/include"));
-    if (t.cpu.arch == .aarch64) {
-        picotls.addIncludePath(sse2neon_c.path("."));
-    }
-
-    picotls.addCSourceFiles(.{
-        .root = h2o_c.path("deps/picotls/lib"),
-        .files = &.{
-            "asn1.c",
-            "cifra.c",
-            "minicrypto-pem.c",
-            "openssl.c",
-            "pembase64.c",
-            "picotls.c",
-            "uecc.c",
-        },
-        .flags = &.{
-            "-fno-sanitize=all",
-            "-std=c99",
-            "-Wall",
-            "-O2",
-            "-DO_CLOEXEC=0",
-        },
-    });
-
-    picotls.installHeadersDirectory(h2o_c.path("deps/picotls/include"), "", .{
-        .include_extensions = &.{".h"},
-    });
-
     // const ssl_conservatory = b.addStaticLibrary(.{
     //     .name = "ssl_conservatory",
     //     .target = target,
@@ -336,7 +237,7 @@ pub fn build(b: *std.Build) !void {
     h2o.linkLibrary(libgkc);
     // h2o.linkLibrary(libyrmcds);
     h2o.linkLibrary(picohttpparser);
-    h2o.linkLibrary(picotls);
+    h2o.linkLibrary(picotls.artifact("picotls"));
     // h2o.linkLibrary(ssl_conservatory);
     h2o.linkLibC();
 

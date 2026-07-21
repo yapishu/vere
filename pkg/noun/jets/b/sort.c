@@ -9,10 +9,12 @@
 static_assert( (UINT32_MAX > u3a_cells),
                "length precision" );
 
+#if (SIZE_MAX > UINT32_MAX)
 static_assert(
   (UINT32_MAX < (SIZE_MAX / (3 * sizeof(u3_noun)))),
   "allocation size overflow"
 );
+#endif
 
 static void
 _quicksort(u3_noun* restrict arr_u,
@@ -63,6 +65,12 @@ _sort(u3j_site* sit_u, u3_noun list)
   }
 
   if (1 == len_w) return u3k(list);
+#if (SIZE_MAX <= UINT32_MAX)
+  if ( len_w > (SIZE_MAX / (3 * sizeof(u3_noun))) ) {
+    return u3m_bail(c3__meme);
+  }
+#endif
+
   u3_noun* arr_u = u3a_malloc(sizeof(u3_noun) * len_w * 3);
   u3_noun* lef_u = arr_u + len_w;
   u3_noun* rit_u = lef_u + len_w;

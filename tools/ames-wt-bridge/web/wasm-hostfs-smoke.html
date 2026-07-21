@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>vere wasm hostfs smoke</title>
+<pre id="out" data-status="running">running
+</pre>
+<script type="module">
+import {
+  IndexedDBVereWasmFileStore,
+  runVereWasmProbeWithFileStore,
+} from './vere-wasm-host.mjs';
+
+const out = document.getElementById('out');
+const decoder = new TextDecoder();
+
+function write(line) {
+  out.textContent += `${line}\n`;
+}
+
+function decodeFile(files, path) {
+  const bytes = files.get(path);
+  return bytes ? decoder.decode(bytes) : null;
+}
+
+try {
+  const wasmUrl = new URL('../../../zig-out/bin/noun-hostfs-wasm.wasm', import.meta.url);
+  const store = new IndexedDBVereWasmFileStore({
+    scope: 'vere-hostfs-smoke',
+  });
+  await store.clear();
+
+  const { exitCode, plan } = await runVereWasmProbeWithFileStore(wasmUrl, {
+    fileStore: store,
+    initialFiles: {
+      '/in': 'ames!',
+    },
+    memoryOptions: {
+      loomExponent: 20,
+      overheadBytes: 64 * 1024,
+      minimumInitialBytes: 16 * 1024 * 1024,
+      maximumBytes: 32 * 1024 * 1024,
+    },
+  });
+
+  const persisted = await store.load();
+  const outFile = decodeFile(persisted.files, '/out');
+  const ok = exitCode === 0 &&
+    outFile === 'quic' &&
+    persisted.files.has('/random') === false &&
+    persisted.directories.has('/tmp');
+
+  write(`exit=${exitCode}`);
+  write(`initial=${plan.initialBytes}`);
+  write(`maximum=${plan.maximumBytes}`);
+  write(`/out=${outFile}`);
+  write(`/tmp=${persisted.directories.has('/tmp')}`);
+  write(`/random=${persisted.files.has('/random')}`);
+  out.dataset.status = ok ? 'ok' : 'fail';
+} catch (error) {
+  write(String(error?.stack ?? error));
+  out.dataset.status = 'fail';
+}
+</script>

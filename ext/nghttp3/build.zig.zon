@@ -1,0 +1,14 @@
+.{
+    .name = .nghttp3,
+    .fingerprint = 0xdd1c040fa529bc3e,
+    .version = "0.0.1",
+    .dependencies = .{
+        .nghttp3 = .{
+            .url = "https://github.com/ngtcp2/nghttp3/releases/download/v1.17.0/nghttp3-1.17.0.tar.xz",
+            .hash = "N-V-__8AALzpMAAqYAEJrADFTCNSDUKPFjz4vY8YjyyWhGjb",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}

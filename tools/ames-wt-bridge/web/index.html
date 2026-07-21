@@ -1,0 +1,555 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>ames over WebTransport — browser leg</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, monospace; max-width: 52rem; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.1rem; }
+  input { font: inherit; width: 100%; box-sizing: border-box; }
+  button { font: inherit; padding: .3rem .8rem; margin: .5rem 0; }
+  #log { white-space: pre-wrap; background: #f4f4f4; padding: 1rem; border-radius: 4px; min-height: 8rem; }
+  .rx { color: #0a0; } .tx { color: #06c; } .err { color: #c00; }
+  label { display: block; margin: .6rem 0 .1rem; color: #666; }
+</style>
+
+<h1>ames over WebTransport — browser leg</h1>
+<p>Dials the phase-0 bridge and generates a real mesa remote-scry packet
+   straight from the tab. This is the exact transport path an in-browser
+   ship (wasm runtime) will use: no UDP, WebTransport only.</p>
+
+<label>bridge URL</label>
+<input id="url" value="https://127.0.0.1:8443/~_~/ames">
+<label>dev cert sha-256 (base64, from the bridge's <code>-dev</code> log)</label>
+<input id="hash" placeholder="paste the bridge's printed hash">
+<label>source ship atom (decimal or 0x; default is ~marzod)</label>
+<input id="ship" value="0x100">
+<label>source life</label>
+<input id="local-life" value="1">
+<label>source rift</label>
+<input id="local-rift" value="0">
+<button id="comet">new comet</button>
+<button id="forget-comet">forget comet</button>
+<label>proof receiver ship atom</label>
+<input id="receiver" value="0x0">
+<label>proof receiver life</label>
+<input id="receiver-life" value="1">
+<label>remote scry path</label>
+<input id="path" value="/~zod/0/1/c/x/1/base/sys/kelvin">
+<label>ames packet override (hex, optional)</label>
+<input id="pkt" placeholder="leave empty to generate a mesa %peek">
+<label>boot-lite WASM URL</label>
+<input id="wasm-url" value="../../../zig-out/bin/noun-boot-lite-wasm.wasm">
+<label>hostfs WASM URL</label>
+<input id="hostfs-wasm-url" value="../../../zig-out/bin/noun-hostfs-wasm.wasm">
+
+<label>peer ship atom</label>
+<input id="chum-remote" value="0x0">
+<label>peer life</label>
+<input id="chum-remote-life" value="1">
+<label>peer rift</label>
+<input id="chum-remote-rift" value="0">
+<label>chum peer suite-B pass (@ux atom or raw hex)</label>
+<input id="chum-peer-pass" placeholder="optional; derives key when local comet ring is available">
+<label>chum symmetric key (@ux/hex/decimal)</label>
+<input id="chum-key" placeholder="required for encrypted %chum poke/open">
+<label>chum flow bone</label>
+<input id="chum-bone" value="3">
+<label>chum flow sequence</label>
+<input id="chum-seq" value="1">
+<label>chum ack inner path override</label>
+<input id="chum-ack-path" placeholder="leave empty for /a/x/1//flow/.../ack/...">
+<label>chum payload inner path override</label>
+<input id="chum-payload-path" placeholder="leave empty for /a/x/1//flow/.../poke/...">
+
+<button id="go">dial + send peek</button>
+<button id="proof">dial + send comet proof</button>
+<button id="peer-proof">dial + request peer proof</button>
+<button id="chum">dial + send encrypted chum poke</button>
+<button id="wasm-smoke">run WASM boot-lite</button>
+<button id="hostfs-smoke">run WASM hostfs</button>
+<div id="log"></div>
+
+<script type="module">
+import { AmesWebTransportClient, webTransportOptions } from './ames-client.mjs';
+import { AmesCometProofResponder } from './ames-comet-peer.mjs';
+import {
+  SUITE_B,
+  bytesFromAtomLE,
+  deriveAmesSymmetricKeyFromSuiteB,
+  generateCometIdentity,
+} from './ames-identity.mjs';
+import { AmesIdentityStore } from './ames-identity-store.mjs';
+import { AmesChumPeer, mesaFlowPath } from './ames-mesa-chum.mjs';
+import { cometProofPath, signCometProofPage, verifyCometProofPage } from './ames-proof.mjs';
+import { patp, patpToAtom } from './ames-ship.mjs';
+import { bytesToHex, decodePact, encodePeek, hexToBytes } from './mesa-pact.mjs';
+import { termAtom, tuple } from './urbit-noun.mjs';
+import {
+  IndexedDBVereWasmFileStore,
+  runVereWasmProbe,
+  runVereWasmProbeWithFileStore,
+} from './vere-wasm-host.mjs';
+
+const $ = id => document.getElementById(id);
+const IDENTITY_STORE_KEY = 'default-comet';
+const HOSTFS_STORE_SCOPE = 'demo-hostfs';
+const wasmTextDecoder = new TextDecoder();
+const log = (msg, cls='') => {
+  const line = document.createElement('span');
+  if (cls) line.className = cls;
+  line.textContent = msg + '\n';
+  $('log').append(line);
+};
+let client = null;
+let identity = null;
+const peers = new Map();
+const identityStore = new AmesIdentityStore();
+
+const parseAtom = text => {
+  const raw = String(text ?? '').trim();
+  if (!raw) throw new Error('atom is required');
+  if (raw.startsWith('~')) return patpToAtom(raw);
+  if (raw.startsWith('0x') || raw.startsWith('0X')) {
+    return BigInt(`0x${raw.slice(2).replace(/[._]/g, '')}`);
+  }
+  return BigInt(raw.replace(/[._]/g, ''));
+};
+
+const parseUint = (text, name) => {
+  const value = Number(parseAtom(text));
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative safe integer`);
+  }
+  return value;
+};
+
+const parseFixedBytes = (text, length, name) => {
+  const raw = String(text ?? '').trim();
+  if (!raw) throw new Error(`${name} is required`);
+  const compact = raw.replace(/\s+/g, '').replace(/[._]/g, '');
+  if (
+    !raw.startsWith('0x') &&
+    !raw.startsWith('0X') &&
+    /^[0-9a-fA-F]+$/.test(compact) &&
+    compact.length === length * 2
+  ) {
+    return hexToBytes(compact);
+  }
+  return bytesFromAtomLE(parseAtom(raw), length);
+};
+
+const packetFromForm = () => {
+  const hex = $('pkt').value.trim();
+  if (hex) {
+    return hexToBytes(hex);
+  }
+
+  return encodePeek({
+    ship: parseAtom($('ship').value),
+    path: $('path').value.trim(),
+    rift: parseUint($('local-rift').value, 'source rift'),
+  });
+};
+
+function chumInnerPaths() {
+  const local = parseAtom($('ship').value);
+  const remote = parseAtom($('chum-remote').value);
+  const bone = parseAtom($('chum-bone').value);
+  const sequence = parseAtom($('chum-seq').value);
+  return {
+    ackPath: $('chum-ack-path').value.trim() || mesaFlowPath({
+      bone,
+      load: 'ack',
+      direction: 'bak',
+      receiver: local,
+      sequence,
+    }),
+    payloadPath: $('chum-payload-path').value.trim() || mesaFlowPath({
+      bone,
+      load: 'poke',
+      direction: 'for',
+      receiver: remote,
+      sequence,
+    }),
+  };
+}
+
+async function deriveChumKeyFromPass(peerPass) {
+  if (!identity?.ringBytes) {
+    throw new Error('local suite-B ring is required; generate a comet identity first');
+  }
+  return deriveAmesSymmetricKeyFromSuiteB(identity, peerPass);
+}
+
+async function resolveChumKey({ required = false } = {}) {
+  const keyText = $('chum-key').value.trim();
+  if (!keyText) {
+    const passText = $('chum-peer-pass').value.trim();
+    if (passText) {
+      const peerPass = parseFixedBytes(passText, SUITE_B.passBytes, 'chum peer suite-B pass');
+      const derived = await deriveChumKeyFromPass(peerPass);
+      $('chum-key').value = `0x${derived.toString(16)}`;
+      log('derived chum symmetric key from local suite-B ring and peer pass', 'rx');
+      return derived;
+    }
+
+    const remote = parseAtom($('chum-remote').value);
+    const learned = peers.get(remote.toString());
+    if (learned) {
+      $('chum-remote-life').value = learned.life.toString();
+      $('chum-peer-pass').value = bytesToHex(learned.passBytes);
+      if (learned.key === undefined) {
+        learned.key = await deriveChumKeyFromPass(learned.passBytes);
+      }
+      $('chum-key').value = `0x${learned.key.toString(16)}`;
+      log(`using learned chum key for ${learned.shipPatp}`, 'rx');
+      return learned.key;
+    }
+
+    if (required) throw new Error('chum symmetric key or peer suite-B pass is required');
+    return undefined;
+  }
+
+  return parseAtom(keyText);
+}
+
+async function makeChumPeer(send, { required = false } = {}) {
+  const key = await resolveChumKey({ required });
+  if (key === undefined) {
+    return null;
+  }
+
+  try {
+    return new AmesChumPeer({
+      key,
+      local: parseAtom($('ship').value),
+      localLife: parseAtom($('local-life').value),
+      localRift: parseUint($('local-rift').value, 'source rift'),
+      remote: parseAtom($('chum-remote').value),
+      remoteLife: parseAtom($('chum-remote-life').value),
+      remoteRift: parseUint($('chum-remote-rift').value, 'chum peer rift'),
+      send,
+      onPoke: opened => {
+        log(`opened chum %poke ack=${opened.ack.innerPath} payload=${opened.payload.innerPath}`, 'rx');
+        log(`opened chum plaintext ${opened.plaintextBytes.length}B: ${bytesToHex(opened.plaintextBytes)}`, 'rx');
+        if (opened.gage !== undefined) {
+          log(`opened chum gage: ${JSON.stringify(opened.gage, (_, value) => typeof value === 'bigint' ? value.toString() : value)}`, 'rx');
+        }
+      },
+      onError: ({ type, error }) => {
+        log(`${type}: ${error}`, 'err');
+      },
+    });
+  } catch (e) {
+    if (required) throw e;
+    log('chum open disabled: ' + e, 'err');
+    return null;
+  }
+}
+
+async function learnCometProofPage(event) {
+  const local = parseAtom($('ship').value);
+  const localLife = parseAtom($('local-life').value);
+  const learned = await verifyCometProofPage(event.packet, {
+    receiver: local,
+    receiverLife: localLife,
+  });
+  if (!learned) {
+    return null;
+  }
+
+  let key;
+  if (identity?.ringBytes) {
+    key = await deriveChumKeyFromPass(learned.passBytes);
+  }
+
+  const record = {
+    ...learned,
+    key,
+  };
+  peers.set(learned.ship.toString(), record);
+  $('chum-remote').value = learned.ship.toString();
+  $('chum-remote-life').value = learned.life.toString();
+  $('chum-peer-pass').value = bytesToHex(learned.passBytes);
+  if (key !== undefined && !$('chum-key').value.trim()) {
+    $('chum-key').value = `0x${key.toString(16)}`;
+  }
+  log(`learned comet peer ${learned.shipPatp} life ${learned.life.toString()} from proof page`, 'rx');
+  return record;
+}
+
+function clearDerivedPeerKeys() {
+  $('chum-key').value = '';
+  for (const peer of peers.values()) {
+    peer.key = undefined;
+  }
+}
+
+function applyIdentity(nextIdentity, { restored = false } = {}) {
+  identity = nextIdentity;
+  $('ship').value = identity.comet.toString();
+  clearDerivedPeerKeys();
+  log(
+    `${restored ? 'restored' : 'comet'}: ${identity.comet.toString()} sponsor ${identity.sponsor.toString()}`,
+    'rx',
+  );
+  log(`suite-B pass bytes: ${bytesToHex(identity.passBytes)}`, 'rx');
+}
+
+async function restoreSavedIdentity() {
+  try {
+    const saved = await identityStore.load(IDENTITY_STORE_KEY);
+    if (saved) {
+      applyIdentity(saved, { restored: true });
+    }
+  } catch (e) {
+    log('comet restore failed: ' + e, 'err');
+  }
+}
+
+void restoreSavedIdentity();
+
+$('comet').onclick = async () => {
+  $('log').textContent = '';
+  log('generating comet identity...');
+  try {
+    const nextIdentity = await generateCometIdentity({ retainRing: true });
+    await identityStore.save(IDENTITY_STORE_KEY, nextIdentity);
+    applyIdentity(nextIdentity);
+    log('saved comet identity', 'rx');
+  } catch (e) {
+    log('comet generation failed: ' + e, 'err');
+  }
+};
+
+const logWasmBytes = (bytes, cls = '') => {
+  for (const raw of wasmTextDecoder.decode(bytes).replace(/\r/g, '').split('\n')) {
+    const line = raw.trimEnd();
+    if (line) log(`wasm: ${line}`, cls);
+  }
+};
+
+$('forget-comet').onclick = async () => {
+  $('log').textContent = '';
+  try {
+    await identityStore.forget(IDENTITY_STORE_KEY);
+    identity = null;
+    clearDerivedPeerKeys();
+    log('forgot saved comet identity');
+  } catch (e) {
+    log('forget comet failed: ' + e, 'err');
+  }
+};
+
+async function openClient({ requireChum = false } = {}) {
+  const url = $('url').value.trim();
+  if (client) {
+    try {
+      await client.close({ reason: 'new dial' });
+    } catch (_) {}
+  }
+
+  const hash = $('hash').value.trim();
+  let nextClient = null;
+  let chumPeer = null;
+  const nextResponder = new AmesCometProofResponder({
+    getIdentity: () => identity,
+    send: packet => nextClient.send(packet),
+    onPacket: ({ mode, packet }) => {
+      log(`rx ${mode} ${packet.length}B: ${bytesToHex(packet)}`, 'rx');
+    },
+    onProof: ({ mode, page, match }) => {
+      log(
+        `auto proof ${mode} ${page.pagePacket.length}B for ${match.receiverPatp}/${match.receiverLife}: ${bytesToHex(page.pagePacket)}`,
+        'tx',
+      );
+    },
+    onError: ({ type, error }) => {
+      log(`${type}: ${error}`, 'err');
+    },
+  });
+  chumPeer = await makeChumPeer(packet => nextClient.send(packet), { required: requireChum });
+
+  nextClient = new AmesWebTransportClient({
+    url,
+    options: webTransportOptions({ certificateHash: hash }),
+    onStatus: status => {
+      if (status.type === 'connecting') log('dialing ' + status.url + ' ...');
+      if (status.type === 'open') log('session open', 'rx');
+      if (status.type === 'closed' && !status.terminal) log('session closed');
+    },
+    onPacket: event => {
+      void nextResponder.handlePacket(event);
+      void learnCometProofPage(event).catch(error => {
+        log(`peer proof learn failed: ${error}`, 'err');
+      });
+      chumPeer?.handlePacket(event);
+    },
+    onError: ({ type, error }) => {
+      log(`${type}: ${error}`, 'err');
+    },
+  });
+  client = nextClient;
+  return { client, chumPeer };
+}
+
+async function sendPacket(pkt, { override = false } = {}) {
+  try {
+    try {
+      const pact = decodePact(pkt);
+      log(`packet: %${pact.type} ${pact.name.path} as ship ${pact.name.ship.toString()}`);
+    } catch (e) {
+      if (!override) {
+        throw e;
+      }
+      log('packet: raw override, codec parse skipped: ' + e);
+    }
+  } catch (e) {
+    log('packet decode failed: ' + e, 'err');
+    return;
+  }
+
+  const opened = await openClient();
+  // send the ames packet as a datagram or one-shot stream, per spec §4.1
+  try {
+    const mode = await opened.client.send(pkt);
+    log(`tx ${mode} ${pkt.length}B: ${bytesToHex(pkt)}`, 'tx');
+    log('sent — watching for response…');
+  } catch (e) {
+    log('send failed: ' + e, 'err');
+  }
+}
+
+$('go').onclick = async () => {
+  $('log').textContent = '';
+  try {
+    await sendPacket(packetFromForm(), { override: Boolean($('pkt').value.trim()) });
+  } catch (e) {
+    log('packet build failed: ' + e, 'err');
+  }
+};
+
+$('proof').onclick = async () => {
+  $('log').textContent = '';
+  if (!identity) {
+    log('generate a comet identity first', 'err');
+    return;
+  }
+
+  try {
+    const page = await signCometProofPage(identity, {
+      receiver: parseAtom($('receiver').value),
+      receiverLife: parseAtom($('receiver-life').value),
+    });
+    log(`proof path: ${page.path}`);
+    log(`binding path: ${page.bindingPath}`);
+    await sendPacket(page.pagePacket);
+  } catch (e) {
+    log('proof build failed: ' + e, 'err');
+  }
+};
+
+$('peer-proof').onclick = async () => {
+  $('log').textContent = '';
+  try {
+    const remote = parseAtom($('chum-remote').value);
+    const local = parseAtom($('ship').value);
+    const path = cometProofPath({
+      receiverPatp: patp(local),
+      receiverLife: parseAtom($('local-life').value),
+    });
+    $('path').value = path;
+    await sendPacket(encodePeek({
+      ship: remote,
+      path,
+      rift: parseUint($('chum-remote-rift').value, 'peer rift'),
+    }));
+  } catch (e) {
+    log('peer proof request failed: ' + e, 'err');
+  }
+};
+
+$('chum').onclick = async () => {
+  $('log').textContent = '';
+  try {
+    const opened = await openClient({ requireChum: true });
+    const paths = chumInnerPaths();
+    const sent = await opened.chumPeer.sendPoke({
+      ...paths,
+      gage: tuple(termAtom('message'), termAtom('ack'), 0n),
+    });
+    log(`chum ack path: ${sent.ackPath}`);
+    log(`chum payload path: ${sent.payloadPath}`);
+    log(`tx ${sent.mode} ${sent.packet.length}B: ${bytesToHex(sent.packet)}`, 'tx');
+    log('sent encrypted %chum %poke — watching for response…');
+  } catch (e) {
+    log('chum poke failed: ' + e, 'err');
+  }
+};
+
+$('wasm-smoke').onclick = async () => {
+  $('log').textContent = '';
+  const wasmUrl = $('wasm-url').value.trim();
+  try {
+    log(`loading ${wasmUrl} ...`);
+    const { exitCode, plan } = await runVereWasmProbe(wasmUrl, {
+      memoryOptions: {
+        loomExponent: 24,
+        maximumBytes: 128 * 1024 * 1024,
+      },
+      onStdout: bytes => logWasmBytes(bytes, 'rx'),
+      onStderr: bytes => logWasmBytes(bytes),
+    });
+    log(
+      `wasm boot-lite exited ${exitCode}; initial=${plan.initialBytes} max=${plan.maximumBytes}`,
+      exitCode === 0 ? 'rx' : 'err',
+    );
+  } catch (e) {
+    log('wasm boot-lite failed: ' + e, 'err');
+  }
+};
+
+$('hostfs-smoke').onclick = async () => {
+  $('log').textContent = '';
+  const wasmUrl = $('hostfs-wasm-url').value.trim();
+  try {
+    const store = new IndexedDBVereWasmFileStore({
+      scope: HOSTFS_STORE_SCOPE,
+    });
+    await store.clear();
+    log(`loading ${wasmUrl} ...`);
+    const { exitCode, plan } = await runVereWasmProbeWithFileStore(wasmUrl, {
+      fileStore: store,
+      initialFiles: {
+        '/in': 'ames!',
+      },
+      memoryOptions: {
+        loomExponent: 20,
+        overheadBytes: 64 * 1024,
+        minimumInitialBytes: 16 * 1024 * 1024,
+        maximumBytes: 32 * 1024 * 1024,
+      },
+      onStdout: bytes => logWasmBytes(bytes, 'rx'),
+      onStderr: bytes => logWasmBytes(bytes),
+    });
+    const persisted = await store.load();
+    const outFile = wasmTextDecoder.decode(
+      persisted.files.get('/out') ?? new Uint8Array(),
+    );
+    const ok = exitCode === 0 &&
+      outFile === 'quic' &&
+      persisted.directories.has('/tmp') &&
+      persisted.files.has('/random') === false;
+    log(
+      `/out=${outFile} ` +
+      `/tmp=${persisted.directories.has('/tmp')} ` +
+      `/random=${persisted.files.has('/random')}`,
+    );
+    log(
+      `wasm hostfs exited ${exitCode}; initial=${plan.initialBytes} max=${plan.maximumBytes}`,
+      ok ? 'rx' : 'err',
+    );
+  } catch (e) {
+    log('wasm hostfs failed: ' + e, 'err');
+  }
+};
+</script>

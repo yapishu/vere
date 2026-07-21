@@ -1,0 +1,17 @@
+.{
+    .name = .picotls,
+    .fingerprint = 0xb0947fae5af20017,
+    .version = "0.0.1",
+    .dependencies = .{
+        .picotls = .{
+            .url = "https://github.com/h2o/picotls/archive/f07f1c8c68b237f1468bc1f1fe1b68aba3ff23b4.tar.gz",
+            .hash = "N-V-__8AAOTCPABR5OeSawOndfYloxd_KfEaUWkGX3htcz8X",
+        },
+        .openssl = .{
+            .path = "../openssl",
+        },
+    },
+    .paths = .{
+        "",
+    },
+}

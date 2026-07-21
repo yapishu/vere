@@ -126,6 +126,14 @@ pub fn build(b: *std.Build) !void {
     const release = b.option(bool, "release", "Build for release") orelse false;
     if (release) optimize = .ReleaseFast;
 
+    addMesaSessionWasmStep(b, optimize);
+    addNounLoomWasmStep(b, optimize);
+    addNounHostfsWasmStep(b, optimize);
+    addNounEventsWasmStep(b, optimize);
+    addNounManageWasmStep(b, optimize);
+    addNounBootLiteWasmStep(b, optimize);
+    addNounIvoryBootWasmStep(b, optimize);
+
     const Pace = enum { once, live, soon, edge };
     const pace = @tagName(b.option(
         Pace,
@@ -258,6 +266,400 @@ pub fn build(b: *std.Build) !void {
             build_cfg,
         );
     }
+}
+
+fn addNounHostfsWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+    });
+
+    const step = b.step(
+        "noun-hostfs-wasm",
+        "Build the noun host filesystem boundary for wasm32-wasi",
+    );
+
+    const exe = b.addExecutable(.{
+        .name = "noun-hostfs-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    configureBrowserWasmMemory(exe);
+    exe.linkLibC();
+    exe.addIncludePath(b.path("pkg"));
+    exe.addIncludePath(b.path("pkg/noun"));
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "pkg/noun/hostfs_wasm_probe.c",
+            "pkg/noun/hostfs.c",
+        },
+        .flags = &.{
+            "-std=gnu23",
+            "-Wall",
+            "-Werror",
+            "-fno-sanitize=all",
+            "-DU3_OS_wasm=1",
+            "-DU3_OS_ENDIAN_little=1",
+        },
+    });
+
+    const install = b.addInstallArtifact(exe, .{});
+    step.dependOn(&install.step);
+}
+
+const wasm_page_size = 64 * 1024;
+const wasm32_max_pages = 65536;
+const wasm32_max_memory = wasm32_max_pages * wasm_page_size;
+const browser_wasm_stack_size = 16 * wasm_page_size;
+const browser_wasm_min_memory = 16 * 1024 * 1024;
+
+fn configureBrowserWasmMemory(exe: *std.Build.Step.Compile) void {
+    exe.import_memory = true;
+    exe.export_memory = true;
+    exe.initial_memory = browser_wasm_min_memory;
+    exe.max_memory = wasm32_max_memory;
+    exe.stack_size = browser_wasm_stack_size;
+}
+
+fn addNounEventsWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+        .cpu_features_add = std.Target.wasm.featureSet(&.{
+            .exception_handling,
+        }),
+    });
+
+    const step = b.step(
+        "noun-events-wasm",
+        "Compile the noun snapshot/event VM boundary for wasm32-wasi",
+    );
+
+    const obj = b.addObject(.{
+        .name = "noun-events-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    obj.linkLibC();
+    obj.addIncludePath(b.path("pkg"));
+    obj.addIncludePath(b.path("pkg/noun"));
+    obj.addIncludePath(b.path("pkg/noun/platform/wasm"));
+    obj.addIncludePath(b.path("ext/murmur3/vendor"));
+    obj.addCSourceFiles(.{
+        .files = &.{
+            "pkg/noun/events.c",
+        },
+        .flags = &.{
+            "-std=gnu23",
+            "-Wall",
+            "-Werror",
+            "-Wno-unused-function",
+            "-mexception-handling",
+            "-fno-sanitize=all",
+            "-DU3_OS_wasm=1",
+            "-DU3_OS_ENDIAN_little=1",
+            "-D__wasm_exception_handling__=1",
+        },
+    });
+
+    step.dependOn(&obj.step);
+}
+
+fn addNounManageWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+        .cpu_features_add = std.Target.wasm.featureSet(&.{
+            .exception_handling,
+        }),
+    });
+
+    const flags: []const []const u8 = &.{
+        "-std=gnu23",
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-function",
+        "-mexception-handling",
+        "-mllvm",
+        "-wasm-enable-sjlj",
+        "-fno-sanitize=all",
+        "-DU3_OS_wasm=1",
+        "-DU3_OS_ENDIAN_little=1",
+        "-D__wasm_exception_handling__=1",
+    };
+
+    const pkg_noun = b.dependency("pkg_noun", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+
+    const step = b.step(
+        "noun-manage-wasm",
+        "Compile the noun manager/boot-lite boundary for wasm32-wasi",
+    );
+    step.dependOn(&pkg_noun.artifact("noun-manage-wasm").step);
+}
+
+fn addNounBootLiteWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+        .cpu_features_add = std.Target.wasm.featureSet(&.{
+            .exception_handling,
+        }),
+    });
+
+    const flags: []const []const u8 = &.{
+        "-std=gnu23",
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-gnu-statement-expression",
+        "-mexception-handling",
+        "-mllvm",
+        "-wasm-enable-sjlj",
+        "-fno-sanitize=all",
+        "-DU3_OS_wasm=1",
+        "-DU3_OS_ENDIAN_little=1",
+        "-D__wasm_exception_handling__=1",
+    };
+
+    const pkg_noun = b.dependency("pkg_noun", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const pkg_ur = b.dependency("pkg_ur", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const gmp = b.dependency("gmp", .{
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "noun-boot-lite-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    configureBrowserWasmMemory(exe);
+    exe.linkLibC();
+    exe.linkLibrary(pkg_noun.artifact("noun"));
+    exe.addIncludePath(pkg_ur.artifact("ur").getEmittedIncludeTree());
+    exe.addIncludePath(gmp.artifact("gmp").getEmittedIncludeTree());
+    exe.addIncludePath(b.path("pkg"));
+    exe.addIncludePath(b.path("pkg/noun"));
+    exe.addCSourceFile(.{
+        .file = b.path("pkg/noun/boot_lite_wasm_probe.c"),
+        .flags = flags,
+    });
+
+    const install = b.addInstallArtifact(exe, .{});
+    const step = b.step(
+        "noun-boot-lite-wasm",
+        "Build a linked boot-lite noun runtime probe for wasm32-wasi",
+    );
+    step.dependOn(&install.step);
+}
+
+fn addNounIvoryBootWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+        .cpu_features_add = std.Target.wasm.featureSet(&.{
+            .exception_handling,
+        }),
+    });
+
+    const flags: []const []const u8 = &.{
+        "-std=gnu23",
+        "-Wall",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-gnu-statement-expression",
+        "-mexception-handling",
+        "-mllvm",
+        "-wasm-enable-sjlj",
+        "-fno-sanitize=all",
+        "-DU3_OS_wasm=1",
+        "-DU3_OS_ENDIAN_little=1",
+        "-D__wasm_exception_handling__=1",
+    };
+
+    const pkg_noun = b.dependency("pkg_noun", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const pkg_ur = b.dependency("pkg_ur", .{
+        .target = wasm_target,
+        .optimize = optimize,
+        .copt = flags,
+    });
+    const gmp = b.dependency("gmp", .{
+        .target = wasm_target,
+        .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "noun-ivory-boot-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    configureBrowserWasmMemory(exe);
+    exe.linkLibC();
+    exe.linkLibrary(pkg_noun.artifact("noun"));
+    exe.addIncludePath(pkg_ur.artifact("ur").getEmittedIncludeTree());
+    exe.addIncludePath(gmp.artifact("gmp").getEmittedIncludeTree());
+    exe.addIncludePath(b.path("pkg"));
+    exe.addIncludePath(b.path("pkg/noun"));
+    exe.addIncludePath(b.path("pkg/vere/ivory"));
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "pkg/noun/ivory_boot_wasm_probe.c",
+            "pkg/vere/ivory/ivory.c",
+        },
+        .flags = flags,
+    });
+
+    const install = b.addInstallArtifact(exe, .{});
+    const step = b.step(
+        "noun-ivory-boot-wasm",
+        "Build a linked Ivory-pill noun runtime probe for wasm32-wasi",
+    );
+    step.dependOn(&install.step);
+}
+
+fn addNounLoomWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+    });
+
+    const step = b.step(
+        "noun-loom-wasm",
+        "Build the noun loom allocation boundary for wasm32-wasi",
+    );
+
+    const exe = b.addExecutable(.{
+        .name = "noun-loom-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    configureBrowserWasmMemory(exe);
+    exe.linkLibC();
+    exe.addIncludePath(b.path("pkg"));
+    exe.addIncludePath(b.path("pkg/noun"));
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "pkg/noun/loom_wasm_probe.c",
+            "pkg/noun/loom.c",
+            "pkg/noun/log.c",
+            "pkg/noun/options.c",
+        },
+        .flags = &.{
+            "-std=gnu23",
+            "-Wall",
+            "-Werror",
+            "-fno-sanitize=all",
+            "-DU3_OS_wasm=1",
+            "-DU3_OS_ENDIAN_little=1",
+        },
+    });
+
+    const install = b.addInstallArtifact(exe, .{});
+    step.dependOn(&install.step);
+}
+
+fn addMesaSessionWasmStep(
+    b: *std.Build,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const wasm_target = b.resolveTargetQuery(.{
+        .cpu_arch = .wasm32,
+        .os_tag = .wasi,
+        .abi = .musl,
+    });
+
+    const step = b.step(
+        "mesa-session-wasm",
+        "Build the portable Mesa session core for wasm32-wasi",
+    );
+
+    const exe = b.addExecutable(.{
+        .name = "mesa-session-wasm",
+        .root_module = b.createModule(.{
+            .target = wasm_target,
+            .optimize = optimize,
+        }),
+    });
+
+    configureBrowserWasmMemory(exe);
+    exe.linkLibC();
+    exe.addIncludePath(b.path("pkg"));
+    exe.addIncludePath(b.path("pkg/noun"));
+    exe.addIncludePath(b.path("pkg/vere/io/mesa"));
+    exe.addCSourceFiles(.{
+        .files = &.{
+            "pkg/vere/io/mesa/session_wasm_probe.c",
+            "pkg/vere/io/mesa/session.c",
+        },
+        .flags = &.{
+            "-std=gnu23",
+            "-Wall",
+            "-Werror",
+            "-Wno-gnu-statement-expression",
+            "-Wno-unused-function",
+            "-fno-sanitize=all",
+            "-DU3_OS_wasm=1",
+            "-DU3_OS_ENDIAN_little=1",
+        },
+    });
+
+    const install = b.addInstallArtifact(exe, .{});
+    step.dependOn(&install.step);
 }
 
 fn buildBinary(
@@ -478,7 +880,22 @@ fn buildBinary(
         .optimize = optimize,
     });
 
+    const nghttp3 = b.dependency("nghttp3", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const ngtcp2 = b.dependency("ngtcp2", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const openssl = b.dependency("openssl", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const picotls = b.dependency("picotls", .{
         .target = target,
         .optimize = optimize,
     });
@@ -689,6 +1106,21 @@ fn buildBinary(
                 .deps = noun_test_deps,
             },
             .{
+                .name = "hostfs-test",
+                .file = "pkg/noun/hostfs_tests.c",
+                .deps = noun_test_deps,
+            },
+            .{
+                .name = "events-test",
+                .file = "pkg/noun/events_tests.c",
+                .deps = noun_test_deps,
+            },
+            .{
+                .name = "file-test",
+                .file = "pkg/noun/file_tests.c",
+                .deps = noun_test_deps,
+            },
+            .{
                 .name = "hamt-test",
                 .file = "pkg/vere/hamt_test.c",
                 .deps = vere_test_deps,
@@ -823,5 +1255,43 @@ fn buildBinary(
             test_step.dependOn(&run_unit_tests.step);
             test_step.dependOn(&exe_install.step);
         }
+
+        const quic_loopback_step =
+            b.step("quic-loopback", "Build & run ngtcp2/nghttp3/picotls loopback validation");
+        const quic_loopback = b.addExecutable(.{ .name = "quic-loopback", .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }) });
+
+        if (t.os.tag.isDarwin() and !target.query.isNative()) {
+            const macos_sdk = b.lazyDependency("macos_sdk", .{
+                .target = target,
+                .optimize = optimize,
+            });
+            if (macos_sdk != null) {
+                quic_loopback.addSystemIncludePath(macos_sdk.?.path("usr/include"));
+                quic_loopback.addLibraryPath(macos_sdk.?.path("usr/lib"));
+                quic_loopback.addFrameworkPath(macos_sdk.?.path("System/Library/Frameworks"));
+            }
+        }
+
+        quic_loopback.stack_size = 0;
+        quic_loopback.linkLibC();
+        quic_loopback.linkLibrary(ngtcp2.artifact("ngtcp2_crypto_picotls"));
+        quic_loopback.linkLibrary(ngtcp2.artifact("ngtcp2"));
+        quic_loopback.linkLibrary(nghttp3.artifact("nghttp3"));
+        quic_loopback.linkLibrary(picotls.artifact("picotls"));
+        quic_loopback.linkLibrary(openssl.artifact("ssl"));
+        quic_loopback.linkLibrary(openssl.artifact("crypto"));
+        quic_loopback.addCSourceFiles(.{
+            .files = &.{"pkg/vere/io/mesa/quic_loopback_test.c"},
+            .flags = urbit_flags.items,
+        });
+
+        const quic_loopback_install = b.addInstallArtifact(quic_loopback, .{});
+        const run_quic_loopback = b.addRunArtifact(quic_loopback);
+        run_quic_loopback.skip_foreign_checks = true;
+        quic_loopback_step.dependOn(&run_quic_loopback.step);
+        quic_loopback_step.dependOn(&quic_loopback_install.step);
     }
 }

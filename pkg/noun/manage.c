@@ -3,11 +3,13 @@
 #include "manage.h"
 
 #include <ctype.h>
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
 #include <dlfcn.h>
 #endif
 #include <errno.h>
+#ifndef U3_OS_wasm
 #include <signal.h>
+#endif
 #if defined(U3_OS_osx)
 #include <execinfo.h>
 #endif
@@ -22,11 +24,13 @@
 #include "backtrace.h"
 #include "events.h"
 #include "hashtable.h"
+#include "hostfs.h"
 #include "imprison.h"
 #include "jets.h"
 #include "jets/k.h"
 #include "jets/q.h"
 #include "log.h"
+#include "loom.h"
 #include "nock.h"
 #include "options.h"
 #include "retrieve.h"
@@ -38,7 +42,11 @@
 
 //  XX stack-overflow recovery should be gated by -a
 //
+#ifdef U3_OS_wasm
+#define NO_OVERFLOW
+#else
 #undef NO_OVERFLOW
+#endif
 
       /* (u3_noun)setjmp(u3R->esc.buf): setjmp within road.
       */
@@ -108,7 +116,7 @@
 //
 static rsignal_jmpbuf u3_Signal;
 
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
 #include "sigsegv.h"
 
 #ifndef SIGSTKSZ
@@ -123,7 +131,7 @@ static uint8_t Sigstk[SIGSTKSZ];
 #include "veh_handler.h"
 #endif
 
-static c3_w u3m_Ford_fresh_road_depth_w = 0;
+c3_w u3m_Ford_fresh_road_depth_w = 0;
 
 #if 0
 /* _cm_punt(): crudely print trace.
@@ -168,7 +176,7 @@ static void _cm_overflow(void *arg1, void *arg2, void *arg3)
 static void
 _cm_signal_handle(c3_l sig_l)
 {
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
   if ( c3__over == sig_l ) {
 #ifndef NO_OVERFLOW
     sigsegv_leave_handler(_cm_overflow, NULL, NULL, NULL);
@@ -183,7 +191,11 @@ _cm_signal_handle(c3_l sig_l)
 #ifndef NO_OVERFLOW
 static void
 #ifndef U3_OS_windows
+# ifdef U3_OS_wasm
+_cm_signal_handle_over(int x)
+# else
 _cm_signal_handle_over(int emergency, stackoverflow_context_t scp)
+# endif
 #else 
 _cm_signal_handle_over(int x)
 #endif
@@ -382,7 +394,7 @@ _cm_signal_deep(void)
   }
 
 #ifndef NO_OVERFLOW
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
   if ( 0 != stackoverflow_install_handler(_cm_signal_handle_over, Sigstk, SIGSTKSZ)) {
     u3l_log("unable to install stack overflow handler");
     abort();
@@ -415,7 +427,7 @@ _cm_signal_done(void)
   rsignal_deinstall_handler(SIGVTALRM);
 
 #ifndef NO_OVERFLOW
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
   stackoverflow_deinstall_handler();
 #else
   rsignal_install_handler(SIGSTK, _cm_signal_handle_over);
@@ -454,28 +466,21 @@ u3m_signal(u3_noun sig_l)
 u3_noun
 u3m_file(c3_c* pas_c)
 {
-  struct stat buf_b;
-  c3_i        fid_i = c3_open(pas_c, O_RDONLY, 0644);
-  c3_w        fln_w, red_w;
-  c3_y*       pad_y;
+  c3_d  len_d;
+  c3_y* pad_y;
 
-  if ( (fid_i < 0) || (fstat(fid_i, &buf_b) < 0) ) {
-    u3l_log("%s: %s", pas_c, strerror(errno));
+  if ( c3n == u3fs_mmap_read("file", pas_c, &len_d, &pad_y) ) {
     return u3m_bail(c3__fail);
   }
-  fln_w = buf_b.st_size;
-  pad_y = c3_malloc(buf_b.st_size);
 
-  red_w = read(fid_i, pad_y, fln_w);
-  close(fid_i);
-
-  if ( fln_w != red_w ) {
-    c3_free(pad_y);
+  if ( len_d > UINT32_MAX ) {
+    u3l_log("%s: too large: %" PRIu64, pas_c, len_d);
+    u3fs_munmap(len_d, pad_y);
     return u3m_bail(c3__fail);
   }
   else {
-    u3_noun pad = u3i_bytes(fln_w, (c3_y *)pad_y);
-    c3_free(pad_y);
+    u3_noun pad = u3i_bytes((c3_w)len_d, pad_y);
+    u3fs_munmap(len_d, pad_y);
 
     return pad;
   }
@@ -729,6 +734,7 @@ u3m_dump(void)
 }
 #endif
 
+#ifndef U3_OS_wasm
 struct bt_cb_data {
   c3_y  count;
   c3_y  fail;
@@ -892,6 +898,12 @@ u3m_stacktrace()
 #endif
 #endif
 }
+#else
+void
+u3m_stacktrace()
+{
+}
+#endif
 
 /* u3m_bail(): bail out.  Does not return.
 **
@@ -2236,7 +2248,7 @@ u3m_wall(u3_noun wol)
 static void
 _cm_limits(void)
 {
-#ifndef U3_OS_windows
+#if !defined(U3_OS_windows) && !defined(U3_OS_wasm)
   struct rlimit rlm;
 
   //  Moar stack.
@@ -2429,7 +2441,9 @@ u3m_ward(void)
 static void
 _cm_signals(void)
 {
-#ifndef U3_OS_windows
+#ifdef U3_OS_wasm
+  return;
+#elif !defined(U3_OS_windows)
   if ( 0 != sigsegv_install_handler(u3m_fault) ) {
     u3l_log("boot: sigsegv install failed");
     exit(1);
@@ -2492,45 +2506,8 @@ u3m_init(size_t len_i)
   //
   mp_set_memory_functions(u3a_malloc, u3a_realloc, _cm_free2);
 
-  //  make sure that [len_i] is a fully-addressible non-zero power of two.
-  //
-  if (  !len_i
-     || (len_i & (len_i - 1))
-     || (len_i < (1 << (u3a_page + 2)))
-     || (len_i > u3a_bytes) )
-  {
-    u3l_log("loom: bad size: %zu", len_i);
+  if ( c3n == u3m_loom_init(len_i) ) {
     exit(1);
-  }
-
-  // map at fixed address.
-  //
-  {
-    void* map_v = mmap((void *)u3_Loom,
-                       len_i,
-                       (PROT_READ | PROT_WRITE),
-                       (MAP_ANON | MAP_FIXED | MAP_PRIVATE),
-                       -1, 0);
-
-    if ( -1 == (c3_ps)map_v ) {
-      map_v = mmap((void *)0,
-                   len_i,
-                   (PROT_READ | PROT_WRITE),
-                   (MAP_ANON | MAP_PRIVATE),
-                   -1, 0);
-
-      u3l_log("boot: mapping %zuMB failed", len_i >> 20);
-      u3l_log("see https://docs.urbit.org/user-manual/running/cloud-hosting"
-              " for adding swap space");
-      if ( -1 != (c3_ps)map_v ) {
-        u3l_log("if porting to a new platform, try U3_OS_LoomBase %p",
-                map_v);
-      }
-      exit(1);
-    }
-
-    u3C.wor_i = len_i >> 2;
-    u3l_log("loom: mapped %zuMB", len_i >> 20);
   }
 }
 
@@ -2557,27 +2534,18 @@ u3m_pier(c3_c* dir_c)
   u3C.dir_c = dir_c;
 
   snprintf(ful_c, 8192, "%s", dir_c);
-  if ( c3_mkdir(ful_c, 0700) ) {
-    if ( EEXIST != errno ) {
-      fprintf(stderr, "loom: pier create: %s\r\n", strerror(errno));
-      exit(1);
-    }
+  if ( c3n == u3fs_ensure_dir("loom: pier", ful_c, 0700) ) {
+    exit(1);
   }
 
   snprintf(ful_c, 8192, "%s/.urb", dir_c);
-  if ( c3_mkdir(ful_c, 0700) ) {
-    if ( EEXIST != errno ) {
-      fprintf(stderr, "loom: .urb create: %s\r\n", strerror(errno));
-      exit(1);
-    }
+  if ( c3n == u3fs_ensure_dir("loom: pier", ful_c, 0700) ) {
+    exit(1);
   }
 
   snprintf(ful_c, 8192, "%s/.urb/chk", dir_c);
-  if ( c3_mkdir(ful_c, 0700) ) {
-    if ( EEXIST != errno ) {
-      fprintf(stderr, "loom: .urb/chk create: %s\r\n", strerror(errno));
-      exit(1);
-    }
+  if ( c3n == u3fs_ensure_dir("loom: pier", ful_c, 0700) ) {
+    exit(1);
   }
 
   return strdup(dir_c);
@@ -2861,7 +2829,6 @@ u3m_time_out_ts(struct timespec* tim_ts, u3_noun now)
 c3_t
 u3m_time_out_it(struct itimerval* tim_it, u3_noun gap)
 {
-  struct timeval tim_tv;
   c3_d ufc_d = u3r_chub(0, gap);
   c3_d urs_d = u3r_chub(1, gap);
   tim_it->it_value.tv_sec  = urs_d;

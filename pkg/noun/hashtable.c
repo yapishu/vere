@@ -358,7 +358,7 @@ _ch_node_del(u3h_slot* sot_w, u3_noun key, c3_w lef_w, c3_w rem_w)
   u3h_node* han_u = (u3h_node*) u3h_slot_to_node(*sot_w);
   u3h_slot* tos_w;
 
-  c3_w bit_w, inx_w, map_w, i_w;
+  c3_w bit_w, inx_w, map_w;
 
   lef_w -= 5;
   bit_w = (rem_w >> lef_w);

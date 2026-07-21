@@ -3,6 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const t = target.result;
 
     const dep_c = b.dependency("whereami", .{
         .target = target,
@@ -18,13 +19,23 @@ pub fn build(b: *std.Build) void {
 
     lib.addIncludePath(dep_c.path("src"));
 
-    lib.addCSourceFiles(.{
-        .root = dep_c.path("src"),
-        .files = &.{"whereami.c"},
-        .flags = &.{
-            "-fno-sanitize=all",
-        },
-    });
+    if (t.os.tag == .wasi) {
+        lib.addCSourceFiles(.{
+            .root = b.path(""),
+            .files = &.{"wasm_stub.c"},
+            .flags = &.{
+                "-fno-sanitize=all",
+            },
+        });
+    } else {
+        lib.addCSourceFiles(.{
+            .root = dep_c.path("src"),
+            .files = &.{"whereami.c"},
+            .flags = &.{
+                "-fno-sanitize=all",
+            },
+        });
+    }
 
     lib.installHeader(dep_c.path("src/whereami.h"), "whereami.h");
 

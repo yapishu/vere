@@ -4,6 +4,23 @@
 #include "c3/c3.h"
 #include "ship.h"
 
+  /*  driver entry points for transport backends (quic/webtransport);
+  **  defined in io/mesa.c
+  */
+    typedef struct _u3_mesa  u3_mesa;
+    typedef struct _u3_sess  u3_sess;
+
+  /* u3_mesa_fell(): inject %fell: [her_u]'s route over [lan] is dead.
+  */
+    void
+    u3_mesa_fell(u3_mesa* sam_u, u3_ship her_u, u3_noun lan);
+
+  /* u3_mesa_sess_close(): backend reports [ses_u] closed; drop bindings
+  ** and inject %fell for each formerly-bound ship.
+  */
+    void
+    u3_mesa_sess_close(u3_mesa* sam_u, u3_sess* ses_u);
+
 #define MESA_VER       1
 #define FINE_PAGE      4096             //  packets per page
 #define FINE_FRAG      1024             //  bytes per fragment packet

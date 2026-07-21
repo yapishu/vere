@@ -9,6 +9,8 @@
 #include "io/ames/stun.h"
 #include "mesa/mesa.h"
 #include "mesa/bitset.h"
+#include "mesa/quic.h"
+#include "mesa/session.h"
 #include <allocate.h>
 #include <error.h>
 #include <imprison.h>
@@ -27,7 +29,6 @@
 static c3_o dop_o = c3n;
 
 static c3_y are_y[524288];
-
 
 // #define MESA_DEBUG     c3y
 #define RED_TEXT    "\033[0;31m"
@@ -129,8 +130,23 @@ typedef struct _u3_pit_addr u3_pit_addr;
 
 typedef struct sockaddr_in sockaddr_in;
 
+typedef enum _u3_mesa_lane_kind {
+  U3_MESA_LANE_UDP4 = 0,
+  U3_MESA_LANE_SESS = 1,
+  U3_MESA_LANE_QUIC4 = 2,
+} u3_mesa_lane_kind;
+
+typedef struct _u3_mesa_lane {
+  u3_mesa_lane_kind kin_e;
+  union {
+    sockaddr_in adr4_u;
+    u3_sess*    ses_u;
+    sockaddr_in qic4_u;
+  };
+} u3_mesa_lane;
+
 typedef struct _u3_pit_addr {
-  sockaddr_in sdr_u;
+  u3_mesa_lane lan_u;
   u3_pit_addr* nex_p;
 } u3_pit_addr;
 
@@ -292,6 +308,9 @@ typedef struct _u3_mesa {
   arena              are_u;       //  per packet arena
   arena              par_u;       //  permanent arena
   uv_timer_t         tim_u;       //  pit clear timer
+  u3_sess_tab*       sab_u;       //  ship -> transport-session bindings
+  u3_mesa_quic*      qic_u;       //  raw-QUIC listener
+  u3_mesa_tran       qit_u;       //  raw-QUIC send vtable
 } u3_mesa;
 
 typedef struct _u3_peer {
@@ -359,7 +378,7 @@ typedef struct _u3_seal {
 typedef struct _u3_mesa_cb_data {
   u3_mesa*     sam_u;
   u3_mesa_name nam_u;
-  sockaddr_in  lan_u;
+  u3_mesa_lane lan_u;
 } u3_mesa_cb_data;
 
 static c3_d
@@ -579,14 +598,210 @@ _init_gage(u3_gage* gag_u)  //  microseconds
   gag_u->sst_w = 10000;
 }
 
-/* u3_mesa_encode_lane(): serialize lane to noun
+static u3_mesa_lane
+_mesa_lane_udp4(sockaddr_in adr_u)
+{
+  return (u3_mesa_lane){
+    .kin_e = U3_MESA_LANE_UDP4,
+    .adr4_u = adr_u,
+  };
+}
+
+static u3_mesa_lane
+_mesa_lane_sess(u3_sess* ses_u)
+{
+  return (u3_mesa_lane){
+    .kin_e = U3_MESA_LANE_SESS,
+    .ses_u = ses_u,
+  };
+}
+
+static u3_mesa_lane
+_mesa_lane_quic4(sockaddr_in adr_u)
+{
+  return (u3_mesa_lane){
+    .kin_e = U3_MESA_LANE_QUIC4,
+    .qic4_u = adr_u,
+  };
+}
+
+//  session lane atoms are namespaced by bit 63, disjoint from ip:port
+//  chubs (48 bits) and galaxy names (8 bits); the kernel stores them
+//  opaquely, gates %bind emission on the same tag, and echoes them back
+//  in %push and %bind
+//
+#define MESA_SESS_LANE_TAG           ((c3_d)1 << 63)
+#define MESA_HOP_LONG_QUIC_UDP4      0x01
+#define MESA_HOP_LONG_QUIC_UDP4_SIZE 7
+
+static c3_o
+_mesa_decode_quic_udp4_hop(const u3_mesa_hop_once* hop_u,
+                           sockaddr_in*            adr_u)
+{
+  if (  (NULL == hop_u)
+     || (NULL == adr_u)
+     || (MESA_HOP_LONG_QUIC_UDP4_SIZE != hop_u->len_w)
+     || (NULL == hop_u->dat_y)
+     || (MESA_HOP_LONG_QUIC_UDP4 != hop_u->dat_y[0]) )
+  {
+    return c3n;
+  }
+
+  memset(adr_u, 0, sizeof(*adr_u));
+  adr_u->sin_family = AF_INET;
+  adr_u->sin_addr.s_addr = htonl(c3_sift_word(hop_u->dat_y + 1));
+  adr_u->sin_port = htons(c3_sift_short(hop_u->dat_y + 5));
+  return __(0 != adr_u->sin_port);
+}
+
+static c3_o
+_mesa_decode_session_lane(u3_noun lan, c3_d* sid_d)
+{
+  c3_d lan_d;
+  if (  (c3n == u3r_safe_chub(lan, &lan_d))
+     || !(lan_d & MESA_SESS_LANE_TAG) )
+  {
+    return c3n;
+  }
+  *sid_d = lan_d & ~MESA_SESS_LANE_TAG;
+  return c3y;
+}
+
+//  _mesa_encode_session_lane(): lane atom for a session, for %heer
+//  injection so the kernel hears, stores, and echoes the tagged form
+//
+static c3_d
+_mesa_encode_session_lane(c3_d sid_d)
+{
+  return sid_d | MESA_SESS_LANE_TAG;
+}
+
+static u3_noun
+_mesa_encode_old_session_lane(c3_d sid_d)
+{
+  return u3nc(c3n, u3i_chub(_mesa_encode_session_lane(sid_d)));
+}
+
+static c3_o
+_mesa_pit_lanes_equal(u3_mesa_lane lan_u, u3_mesa_lane lon_u)
+{
+  if ( lan_u.kin_e != lon_u.kin_e ) {
+    return c3n;
+  }
+
+  switch ( lan_u.kin_e ) {
+    case U3_MESA_LANE_UDP4: {
+      return __((lan_u.adr4_u.sin_addr.s_addr == lon_u.adr4_u.sin_addr.s_addr) &&
+                (lan_u.adr4_u.sin_port == lon_u.adr4_u.sin_port));
+    }
+    case U3_MESA_LANE_SESS: {
+      return __(lan_u.ses_u == lon_u.ses_u);
+    }
+    case U3_MESA_LANE_QUIC4: {
+      return __((lan_u.qic4_u.sin_addr.s_addr == lon_u.qic4_u.sin_addr.s_addr) &&
+                (lan_u.qic4_u.sin_port == lon_u.qic4_u.sin_port));
+    }
+  }
+
+  return c3n;
+}
+
+static c3_o
+_mesa_pit_lane_zero(u3_mesa_lane lan_u)
+{
+  switch ( lan_u.kin_e ) {
+    case U3_MESA_LANE_UDP4: return __(0 == lan_u.adr4_u.sin_port);
+    case U3_MESA_LANE_SESS: return __(NULL == lan_u.ses_u);
+    case U3_MESA_LANE_QUIC4: return __(0 == lan_u.qic4_u.sin_port);
+  }
+
+  return c3y;
+}
+
+static sockaddr_in
+_mesa_lane_origin_udp4(u3_mesa* sam_u, u3_mesa_lane lan_u)
+{
+  (void)sam_u;
+
+  if ( U3_MESA_LANE_UDP4 == lan_u.kin_e ) {
+    return lan_u.adr4_u;
+  }
+
+  u3_assert(0);
+  return (sockaddr_in){0};
+}
+
+static sockaddr_in
+_mesa_quic_origin_udp4(u3_mesa* sam_u)
+{
+  sockaddr_in adr_u = {0};
+  adr_u.sin_family = AF_INET;
+
+  if ( c3n == u3_Host.ops_u.net ) {
+    adr_u.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  }
+  else if (  (c3__czar == u3_ship_rank(sam_u->pir_u->who_d))
+          && (NULL != u3_Host.imp_u) )
+  {
+    adr_u.sin_addr.s_addr = htonl(u3_Host.imp_u[sam_u->pir_u->who_d[0]]);
+  }
+  else {
+    adr_u.sin_addr.s_addr = htonl(INADDR_ANY);
+  }
+
+  adr_u.sin_port = htons(sam_u->pir_u->poq_s);
+  return adr_u;
+}
+
+static c3_o
+_mesa_peer_session_lane(u3_mesa* sam_u, u3_peer* per_u, u3_mesa_lane* lan_u)
+{
+  u3_sess* ses_u;
+
+  if ( NULL == sam_u->sab_u ) {
+    return c3n;
+  }
+
+  ses_u = u3_sess_find(sam_u->sab_u, per_u->her_u);
+  if ( NULL == ses_u ) {
+    return c3n;
+  }
+
+  *lan_u = _mesa_lane_sess(ses_u);
+  return c3y;
+}
+
+/* _mesa_encode_udp4_lane(): serialize IPv4 lane to noun.
 */
 static u3_noun
-u3_mesa_encode_lane(sockaddr_in lan_u) {
+_mesa_encode_udp4_lane(sockaddr_in lan_u) {
   // [%if ip=@ port=@]
   c3_w pip_w = ntohl(lan_u.sin_addr.s_addr);
   c3_s por_s = ntohs(lan_u.sin_port);
   return u3nt(c3__if, u3i_word(pip_w), por_s);
+}
+
+/* u3_mesa_encode_lane(): serialize lane to noun.
+*/
+static u3_noun
+u3_mesa_encode_lane(u3_mesa_lane lan_u)
+{
+  switch ( lan_u.kin_e ) {
+    case U3_MESA_LANE_UDP4: {
+      return _mesa_encode_udp4_lane(lan_u.adr4_u);
+    }
+    case U3_MESA_LANE_SESS: {
+      c3_d sid_d = (NULL == lan_u.ses_u) ? 0 : lan_u.ses_u->sid_d;
+      return u3i_chub(_mesa_encode_session_lane(sid_d));
+    }
+    case U3_MESA_LANE_QUIC4: {
+      //  raw-QUIC advertised endpoints are runtime-internal until dialing
+      //  materializes a session lane
+      return u3i_chub(0);
+    }
+  }
+
+  return u3i_chub(0);
 }
 
 static u3_peer*
@@ -682,6 +897,21 @@ _ames_czar_port(c3_y imp_y)
   }
 }
 
+static c3_s
+_ames_quic_czar_port(c3_y imp_y)
+{
+  if ( 0 != u3_Host.ops_u.qsp_s ) {
+    return u3_Host.ops_u.qsp_s;
+  }
+
+  if ( c3n == u3_Host.ops_u.net ) {
+    return U3_MESA_QUIC_DEFAULT_PORT + imp_y;
+  }
+  else {
+    return U3_MESA_QUIC_DEFAULT_PORT;
+  }
+}
+
 static sockaddr_in
 _mesa_get_direct_lane(u3_mesa* sam_u, u3_ship her_u)
 {
@@ -706,6 +936,22 @@ _mesa_get_direct_lane(u3_mesa* sam_u, u3_ship her_u)
   return adr_u;
 }
 
+static sockaddr_in
+_mesa_get_czar_quic_addr(c3_y imp_y)
+{
+  sockaddr_in adr_u = {0};
+  adr_u.sin_family = AF_INET;
+
+  if ( c3n == u3_Host.ops_u.net ) {
+    adr_u.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  }
+  else {
+    adr_u.sin_addr.s_addr = htonl(u3_Host.imp_u[imp_y]);
+  }
+  adr_u.sin_port = htons(_ames_quic_czar_port(imp_y));
+  return adr_u;
+}
+
 static c3_o
 _mesa_lanes_equal(sockaddr_in lan_u, sockaddr_in lon_u)
 {
@@ -721,6 +967,18 @@ _mesa_get_czar_lane(u3_mesa* sam_u, c3_y imp_y)
   adr_u.sin_addr.s_addr = htonl(u3_Host.imp_u[imp_y]);
   adr_u.sin_port = htons(por_s);
   return adr_u;
+}
+
+static u3_mesa_lane
+_mesa_get_czar_send_lane(u3_mesa* sam_u, c3_y imp_y)
+{
+  (void)sam_u;
+
+  if ( c3y == u3_Host.ops_u.qsp ) {
+    return _mesa_lane_quic4(_mesa_get_czar_quic_addr(imp_y));
+  }
+
+  return _mesa_lane_udp4(_mesa_get_czar_lane(sam_u, imp_y));
 }
 
 /* _mesa_get_lane(): get lane
@@ -881,7 +1139,8 @@ _mesa_send_cb(uv_udp_send_t* req_u, c3_i sas_i)
   _mesa_free_seal(sel_u);
 }
 
-static void _mesa_send_buf(u3_mesa* sam_u, sockaddr_in add_u, c3_y* buf_y, c3_w len_w)
+static void
+_mesa_send_udp4_buf(u3_mesa* sam_u, sockaddr_in add_u, c3_y* buf_y, c3_w len_w)
 {
 
   add_u.sin_addr.s_addr = ( u3_Host.ops_u.net == c3y ) ? add_u.sin_addr.s_addr  : htonl(0x7f000001);
@@ -918,7 +1177,40 @@ static void _mesa_send_buf(u3_mesa* sam_u, sockaddr_in add_u, c3_y* buf_y, c3_w 
   }
 }
 
-static void _mesa_send(u3_mesa_pict* pic_u, sockaddr_in lan_u)
+static void
+_mesa_send_buf(u3_mesa* sam_u, u3_mesa_lane lan_u, c3_y* buf_y, c3_w len_w)
+{
+  switch ( lan_u.kin_e ) {
+    case U3_MESA_LANE_UDP4: {
+      _mesa_send_udp4_buf(sam_u, lan_u.adr4_u, buf_y, len_w);
+    } break;
+
+    case U3_MESA_LANE_SESS: {
+      if (  (NULL == lan_u.ses_u)
+         || (NULL == sam_u->qit_u.sen_f) )
+      {
+        c3_free(buf_y);
+        return;
+      }
+
+      sam_u->qit_u.sen_f(sam_u->qit_u.bak_v, lan_u.ses_u, buf_y, len_w);
+    } break;
+
+    case U3_MESA_LANE_QUIC4: {
+      if ( NULL == sam_u->qit_u.adr_f ) {
+        c3_free(buf_y);
+        return;
+      }
+
+      sam_u->qit_u.adr_f(sam_u->qit_u.bak_v,
+                         (const struct sockaddr*)&lan_u.qic4_u,
+                         buf_y,
+                         len_w);
+    } break;
+  }
+}
+
+static void _mesa_send(u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
 {
   u3_mesa* sam_u = pic_u->sam_u;
   c3_y  *buf_y  = c3_calloc(PACT_SIZE);
@@ -976,6 +1268,14 @@ _mesa_send_modal(u3_peer* per_u, uv_buf_t buf_u, u3_pit_addr* las_u)
   c3_y* sen_y = c3_calloc(len_w);
   memcpy(sen_y, buf_u.base, len_w);
 
+  {
+    u3_mesa_lane ses_u;
+    if ( c3y == _mesa_peer_session_lane(sam_u, per_u, &ses_u) ) {
+      _mesa_send_buf(sam_u, ses_u, sen_y, len_w);
+      return;
+    }
+  }
+
   u3_ship gal_u = {0};
   gal_u[0] = per_u->imp_y;
   c3_o our_o = u3_ships_equal(gal_u, sam_u->pir_u->who_d);
@@ -984,7 +1284,7 @@ _mesa_send_modal(u3_peer* per_u, uv_buf_t buf_u, u3_pit_addr* las_u)
        // if we are the sponsor of the ship, don't send to ourselves
        (our_o == c3y) )  {
     // u3l_log("mesa: direct");
-    _mesa_send_buf(sam_u, per_u->dan_u, sen_y, len_w);
+    _mesa_send_buf(sam_u, _mesa_lane_udp4(per_u->dan_u), sen_y, len_w);
     per_u->dir_u.sen_d = now_d;
   }
   else if ( las_u != NULL ) {
@@ -996,14 +1296,14 @@ _mesa_send_modal(u3_peer* per_u, uv_buf_t buf_u, u3_pit_addr* las_u)
       /* c3_free(gal_c); */
     #endif
     //
-    sockaddr_in imp_u = _mesa_get_czar_lane(sam_u, per_u->imp_y);
-    _mesa_send_buf(sam_u, imp_u, sen_y, len_w);
+    _mesa_send_buf(sam_u, _mesa_get_czar_send_lane(sam_u, per_u->imp_y),
+                   sen_y, len_w);
     per_u->ind_u.sen_d = now_d;
 
     if ( c3n == _mesa_is_lane_zero(per_u->dan_u) ) {
       c3_y* san_y = c3_calloc(len_w);
       memcpy(san_y, buf_u.base, len_w);
-      _mesa_send_buf(sam_u, per_u->dan_u, san_y, len_w);
+      _mesa_send_buf(sam_u, _mesa_lane_udp4(per_u->dan_u), san_y, len_w);
       per_u->dir_u.sen_d = now_d;
     }
   }
@@ -1127,7 +1427,7 @@ _mesa_req_pact_done(u3_pend_req*  req_u,
                     u3_mesa_name* nam_u,
                     u3_mesa_data* dat_u,
                     c3_y          hop_y,
-                    sockaddr_in   lan_u)
+                    u3_mesa_lane  lan_u)
 {
   u3_mesa* sam_u = req_u->per_u->sam_u; //  needed for the MESA_LOG macro
 
@@ -1208,8 +1508,11 @@ _mesa_req_pact_done(u3_pend_req*  req_u,
   #endif
 
   u3_lane_state* sat_u;
-  if ( 0 == hop_y && (c3n == _mesa_lanes_equal(lan_u, req_u->per_u->dan_u)) ) {
-    req_u->per_u->dan_u = lan_u;
+  if (  (0 == hop_y)
+     && (U3_MESA_LANE_UDP4 == lan_u.kin_e)
+     && (c3n == _mesa_lanes_equal(lan_u.adr4_u, req_u->per_u->dan_u)) )
+  {
+    req_u->per_u->dan_u = lan_u.adr4_u;
     sat_u = &req_u->per_u->dir_u;
     _init_lane_state(sat_u);
   }
@@ -1266,15 +1569,18 @@ _mesa_send_bufs(u3_mesa* sam_u,
 
   u3_pit_addr* t = las_u;
   while ( NULL != t ) {
-    sockaddr_in lan_u = t->sdr_u;
+    u3_mesa_lane lan_u = t->lan_u;
 
-    if ( !lan_u.sin_port ) {
+    if ( c3y == _mesa_pit_lane_zero(lan_u) ) {
       u3l_log("mesa: failed to realise lane");
     } else {
       c3_y* sen_y = c3_calloc(len_w);
       memcpy(sen_y, buf_y, len_w);
       _mesa_send_buf(sam_u, lan_u, sen_y, len_w);
-      if ( per_u && (c3y == _mesa_lanes_equal(lan_u, per_u->dan_u)) ) {
+      if (  per_u
+         && (U3_MESA_LANE_UDP4 == lan_u.kin_e)
+         && (c3y == _mesa_lanes_equal(lan_u.adr4_u, per_u->dan_u)) )
+      {
         per_u->dir_u.sen_d = _get_now_micros();
       }
     }
@@ -1299,7 +1605,7 @@ _mesa_del_pit(u3_mesa* sam_u, u3_mesa_name* nam_u)
 }
 
 static void
-_mesa_add_lane_to_pit(u3_mesa* sam_u, u3_mesa_name* nam_u, sockaddr_in lan_u)
+_mesa_add_lane_to_pit(u3_mesa* sam_u, u3_mesa_name* nam_u, u3_mesa_lane lan_u)
 {
   pit_map_itr itr_u = vt_get(&sam_u->pit_u, nam_u->str_u);
 
@@ -1312,7 +1618,7 @@ _mesa_add_lane_to_pit(u3_mesa* sam_u, u3_mesa_name* nam_u, sockaddr_in lan_u)
     ent_u->tim_d = now_d;
     u3_pit_addr* adr_u = new(&ent_u->are_u, u3_pit_addr, 1);
     adr_u->nex_p = 0;
-    adr_u->sdr_u = lan_u;
+    adr_u->lan_u = lan_u;
     ent_u->adr_u = adr_u;
 
     c3_c* str_c = new(&ent_u->are_u, c3_c, nam_u->str_u.len_w);
@@ -1332,14 +1638,14 @@ _mesa_add_lane_to_pit(u3_mesa* sam_u, u3_mesa_name* nam_u, sockaddr_in lan_u)
     ent_u->tim_d = now_d;
     u3_pit_addr* old_u = ent_u->adr_u;
     while (old_u) {
-      if ( c3y == _mesa_lanes_equal(lan_u, old_u->sdr_u) ) {
+      if ( c3y == _mesa_pit_lanes_equal(lan_u, old_u->lan_u) ) {
         return;
       }
       old_u = old_u->nex_p;
     }
 
     u3_pit_addr* adr_u = new(&ent_u->are_u, u3_pit_addr, 1);
-    adr_u->sdr_u = lan_u;
+    adr_u->lan_u = lan_u;
     u3_pit_addr* tmp_u = ent_u->adr_u;
     adr_u->nex_p = tmp_u;
     ent_u->adr_u = adr_u;
@@ -1348,13 +1654,29 @@ _mesa_add_lane_to_pit(u3_mesa* sam_u, u3_mesa_name* nam_u, sockaddr_in lan_u)
 }
 
 static u3_pit_addr*
-_mesa_lanes_to_addrs(u3_noun las, arena* are_u) {
+_mesa_lanes_to_addrs(u3_mesa* sam_u, u3_noun las, arena* are_u) {
   u3_pit_addr* adr_u = NULL;
   u3_noun lan, t = las;
   while ( t != u3_nul ) {
     u3x_cell(t, &lan, &t);
     u3_pit_addr* new_u = new(are_u, u3_pit_addr, 1);
-    new_u->sdr_u = _realise_lane(u3k(lan));
+    //  a session-tagged lane pushed by the kernel resolves to its live
+    //  session; a dead session yields a zero lane, which is dropped
+    //  downstream — to the peer that is ordinary loss
+    //
+    c3_d sid_d;
+    if ( c3y == _mesa_decode_session_lane(lan, &sid_d) ) {
+      new_u->lan_u = _mesa_lane_sess(u3_sess_find_sid(sam_u->sab_u, sid_d));
+    }
+    else if (  (c3y == u3_Host.ops_u.qsp)
+            && (c3y == u3a_is_cat(lan))
+            && (lan < 256) )
+    {
+      new_u->lan_u = _mesa_lane_quic4(_mesa_get_czar_quic_addr((c3_y)lan));
+    }
+    else {
+      new_u->lan_u = _mesa_lane_udp4(_realise_lane(u3k(lan)));
+    }
     new_u->nex_p = adr_u;
     adr_u = new_u;
   }
@@ -1384,7 +1706,7 @@ _mesa_resend_timer_cb(uv_timer_t* tim_u)
   }
 
   arena scratch = res_u->are_u;
-  u3_pit_addr* las_u = _mesa_lanes_to_addrs(dat_u->las, &scratch);
+  u3_pit_addr* las_u = _mesa_lanes_to_addrs(dat_u->sam_u, dat_u->las, &scratch);
 
   _mesa_send_bufs(dat_u->sam_u, NULL, dat_u->buf_y, dat_u->len_w, las_u);
 
@@ -1465,7 +1787,7 @@ _mesa_ef_send(u3_mesa* sam_u, u3_noun las, u3_noun pac)
     _mesa_put_request(sam_u, nam_u, (u3_pend_req*)CTAG_WAIT);
     res_u->tim_u.data = res_u;
 
-    u3_pit_addr* las_u = _mesa_lanes_to_addrs(las, &res_u->are_u);
+    u3_pit_addr* las_u = _mesa_lanes_to_addrs(sam_u, las, &res_u->are_u);
     _mesa_send_bufs(sam_u, NULL, buf_y, len_w, las_u);
     uv_timer_start(&res_u->tim_u, _mesa_resend_timer_cb, 1000, 0);
   }
@@ -1498,6 +1820,38 @@ static c3_o _mesa_kick(u3_mesa* sam_u, u3_noun tag, u3_noun dat)
         _mesa_ef_send(sam_u, u3k(las), u3k(pac));
         ret_o = c3y;
       }
+    } break;
+    case c3__bind: {
+      u3_noun her, rif, bon, seq, lan;
+      c3_w    rif_w;
+      c3_d    bon_d, seq_d, sid_d;
+
+      if (  (c3y != u3r_quil(dat, &her, &rif, &bon, &seq, &lan))
+         || (c3y != u3r_safe_word(rif, &rif_w))
+         || (c3y != u3r_safe_chub(bon, &bon_d))
+         || (c3y != u3r_safe_chub(seq, &seq_d)) )
+      {
+        ret_o = c3n;
+        break;
+      }
+
+      if ( c3n == _mesa_decode_session_lane(lan, &sid_d) ) {
+        ret_o = c3y;
+        break;
+      }
+
+      u3_sess* ses_u = u3_sess_find_sid(sam_u->sab_u, sid_d);
+      if ( NULL != ses_u ) {
+        u3_ship her_u;
+        u3_ship_of_noun(her_u, her);
+        u3_sess_bind(sam_u->sab_u,
+                     her_u,
+                     (u3_sess_fresh){ .rif_w = rif_w,
+                                      .bon_d = bon_d,
+                                      .seq_d = seq_d },
+                     ses_u);
+      }
+      ret_o = c3y;
     } break;
     case c3__send:
     case c3__turf:
@@ -1593,9 +1947,81 @@ _mesa_io_exit(u3_auto* car_u)
   u3_mesa* sam_u = (u3_mesa*)car_u;
   uv_timer_stop(&sam_u->tim_u);
   sam_u->tim_u.data = sam_u;
+  u3_mesa_quic_close(sam_u->qic_u);
+  sam_u->qic_u = NULL;
   uv_udp_recv_stop(&u3_Host.wax_u);
   uv_close((uv_handle_t*)&sam_u->tim_u, _mesa_exit_cb);
   uv_close((uv_handle_t*)&u3_Host.wax_u, 0);
+  u3_sess_tab_free(sam_u->sab_u);
+}
+
+/* u3_mesa_fell(): inject %fell: [her_u]'s route over [lan] is dead.
+**
+**   [lan] is an old-style $lane noun, transferred; the kernel drops its
+**   route for [her_u] iff the route still matches [lan].
+*/
+void
+u3_mesa_fell(u3_mesa* sam_u, u3_ship her_u, u3_noun lan)
+{
+  u3_noun wir = u3nc(c3__ames, u3_nul);
+  u3_noun cad = u3nt(c3__fell, u3_ship_to_noun(her_u), lan);
+  u3_auto_plan(&sam_u->car_u, u3_ovum_init(0, c3__ames, wir, cad));
+}
+
+/* _mesa_sess_fell: context for per-ship %fell injection on session close.
+*/
+typedef struct _mesa_sess_fell {
+  u3_mesa*  sam_u;
+  c3_d      sid_d;
+} _mesa_sess_fell;
+
+/* _mesa_sess_fell_cb(): a session died under [her_d]; tell the kernel.
+**
+**   %fell still uses old Ames $lane, so the session id is wrapped as
+**   an opaque address lane: `[%| (1<<63)|id]`.  %heer/%bind use Pact's
+**   opaque atom lane directly.
+*/
+static void
+_mesa_sess_fell_cb(void* ptr_v, const c3_d her_d[2])
+{
+  _mesa_sess_fell* fel_u = ptr_v;
+  u3_ship her_u = { her_d[0], her_d[1] };
+  u3_mesa_fell(fel_u->sam_u, her_u,
+               _mesa_encode_old_session_lane(fel_u->sid_d));
+}
+
+static void
+_mesa_pit_drop_sess(u3_mesa* sam_u, u3_sess* ses_u)
+{
+  pit_map_itr itr_u = vt_first(&sam_u->pit_u);
+
+  while ( !vt_is_end(itr_u) ) {
+    u3_pit_entry* ent_u = itr_u.data->val;
+    u3_pit_addr** adr_u = &ent_u->adr_u;
+
+    while ( NULL != *adr_u ) {
+      if (  (U3_MESA_LANE_SESS == (*adr_u)->lan_u.kin_e)
+         && (ses_u == (*adr_u)->lan_u.ses_u) )
+      {
+        *adr_u = (*adr_u)->nex_p;
+      }
+      else {
+        adr_u = &(*adr_u)->nex_p;
+      }
+    }
+
+    itr_u = vt_next(itr_u);
+  }
+}
+
+/* u3_mesa_sess_close(): backend reports [ses_u] closed.
+*/
+void
+u3_mesa_sess_close(u3_mesa* sam_u, u3_sess* ses_u)
+{
+  _mesa_sess_fell fel_u = { .sam_u = sam_u, .sid_d = ses_u->sid_d };
+  _mesa_pit_drop_sess(sam_u, ses_u);
+  u3_sess_close(sam_u->sab_u, ses_u, _mesa_sess_fell_cb, &fel_u);
 }
 
 static void
@@ -1690,12 +2116,12 @@ _mesa_put_jumbo_cache(u3_mesa* sam_u, u3_mesa_name* nam_u, u3_mesa_line* lin_u)
 
 static void
 _mesa_send_pact_single(u3_mesa*      sam_u,
-                       sockaddr_in   adr_u,
+                       u3_mesa_lane  lan_u,
                        u3_mesa_pact* pac_u)
 {
   c3_y* buf_y = c3_calloc(PACT_SIZE);
   c3_w len_w = mesa_etch_pact_to_buf(buf_y, PACT_SIZE, pac_u);
-  _mesa_send_buf(sam_u, adr_u, buf_y, len_w);
+  _mesa_send_buf(sam_u, lan_u, buf_y, len_w);
 }
 
 static void
@@ -1714,7 +2140,7 @@ _mesa_send_leaf(u3_mesa*      sam_u,
                 u3_mesa_line* lin_u,
                 u3_mesa_pact* pac_u, // scratchpad
                 c3_d          fra_d,
-                sockaddr_in   adr_u
+                u3_mesa_lane  lan_u
                 )
 {
   u3_mesa_name* nam_u = &pac_u->pag_u.nam_u;
@@ -1739,11 +2165,11 @@ _mesa_send_leaf(u3_mesa*      sam_u,
 #ifdef MESA_DEBUG
   // u3l_log(" sending leaf packet, fra_d: %"PRIu64, nam_u->fra_d);
 #endif
-  _mesa_send_pact_single(sam_u, adr_u, pac_u);
+  _mesa_send_pact_single(sam_u, lan_u, pac_u);
 }
 
 static void
-_mesa_send_piece(u3_mesa* sam_u, u3_mesa_line* lin_u, u3_mesa_name* nam_u, c3_d fra_d, sockaddr_in adr_u) {
+_mesa_send_piece(u3_mesa* sam_u, u3_mesa_line* lin_u, u3_mesa_name* nam_u, c3_d fra_d, u3_mesa_lane lan_u) {
   u3_mesa_pact pac_u = {0};
   u3_mesa_head* hed_u = &pac_u.hed_u;
   {
@@ -1770,20 +2196,20 @@ _mesa_send_piece(u3_mesa* sam_u, u3_mesa_line* lin_u, u3_mesa_name* nam_u, c3_d 
       c3_y* pro_y = c3_malloc(dat_u->len_w);
       memcpy(pro_y, lin_u->tip_y, dat_u->len_w);
       dat_u->fra_y = pro_y;
-      _mesa_send_pact_single(sam_u, adr_u, &pac_u);
+      _mesa_send_pact_single(sam_u, lan_u, &pac_u);
       c3_free(pro_y);
     }
 
     //  single-fragment message; just send the one data fragment
     else if ( 0 == fra_d ) {
-      _mesa_send_leaf(sam_u, lin_u, &pac_u, 0, adr_u);
+      _mesa_send_leaf(sam_u, lin_u, &pac_u, 0, lan_u);
     }
     else {
       u3l_log("mesa: weird fragment number %"PRIu64, fra_d);
     }
 
   } else {
-    _mesa_send_leaf(sam_u, lin_u, &pac_u, fra_d, adr_u);
+    _mesa_send_leaf(sam_u, lin_u, &pac_u, fra_d, lan_u);
   }
 }
 
@@ -1878,7 +2304,7 @@ _mesa_page_scry_jumbo_cb(void* vod_p, u3_noun res)
   if ( NULL != ent_u ) {
     u3_pit_addr* adr_u = ent_u->adr_u;
     while (adr_u) {
-      _mesa_send_piece(sam_u, lin_u, nam_u, 0, adr_u->sdr_u);
+      _mesa_send_piece(sam_u, lin_u, nam_u, 0, adr_u->lan_u);
       adr_u = adr_u->nex_p;
     }
     _mesa_del_pit(sam_u, nam_u);
@@ -1993,10 +2419,14 @@ _get_peer_lanes(u3_mesa* sam_u, u3_peer* per_u)
 }
 
 static void
-_hear_peer(u3_mesa* sam_u, u3_peer* per_u, sockaddr_in lan_u, c3_o dir_o)
+_hear_peer(u3_mesa* sam_u, u3_peer* per_u, u3_mesa_lane lan_u, c3_o dir_o)
 {
+  (void)sam_u;
+
   if ( c3y == dir_o ) {
-    per_u->dan_u = lan_u;
+    if ( U3_MESA_LANE_UDP4 == lan_u.kin_e ) {
+      per_u->dan_u = lan_u.adr4_u;
+    }
     per_u->dir_u.her_d = _get_now_micros();
   } else {
     per_u->ind_u.her_d = _get_now_micros();
@@ -2006,11 +2436,8 @@ _hear_peer(u3_mesa* sam_u, u3_peer* per_u, sockaddr_in lan_u, c3_o dir_o)
 static void
 _mesa_request_next_fragments(u3_mesa* sam_u,
                              u3_pend_req* req_u,
-                             sockaddr_in lan_u)
+                             u3_mesa_lane lan_u)
 {
-
-  lan_u.sin_addr.s_addr = ( u3_Host.ops_u.net == c3y ) ? lan_u.sin_addr.s_addr : htonl(0x7f000001);
-
   c3_w win_w = _mesa_req_get_cwnd(req_u);
   u3_mesa_pict* nex_u = req_u->pic_u;
   c3_w nex_d = req_u->nex_d;
@@ -2029,7 +2456,14 @@ _mesa_request_next_fragments(u3_mesa* sam_u,
     mesa_etch_pact_to_buf((c3_y*)buf_u.base, buf_u.len, &nex_u->pac_u);
     _mesa_req_pact_sent(req_u, fra_w, now_d);
 
-    _mesa_send_modal(req_u->per_u, buf_u, NULL);
+    if ( U3_MESA_LANE_SESS == lan_u.kin_e ) {
+      c3_y* sen_y = c3_calloc(buf_u.len);
+      memcpy(sen_y, buf_u.base, buf_u.len);
+      _mesa_send_buf(sam_u, lan_u, sen_y, buf_u.len);
+    }
+    else {
+      _mesa_send_modal(req_u->per_u, buf_u, NULL);
+    }
   }
 }
 
@@ -2056,7 +2490,7 @@ _mesa_veri_scry_cb(void* vod_p, u3_noun nun)
 }
 
 static void
-_mesa_req_pact_init(u3_mesa* sam_u, u3_mesa_pict* pic_u, sockaddr_in lan_u, u3_peer* per_u)
+_mesa_req_pact_init(u3_mesa* sam_u, u3_mesa_pict* pic_u, u3_mesa_lane lan_u, u3_peer* per_u)
 {
   sam_u->tim_d = _get_now_micros();
   u3_mesa_pact* pac_u = &pic_u->pac_u;
@@ -2178,17 +2612,34 @@ _mesa_page_bail_cb(u3_ovum* egg_u, u3_ovum_news new_e)
 }
 
 static void
-_mesa_add_hop(c3_y hop_y, u3_mesa_head* hed_u, u3_mesa_page_pact* pag_u, sockaddr_in lan_u)
+_mesa_add_hop(u3_mesa* sam_u, c3_y hop_y, u3_mesa_head* hed_u, u3_mesa_page_pact* pag_u, u3_mesa_lane lan_u)
 {
-  c3_w pip_w = ntohl(lan_u.sin_addr.s_addr);
-  c3_s por_s = ntohs(lan_u.sin_port);
-  c3_etch_word(pag_u->sot_u, pip_w);
-  c3_etch_short(pag_u->sot_u + 4, por_s);
-  hed_u->nex_y = HOP_SHORT;
+  (void)hop_y;
+
+  if ( U3_MESA_LANE_SESS == lan_u.kin_e ) {
+    sockaddr_in adr_u = _mesa_quic_origin_udp4(sam_u);
+    c3_y* dat_y = new(&sam_u->are_u, c3_y, MESA_HOP_LONG_QUIC_UDP4_SIZE);
+
+    dat_y[0] = MESA_HOP_LONG_QUIC_UDP4;
+    c3_etch_word(dat_y + 1, ntohl(adr_u.sin_addr.s_addr));
+    c3_etch_short(dat_y + 5, ntohs(adr_u.sin_port));
+
+    pag_u->one_u.len_w = MESA_HOP_LONG_QUIC_UDP4_SIZE;
+    pag_u->one_u.dat_y = dat_y;
+    hed_u->nex_y = HOP_LONG;
+  }
+  else {
+    c3_w pip_w = ntohl(lan_u.adr4_u.sin_addr.s_addr);
+    c3_s por_s = ntohs(lan_u.adr4_u.sin_port);
+
+    c3_etch_word(pag_u->sot_u, pip_w);
+    c3_etch_short(pag_u->sot_u + 4, por_s);
+    hed_u->nex_y = HOP_SHORT;
+  }
 }
 
 static void
-_mesa_forward_request(u3_mesa* sam_u, u3_mesa_pict* pic_u, sockaddr_in lan_u)
+_mesa_forward_request(u3_mesa* sam_u, u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
 {
   u3_mesa_pact* pac_u = &pic_u->pac_u;
   u3_peer* per_u = _mesa_get_peer(sam_u, pac_u->pek_u.nam_u.her_u);
@@ -2211,12 +2662,21 @@ _mesa_forward_request(u3_mesa* sam_u, u3_mesa_pict* pic_u, sockaddr_in lan_u)
   if ( c3y == sam_u->for_o
        && c3y == per_u->ful_o
        && sam_u->pir_u->who_d[0] == per_u->imp_y ) {
-    sockaddr_in lin_u = _mesa_get_direct_lane(sam_u, pac_u->pek_u.nam_u.her_u);
-    if ( _mesa_is_lane_zero(lin_u) == c3y) {
-      c3_c* shp_c = u3_ship_to_string(pac_u->pek_u.nam_u.her_u);
-      u3l_log("zero lane for %s", shp_c);
-      c3_free(shp_c);
-      return;
+    u3_mesa_lane out_u;
+    if ( c3n == _mesa_peer_session_lane(sam_u, per_u, &out_u) ) {
+      sockaddr_in lin_u = _mesa_get_direct_lane(sam_u, pac_u->pek_u.nam_u.her_u);
+      if ( _mesa_is_lane_zero(lin_u) == c3y) {
+        c3_c* shp_c = u3_ship_to_string(pac_u->pek_u.nam_u.her_u);
+        u3l_log("zero lane for %s", shp_c);
+        c3_free(shp_c);
+        return;
+      }
+      out_u = _mesa_lane_udp4(lin_u);
+
+      #ifdef MESA_DEBUG
+        c3_c* sip_c = inet_ntoa(lin_u.sin_addr);
+        u3l_log("mesa: sending packet to %s:%u", sip_c, ntohs(lin_u.sin_port));
+      #endif
     }
     inc_hopcount(&pac_u->hed_u);
     #ifdef MESA_DEBUG
@@ -2224,18 +2684,13 @@ _mesa_forward_request(u3_mesa* sam_u, u3_mesa_pict* pic_u, sockaddr_in lan_u)
       // _log_lane(&lan_u);
     #endif
 
-    #ifdef MESA_DEBUG
-      c3_c* sip_c = inet_ntoa(lin_u.sin_addr);
-      u3l_log("mesa: sending packet to %s:%u", sip_c, ntohs(lin_u.sin_port));
-    #endif
-
     _mesa_add_lane_to_pit(sam_u, &pac_u->pek_u.nam_u, lan_u);
-    _mesa_send(pic_u, lin_u);
+    _mesa_send(pic_u, out_u);
   }
 }
 
 static void
-_mesa_hear_page(u3_mesa_pict* pic_u, sockaddr_in lan_u)
+_mesa_hear_page(u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
 {
   #ifdef MESA_DEBUG
     u3l_log("mesa: hear_page()");
@@ -2269,12 +2724,11 @@ _mesa_hear_page(u3_mesa_pict* pic_u, sockaddr_in lan_u)
     #endif
 
     inc_hopcount(&pac_u->hed_u);
-    c3_etch_word(pac_u->pag_u.sot_u, ntohl(lan_u.sin_addr.s_addr));
-    c3_etch_short(pac_u->pag_u.sot_u + 4, ntohs(lan_u.sin_port));
 
     //  stick next hop in packet
 
-    _mesa_add_hop(pac_u->hed_u.hop_y, &pac_u->hed_u, &pac_u->pag_u, lan_u);
+    _mesa_add_hop(sam_u, pac_u->hed_u.hop_y, &pac_u->hed_u,
+                  &pac_u->pag_u, lan_u);
 
     _mesa_send_pact(sam_u, pin_u->adr_u, NULL, pac_u);
     _mesa_del_pit(sam_u, nam_u);
@@ -2338,11 +2792,22 @@ _mesa_hear_page(u3_mesa_pict* pic_u, sockaddr_in lan_u)
     return;
   }
 
-  sockaddr_in lon_u = {0};
+  u3_mesa_lane lon_u = {0};
   if ( HOP_SHORT == pac_u->hed_u.nex_y ) {
-    lon_u.sin_family = AF_INET;
-    lon_u.sin_addr.s_addr = htonl(c3_sift_word(pac_u->pag_u.sot_u));
-    lon_u.sin_port = htons(c3_sift_short(pac_u->pag_u.sot_u + 4));
+    sockaddr_in adr_u = {0};
+    adr_u.sin_family = AF_INET;
+    adr_u.sin_addr.s_addr = htonl(c3_sift_word(pac_u->pag_u.sot_u));
+    adr_u.sin_port = htons(c3_sift_short(pac_u->pag_u.sot_u + 4));
+    lon_u = _mesa_lane_udp4(adr_u);
+  }
+  else if ( HOP_LONG == pac_u->hed_u.nex_y ) {
+    sockaddr_in qic_u;
+    if ( c3y == _mesa_decode_quic_udp4_hop(&pac_u->pag_u.one_u, &qic_u) ) {
+      lon_u = _mesa_lane_quic4(qic_u);
+    }
+    else {
+      lon_u = lan_u;
+    }
   }
   else {
     lon_u = lan_u;
@@ -2391,7 +2856,7 @@ _mesa_hear_page(u3_mesa_pict* pic_u, sockaddr_in lan_u)
 }
 
 static void
-_mesa_hear_peek(u3_mesa_pict* pic_u, sockaddr_in lan_u)
+_mesa_hear_peek(u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
 {
   #ifdef MESA_DEBUG
     u3l_log("mesa: hear_peek()");
@@ -2461,7 +2926,7 @@ _mesa_poke_bail_cb(u3_ovum* egg_u, u3_noun lud)
 }
 
 static void
-_mesa_hear_poke(u3_mesa_pict* pic_u, sockaddr_in lan_u)
+_mesa_hear_poke(u3_mesa_pict* pic_u, u3_mesa_lane lan_u)
 {
   u3_mesa_pact* pac_u = &pic_u->pac_u;
   u3_mesa* sam_u = pic_u->sam_u;
@@ -2540,15 +3005,20 @@ _ames_hear(void*    sam_u,
            c3_y*    hun_y);
 
 static void
-_mesa_hear(u3_mesa* sam_u,
-           const struct sockaddr* adr_u,
-           c3_w     len_w,
-           c3_y*    hun_y)
+_mesa_hear_lane(u3_mesa* sam_u,
+                u3_mesa_lane lan_u,
+                c3_w         len_w,
+                c3_y*        hun_y)
 {
   if ( c3n == mesa_is_new_pact(hun_y, len_w) ) {
+    if ( U3_MESA_LANE_SESS == lan_u.kin_e ) {
+      return;
+    }
+
     c3_y* han_y = c3_malloc(len_w);
     memcpy(han_y, hun_y, len_w);
-    _ames_hear(u3_Host.sam_u, adr_u, len_w, han_y);
+    sockaddr_in adr_u = _mesa_lane_origin_udp4(sam_u, lan_u);
+    _ames_hear(u3_Host.sam_u, (const struct sockaddr*)&adr_u, len_w, han_y);
     return;
   }
 
@@ -2565,19 +3035,54 @@ _mesa_hear(u3_mesa* sam_u,
     return;
   }
 
-  sockaddr_in sdr_u = *((sockaddr_in*)adr_u);
-
   switch ( pic_u->pac_u.hed_u.typ_y ) {
     case PACT_PEEK: {
-      _mesa_hear_peek(pic_u, sdr_u);
+      _mesa_hear_peek(pic_u, lan_u);
     } break;
     case PACT_PAGE: {
-      _mesa_hear_page(pic_u, sdr_u);
+      _mesa_hear_page(pic_u, lan_u);
     } break;
     default: {
-      _mesa_hear_poke(pic_u, sdr_u);
+      _mesa_hear_poke(pic_u, lan_u);
     } break;
   }
+}
+
+static void
+_mesa_hear(u3_mesa* sam_u,
+           const struct sockaddr* adr_u,
+           c3_w     len_w,
+           c3_y*    hun_y)
+{
+  sockaddr_in sdr_u = *((sockaddr_in*)adr_u);
+  _mesa_hear_lane(sam_u, _mesa_lane_udp4(sdr_u), len_w, hun_y);
+}
+
+static u3_sess*
+_mesa_quic_sess_open_cb(void* ptr_v, void* bak_v)
+{
+  u3_mesa* sam_u = ptr_v;
+  return u3_sess_open(sam_u->sab_u, bak_v);
+}
+
+static void
+_mesa_quic_sess_close_cb(void* ptr_v, u3_sess* ses_u)
+{
+  if ( NULL != ses_u ) {
+    u3_mesa_sess_close(ptr_v, ses_u);
+  }
+}
+
+static void
+_mesa_quic_pkt_cb(void* ptr_v, u3_sess* ses_u, c3_y* buf_y, c3_w len_w)
+{
+  u3_mesa* sam_u = ptr_v;
+
+  //  Session binding is derived after packet authentication in the kernel;
+  //  verified %bind gifts map ship identities back onto these session ids.
+  //
+  _mesa_hear_lane(sam_u, _mesa_lane_sess(ses_u), len_w, buf_y);
+  c3_free(buf_y);
 }
 
 static void _mesa_recv_cb(uv_udp_t*        wax_u,
@@ -2677,6 +3182,36 @@ _mesa_io_talk(u3_auto* car_u)
 
   uv_send_buffer_size((uv_handle_t*)&u3_Host.wax_u, &rec_i);
 
+  {
+    u3_mesa_quic_config cfg_u = {
+      .lup_u = u3L,
+      .por_s = sam_u->pir_u->poq_s,
+      .net_o = u3_Host.ops_u.net,
+      .cb_u = {
+        .ptr_v       = sam_u,
+        .ses_open_f  = _mesa_quic_sess_open_cb,
+        .ses_close_f = _mesa_quic_sess_close_cb,
+        .pkt_f       = _mesa_quic_pkt_cb,
+      },
+    };
+
+    if ( c3n == u3_mesa_quic_open(&sam_u->qic_u, &sam_u->qit_u, &cfg_u) ) {
+      u3l_log("mesa: quic: failed to open");
+
+      //  XX revise
+      //
+      u3_pier_bail(u3_king_stub());
+    }
+
+    sam_u->pir_u->poq_s = u3_mesa_quic_port(sam_u->qic_u);
+  }
+  if ( c3y == u3_Host.ops_u.net ) {
+    u3l_log("mesa: quic live on %d", sam_u->pir_u->poq_s);
+  }
+  else {
+    u3l_log("mesa: quic live on %d (localhost only)", sam_u->pir_u->poq_s);
+  }
+
   sam_u->car_u.liv_o = c3y;
   //u3z(rac); u3z(who);
 }
@@ -2727,6 +3262,9 @@ u3_mesa_io_init(u3_pier* pir_u)
   vt_init(&sam_u->gag_u);
   vt_init(&sam_u->jum_u);
   vt_init(&sam_u->req_u);
+  sam_u->sab_u = u3_sess_tab_init();
+  sam_u->qic_u = NULL;
+  sam_u->qit_u = (u3_mesa_tran){0};
 
   //  Disable networking for fake ships
   //

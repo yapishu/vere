@@ -96,8 +96,6 @@ _decompress(u3_atom pos, u3_noun octs, int window_bits)
   u3i_slab_init(&sab_u, 3, INIT_SZ);
   strm.next_out = sab_u.buf_y;
 
-  void* this_address = strm.next_out;
-
 #define ZEROS_SZ 256
   c3_y zeros[ZEROS_SZ];
 

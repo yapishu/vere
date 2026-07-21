@@ -2,14 +2,15 @@
 #define U3_ALLOCATE_H
 
 #include "error.h"
+#include "loom.h"
 #include "manage.h"
 #include "rsignal.h"
 
   /**  Constants.
   **/
-    /* u3a_bits: number of bits in word-addressed pointer.  29 == 2GB.
+    /* u3a_bits: number of bits in word-addressed pointer.
     */
-#     define u3a_bits    U3_OS_LoomBits /* 30 */
+#     define u3a_bits    U3_OS_LoomBits
 
     /* u3a_vits: number of virtual bits in a noun reference gained via shifting
     */
@@ -23,9 +24,9 @@
     */
 #     define u3a_balign  (sizeof(c3_w)*u3a_walign)
 
-     /* u3a_bits_max: max loom bex
+     /* u3a_bits_max: max byte exponent accepted by --loom.
      */
-#    define u3a_bits_max (8 * sizeof(c3_w) + u3a_vits)
+#    define u3a_bits_max (u3a_bits + u3a_vits + 2)
 
     /* u3a_page: number of bits in word-addressed page.  12 == 16K page
     */
@@ -434,8 +435,6 @@ typedef struct {
 #ifdef U3_MEMORY_DEBUG
       extern c3_w u3_Code;
 #endif
-
-#   define u3_Loom      ((c3_w *)(void *)U3_OS_LoomBase)
 
   /* u3a_into(): convert loom offset [x] into generic pointer.
    */

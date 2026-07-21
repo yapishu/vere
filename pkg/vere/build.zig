@@ -91,6 +91,16 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
+    const ngtcp2 = b.dependency("ngtcp2", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const picotls = b.dependency("picotls", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     const openssl = b.dependency("openssl", .{
         .target = target,
         .optimize = optimize,
@@ -153,7 +163,11 @@ pub fn build(b: *std.Build) !void {
     pkg_vere.linkLibrary(h2o.artifact("h2o"));
     pkg_vere.linkLibrary(libuv.artifact("libuv"));
     pkg_vere.linkLibrary(lmdb.artifact("lmdb"));
+    pkg_vere.linkLibrary(ngtcp2.artifact("ngtcp2_crypto_picotls"));
+    pkg_vere.linkLibrary(ngtcp2.artifact("ngtcp2"));
+    pkg_vere.linkLibrary(picotls.artifact("picotls"));
     pkg_vere.linkLibrary(openssl.artifact("ssl"));
+    pkg_vere.linkLibrary(openssl.artifact("crypto"));
     pkg_vere.linkLibrary(urcrypt.artifact("urcrypt"));
     pkg_vere.linkLibrary(zlib.artifact("z"));
     pkg_vere.linkLibrary(pkg_c3.artifact("c3"));
@@ -231,6 +245,8 @@ const c_source_files = [_][]const u8{
     "io/mesa.c",
     "io/mesa/bitset.c",
     "io/mesa/pact.c",
+    "io/mesa/quic.c",
+    "io/mesa/session.c",
     "io/term.c",
     "io/unix.c",
     "ivory/ivory.c",
@@ -251,6 +267,8 @@ const install_headers = [_][]const u8{
     "io/lss.h",
     "io/mesa/bitset.h",
     "io/mesa/mesa.h",
+    "io/mesa/quic.h",
+    "io/mesa/session.h",
     "io/serial.h",
     "arena.h",
     "mars.h",

@@ -952,6 +952,7 @@ static u3j_core _136_non_d[] =
   };
 
 
+#ifndef U3_OS_wasm
 static u3j_harm _136_hex_lia_run_v1_a[] = {{".2", u3we_lia_run_v1, c3y}, {}};
 
 static u3j_harm _136_hex_lia_run_once_inner_a[] = {{".2", u3we_lia_run_once, c3y}, {}};
@@ -1001,6 +1002,7 @@ static u3j_core _136_hex_wasm_sur_d[] = {
   { "engine-sur-v0", 3, 0, _136_hex_wasm_engine_sur_d, no_hashes },
   {}
 };
+#endif
 
 static u3j_core _136_hex_d[] =
   { { "non", 7, 0, _136_non_d, no_hashes },
@@ -1029,7 +1031,9 @@ static u3j_core _136_hex_d[] =
     { "mimes",  31, 0, _136_hex_mimes_d,  no_hashes },
     { "json",   31, 0, _136_hex_json_d,   no_hashes },
     { "checksum", 15, 0, _136_hex_checksum_d, no_hashes},
+#ifndef U3_OS_wasm
     { "wasm-sur-v0", 3, 0, _136_hex_wasm_sur_d, no_hashes },
+#endif
     { "bytestream-v0", 31, 0, _136_hex_bytestream_d, no_hashes},
     { "zlib-v0", 31, 0, _136_hex__zlib_d, no_hashes },
     {}
@@ -1266,4 +1270,3 @@ u3j_core _k136_d[] =
   { { "one", 3, 0, _136_one_d, no_hashes },
     {}
   };
-

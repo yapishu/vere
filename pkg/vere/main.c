@@ -86,7 +86,8 @@ _main_read_loom(const c3_c* nam_c, const c3_c* arg_c, c3_y* out_y)
   c3_w lom_w;
   c3_o res_o = _main_readw(arg_c, u3a_bits_max + 1, &lom_w);
   if ( res_o == c3n || (lom_w < 20) ) {
-    fprintf(stderr, "error: --%s must be >= 20 and <= %zu\r\n", nam_c, u3a_bits_max);
+    fprintf(stderr, "error: --%s must be >= 20 and <= %zu\r\n",
+                    nam_c, (size_t)u3a_bits_max);
     return -1;
   }
   *out_y = lom_w;
@@ -195,8 +196,16 @@ _main_init(void)
   u3_Host.ops_u.kno_w = DefaultKernel;
 
   u3_Host.ops_u.sap_w = 120;    /* aka 2 minutes */
+  u3_Host.ops_u.poq_s = U3_MESA_QUIC_DEFAULT_PORT;
+  u3_Host.ops_u.qsp = c3n;
+  u3_Host.ops_u.qsp_s = 0;
+#if defined(U3_OS_wasm)
+  u3_Host.ops_u.lut_y = 28;     /* aka 256MB */
+  u3_Host.ops_u.lom_y = 28;
+#else
   u3_Host.ops_u.lut_y = 31;     /* aka 2G */
   u3_Host.ops_u.lom_y = 31;
+#endif
   u3_Host.ops_u.jum_y = 23;     /* aka 1MB */
 
   u3_Host.ops_u.siz_i =
@@ -285,6 +294,9 @@ _main_getopt(c3_i argc, c3_c** argv)
     { "replay-to",           required_argument, NULL, 'n' },
     { "profile",             no_argument,       NULL, 'P' },
     { "ames-port",           required_argument, NULL, 'p' },
+    { "ames-quic-port",      required_argument, NULL, 14 },
+    { "ames-quic-sponsor",   no_argument,       NULL, 15 },
+    { "ames-quic-sponsor-port", required_argument, NULL, 16 },
     { "http-port",           required_argument, NULL, c3__http },
     { "https-port",          required_argument, NULL, c3__htls },
     { "snap-time",           required_argument, NULL, c3__snap },
@@ -373,6 +385,22 @@ _main_getopt(c3_i argc, c3_c** argv)
       case 13: {  // gc-abort
         u3_Host.ops_u.gab_abort = c3y;
         u3_Host.ops_u.gab = c3y;
+        break;
+      }
+      case 14: {  //  ames-quic-port
+        if ( c3n == _main_readw(optarg, 65536, &arg_w) ) {
+          return c3n;
+        } else u3_Host.ops_u.poq_s = arg_w;
+        break;
+      }
+      case 15: {  //  ames-quic-sponsor
+        u3_Host.ops_u.qsp = c3y;
+        break;
+      }
+      case 16: {  //  ames-quic-sponsor-port
+        if ( c3n == _main_readw(optarg, 65536, &arg_w) ) {
+          return c3n;
+        } else u3_Host.ops_u.qsp_s = arg_w;
         break;
       }
       //  special args
@@ -875,6 +903,9 @@ u3_ve_usage(c3_i argc, c3_c** argv)
     "-n, --replay-to NUMBER        Replay up to event\n",
     "-P, --profile                 Profiling\n",
     "-p, --ames-port PORT          Set the ames port to bind to\n",
+    "    --ames-quic-port PORT     Set the raw QUIC ames port to bind to (default 8443)\n",
+    "    --ames-quic-sponsor       Send sponsor-routed Mesa traffic over raw QUIC\n",
+    "    --ames-quic-sponsor-port PORT  Override sponsor raw QUIC fallback port\n",
     "    --http-port PORT          Set the http port to bind to\n",
     "    --https-port PORT         Set the https port to bind to\n",
     "    --snap-time TIME          Set the snapshotting rate in minutes (> 0)\n",
