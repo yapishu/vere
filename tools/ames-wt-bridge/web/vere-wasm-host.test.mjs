@@ -475,6 +475,48 @@ test(
 );
 
 test(
+  'instantiateVereDiskWasmRuntime boots Ivory before fresh owned dawn',
+  {
+    skip: existsSync(vereDiskWasm) && existsSync(brassPill)
+      ? false
+      : 'run zig build vere-disk-wasm with ../urbit/bin/brass.pill present',
+  },
+  async () => {
+    const pillBytes = new Uint8Array(await readFile(brassPill));
+    const memoryOptions = {
+      loomExponent: 29,
+      overheadBytes: 512 * 1024 * 1024,
+      maximumBytes: 1536 * 1024 * 1024,
+    };
+    let stderr = '';
+
+    const runtime = await instantiateVereDiskWasmRuntime(vereDiskWasm, {
+      initialFiles: {
+        '/brass.pill': pillBytes,
+        '/boot/ship.key': new TextEncoder().encode('not-an-uw-key'),
+      },
+      memoryOptions,
+      onStderr: bytes => {
+        stderr += textDecoder.decode(bytes).replace(/\r/g, '');
+      },
+    });
+
+    assert.throws(
+      () => runtime.init({
+        loomExponent: 29,
+        ship: 0x4d13_0671_f5c3_0300n,
+        fake: false,
+      }),
+      /u3_disk_wasm_init failed with code 1/,
+    );
+    assert.match(stderr, /disk-wasm: Ivory kernel ready for owned dawn/);
+    assert.match(stderr, /disk-wasm: invalid @uw keyfile/);
+    assert.doesNotMatch(stderr, /home: bailing out/);
+    runtime.shutdown();
+  },
+);
+
+test(
   'instantiateVereDiskWasmRuntime keeps real brass runtime resident across host pokes',
   {
     skip: existsSync(vereDiskWasm) && existsSync(brassPill)

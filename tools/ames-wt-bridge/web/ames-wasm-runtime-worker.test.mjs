@@ -5,6 +5,7 @@ import {
   createAmesRuntimeWorkerHandler,
   prepareOwnedBoot,
 } from './ames-wasm-runtime-worker.mjs';
+import { patpToAtom } from './ames-ship.mjs';
 
 function okFetch(bytes = [1, 2, 3]) {
   return async () => ({
@@ -256,6 +257,72 @@ test('prepareOwnedBoot keeps the key local and fetches only public dawn data', a
   assert.equal(calls[0].params.ship, '~zod');
   assert.equal(calls[1].length, 256);
   assert.equal(calls[2].method, 'getDns');
+});
+
+test('prepareOwnedBoot derives a moon sponsor from its @p identity', async () => {
+  const moon = patpToAtom('~natnup-sigter-sitful-hatred');
+  const parent = moon & 0xffff_ffffn;
+  const calls = [];
+  const fetchFn = async (_resource, init = {}) => {
+    const outer = JSON.parse(init.body);
+    const payload = JSON.parse(
+      Buffer.from(outer.bodyBase64, 'base64').toString('utf8'),
+    );
+    calls.push(payload);
+
+    let body;
+    if (Array.isArray(payload)) {
+      body = payload.map(request => ({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: {},
+      }));
+    }
+    else if (payload.method === 'getDns') {
+      body = { jsonrpc: '2.0', id: payload.id, result: {} };
+    }
+    else if (payload.params.ship === '~sitful-hatred') {
+      body = {
+        jsonrpc: '2.0',
+        id: payload.id,
+        result: { network: { sponsor: { has: true, who: '0' } } },
+      };
+    }
+    else {
+      body = {
+        jsonrpc: '2.0',
+        id: payload.id,
+        result: { network: { sponsor: { has: false } } },
+      };
+    }
+
+    const bytes = new TextEncoder().encode(JSON.stringify(body));
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return bytes.buffer;
+      },
+    };
+  };
+
+  const files = await prepareOwnedBoot({
+    fetchFn,
+    proxyUrl: 'https://demo.invalid/_vere/http-client',
+    ship: moon,
+    keyBytes: new TextEncoder().encode('0w1.test-key'),
+  });
+
+  assert.equal(
+    files['/boot/point-00000000000000004d130671f5c30300.json'],
+    undefined,
+  );
+  assert.ok(files[
+    `/boot/point-0000000000000000${parent.toString(16).padStart(16, '0')}.json`
+  ]);
+  assert.ok(files['/boot/point-00000000000000000000000000000000.json']);
+  assert.equal(calls[0].params.ship, '~sitful-hatred');
+  assert.equal(calls[1].params.ship, '~zod');
 });
 
 test('runtime worker resumes an owned pier without loading a keyfile', async () => {

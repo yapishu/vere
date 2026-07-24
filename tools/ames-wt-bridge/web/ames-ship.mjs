@@ -192,6 +192,33 @@ export function patp(value) {
   return `~${loop(concealed, 0n, '')}`;
 }
 
+export function shipClass(value) {
+  const width = met(3, asAtom(value));
+  if (width <= 1n) return 'galaxy';
+  if (width === 2n) return 'star';
+  if (width <= 4n) return 'planet';
+  if (width <= 8n) return 'moon';
+  if (width <= 16n) return 'comet';
+  throw new Error('ship atom exceeds 128 bits');
+}
+
+export function shipSponsor(value) {
+  const ship = asAtom(value);
+  switch (shipClass(ship)) {
+    case 'galaxy':
+      return ship;
+    case 'star':
+      return ship & 0xffn;
+    case 'planet':
+    case 'comet':
+      return ship & 0xffffn;
+    case 'moon':
+      return ship & 0xffff_ffffn;
+    default:
+      throw new Error('unknown ship class');
+  }
+}
+
 function syllableIndex(table, syllable) {
   return table.indexOf(syllable);
 }

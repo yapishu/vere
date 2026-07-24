@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { patp, patpToAtom } from './ames-ship.mjs';
+import {
+  patp,
+  patpToAtom,
+  shipClass,
+  shipSponsor,
+} from './ames-ship.mjs';
 
 test('patp renders Hoon scot %p vectors', () => {
   const vectors = [
@@ -25,6 +30,13 @@ test('patpToAtom parses Hoon slaw %p aliases', () => {
   assert.equal(patpToAtom('~dozzod'), 0n);
   assert.equal(patpToAtom('~dozzod-dozzod'), 0n);
   assert.equal(patpToAtom('~marnec'), 257n);
+});
+
+test('shipClass and shipSponsor handle a moon entered as @p', () => {
+  const moon = patpToAtom('~natnup-sigter-sitful-hatred');
+  assert.equal(shipClass(moon), 'moon');
+  assert.equal(shipSponsor(moon), moon & 0xffff_ffffn);
+  assert.equal(patp(shipSponsor(moon)), '~sitful-hatred');
 });
 
 test('patp rejects negative atoms', () => {

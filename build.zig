@@ -724,12 +724,14 @@ fn addVereDiskWasmStep(
     exe.addIncludePath(b.path("pkg"));
     exe.addIncludePath(b.path("pkg/noun"));
     exe.addIncludePath(b.path("pkg/vere"));
+    exe.addIncludePath(b.path("pkg/vere/ivory"));
     exe.addCSourceFiles(.{
         .files = &.{
             "pkg/vere/disk_wasm_probe.c",
             "pkg/vere/disk_wasm.c",
             "pkg/vere/mars_boot.c",
             "pkg/vere/ward.c",
+            "pkg/vere/ivory/ivory.c",
         },
         .flags = flags,
     });

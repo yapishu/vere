@@ -9,7 +9,11 @@ import {
 import {
   IndexedDBVereWasmFileStore,
 } from './vere-wasm-host.mjs';
-import { patp } from './ames-ship.mjs';
+import {
+  patp,
+  shipClass,
+  shipSponsor,
+} from './ames-ship.mjs';
 
 function asBigInt(value, name) {
   if (value == null || value === '') {
@@ -165,6 +169,15 @@ export async function prepareOwnedBoot({
       throw new Error(`dawn sponsor cycle at ${patp(current)}`);
     }
     seen.add(id);
+
+    const currentClass = shipClass(current);
+    // Moons and comets are not Azimuth points. Vere uses a bunt point for
+    // their own key validation and derives their sponsors from +sein:title.
+    if (currentClass === 'moon' || currentClass === 'comet') {
+      current = shipSponsor(current);
+      continue;
+    }
+
     const bytes = await fetchDawnResponse(fetchPublic, rollerUrl, {
       jsonrpc: '2.0',
       id: `point-${id}`,
@@ -173,14 +186,15 @@ export async function prepareOwnedBoot({
     });
     files[dawnPointPath(current)] = bytes;
     const json = JSON.parse(new TextDecoder().decode(bytes));
-    if (current < 256n) {
+    if (currentClass === 'galaxy') {
       break;
     }
-    const sponsor = json?.result?.network?.sponsor;
-    if (!sponsor?.has) {
+
+    const rollerSponsor = json?.result?.network?.sponsor;
+    if (!rollerSponsor?.has) {
       throw new Error(`Roller returned no sponsor for ${patp(current)}`);
     }
-    current = BigInt(sponsor.who);
+    current = BigInt(rollerSponsor.who);
   }
 
   // Roller expects the same batch shape Vere's +czar:give:dawn emits.

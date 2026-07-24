@@ -4,7 +4,9 @@
 
 #include "mars_boot.h"
 #include "hostfs.h"
+#include "ivory.h"
 #include "vere.h"
+#include "ur/ur.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -457,6 +459,31 @@ _probe_read_feed(u3_noun* out)
 }
 
 static c3_o
+_probe_boot_ivory(void)
+{
+  c3_d         len_d = u3_Ivory_pill_len;
+  c3_y*        byt_y = u3_Ivory_pill;
+  u3_cue_xeno* sil_u;
+  u3_weak      pil;
+
+  sil_u = u3s_cue_xeno_init_with(ur_fib27, ur_fib28);
+  if ( u3_none == (pil = u3s_cue_xeno_with(sil_u, len_d, byt_y)) ) {
+    fprintf(stderr, "disk-wasm: unable to cue Ivory pill\r\n");
+    u3s_cue_xeno_done(sil_u);
+    return c3n;
+  }
+  u3s_cue_xeno_done(sil_u);
+
+  if ( c3n == u3v_boot_lite(pil) ) {
+    fprintf(stderr, "disk-wasm: unable to boot Ivory kernel\r\n");
+    return c3n;
+  }
+
+  u3l_log("disk-wasm: Ivory kernel ready for owned dawn");
+  return c3y;
+}
+
+static c3_o
 _probe_make_dawn(c3_d who_d[2], u3_noun* out)
 {
   u3_noun who = u3i_chubs(2, who_d);
@@ -464,12 +491,19 @@ _probe_make_dawn(c3_d who_d[2], u3_noun* out)
   u3_noun point = u3_none;
   u3_noun galaxies = u3_none;
   u3_noun turfs = u3_none;
+  u3_noun rank = u3_none;
 
   if ( c3n == _probe_read_feed(&feed) ) {
     goto dawn_input_fail;
   }
-  if ( c3n == _probe_point_response(who, &point) ) {
-    goto dawn_input_fail;
+  rank = u3do("clan:title", u3k(who));
+  if ( (c3__pawn == rank) || (c3__earl == rank) ) {
+    point = u3v_wish("*point:azimuth");
+  }
+  else {
+    if ( c3n == _probe_point_response(who, &point) ) {
+      goto dawn_input_fail;
+    }
   }
   if ( c3n == _probe_take_response("czar:take:dawn",
                                    "/boot/galaxies.json",
@@ -501,7 +535,6 @@ _probe_make_dawn(c3_d who_d[2], u3_noun* out)
     return c3n;
   }
 
-  u3_noun rank = u3do("clan:title", u3k(who));
   u3_noun sponsor = u3_none;
   u3_noun sponsors = u3_nul;
   if ( c3__czar != rank ) {
@@ -576,6 +609,9 @@ dawn_input_fail:
   if ( u3_none != turfs ) {
     u3z(turfs);
   }
+  if ( u3_none != rank ) {
+    u3z(rank);
+  }
   u3z(who);
   return c3n;
 
@@ -623,9 +659,13 @@ _probe_make_boot(u3_noun* out_ova,
   if ( c3y == fake_o ) {
     event = u3nc(c3__fake, u3i_chubs(2, who_d));
   }
-  else if ( c3n == _probe_make_dawn(who_d, &event) ) {
-    u3z(pill);
-    return c3n;
+  else {
+    if (  (c3n == _probe_boot_ivory())
+       || (c3n == _probe_make_dawn(who_d, &event)) )
+    {
+      u3z(pill);
+      return c3n;
+    }
   }
   u3_noun com = u3nt(pill, event, u3_nul);
   u3_mars_boot_meta met_u = {0};

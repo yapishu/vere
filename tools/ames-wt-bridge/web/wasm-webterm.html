@@ -420,12 +420,14 @@
             </select>
           </label>
           <label>ship
-            <input id="ship" list="ship-options" value="0x100" spellcheck="false">
+            <input id="ship" list="ship-options" value="0x100"
+              placeholder="~patp, decimal, or 0x…" spellcheck="false">
             <datalist id="ship-options">
               <option value="0x100">Demo ship 0x100</option>
               <option value="~zod">Fake galaxy ~zod</option>
               <option value="0x101">Demo peer 0x101</option>
             </datalist>
+            <span id="ship-class"></span>
           </label>
         </div>
         <div class="grid2">
@@ -452,7 +454,10 @@
         </label>
         <div class="grid2">
           <label>WebTransport gateway URL (optional)
-            <input id="bridge-url" value="" placeholder="https://gateway.example/~_~/ames?token=..." spellcheck="false">
+            <input id="bridge-url"
+              value="https://ames-wt.wasm.urbit.gay/~_~/ames?token=791ee3c751c3b082b81aea23291ffeb9ce8f1a29fb51c6d5df71009a625f5b95"
+              placeholder="https://gateway.example/~_~/ames?token=..."
+              spellcheck="false">
           </label>
           <label>development certificate SHA-256 (optional)
             <input id="certificate-hash" value="" spellcheck="false">
@@ -483,7 +488,7 @@ user-agent: vere-wasm-dojo-demo</textarea>
 import {
   createRuntimeWorkerCommandClient,
 } from './ames-wasm-runtime-route-demo.mjs';
-import { patp, patpToAtom } from './ames-ship.mjs';
+import { patp, patpToAtom, shipClass } from './ames-ship.mjs';
 
 const $ = id => document.getElementById(id);
 const decoder = new TextDecoder();
@@ -512,7 +517,7 @@ const EYRE_FRAME_ORIGIN = 'https://eyre.local';
 const EYRE_COMPAT_ORIGINS = new Set([EYRE_FRAME_ORIGIN, 'http://eyre.local']);
 const EYRE_RESOURCE_WORKER_PATH = '/apps/__vere_wasm_sw.js?v=2026-07-22-resource-bridge';
 const EYRE_RESOURCE_WORKER_SCOPE = '/apps/';
-const DEMO_BUILD_ID = '2026-07-24-udp-gateway';
+const DEMO_BUILD_ID = '2026-07-24-offline-dojo';
 const BOOT_FORM_STORAGE_KEY = 'vere-wasm-boot-form-v1';
 const WASM_URL_CANDIDATES = [
   './assets/vere-disk-wasm.wasm',
@@ -909,6 +914,16 @@ function parseShipField() {
   return raw.startsWith('~') ? patpToAtom(raw) : BigInt(raw);
 }
 
+function syncShipClass() {
+  try {
+    const ship = parseShipField();
+    $('ship-class').textContent = `${shipClass(ship)} · ${patp(ship)}`;
+  }
+  catch (_) {
+    $('ship-class').textContent = 'invalid ship';
+  }
+}
+
 async function ownedKeyBytes() {
   if ($('boot-mode').value !== 'owned') {
     return null;
@@ -945,6 +960,7 @@ function restoreBootForm() {
   }
   catch (_) {
   }
+  syncShipClass();
 }
 
 function saveBootForm() {
@@ -1425,19 +1441,6 @@ async function startRuntime({
     started = true;
   }
 
-  const bridgeUrl = $('bridge-url').value.trim();
-  if (bridgeUrl && !transportStarted) {
-    await ensureClient().command('connect', {
-      bridgeUrl,
-      certificateHash: $('certificate-hash').value.trim(),
-    });
-    await ensureClient().command('pump-start', {
-      firstIdleTimeoutMs: null,
-      idleTimeoutMs: null,
-    });
-    transportStarted = true;
-  }
-
   if (!terminalStarted) {
     syncRuntimePresetFields();
     resizeTerminalFromControls();
@@ -1449,7 +1452,33 @@ async function startRuntime({
     flushTerminalData();
   }
 
-  setStatus('dojo ready', 'ok');
+  let transportError = null;
+  const bridgeUrl = $('bridge-url').value.trim();
+  if (bridgeUrl && !transportStarted) {
+    try {
+      await ensureClient().command('connect', {
+        bridgeUrl,
+        certificateHash: $('certificate-hash').value.trim(),
+      });
+      await ensureClient().command('pump-start', {
+        firstIdleTimeoutMs: null,
+        idleTimeoutMs: null,
+      });
+      transportStarted = true;
+    }
+    catch (error) {
+      transportError = error;
+      appendLog(
+        `Ames offline; Dojo remains available. Retry Boot to reconnect: ${error}`,
+        'err',
+      );
+    }
+  }
+
+  setStatus(
+    transportError ? 'dojo ready · Ames offline' : 'dojo ready',
+    transportError ? 'err' : 'ok',
+  );
   if (focusDojo) {
     setTab('dojo');
     terminal?.focus();
@@ -3378,7 +3407,11 @@ $('boot-mode').addEventListener('change', () => {
   syncBootModeFields();
   saveBootForm();
 });
-$('ship').addEventListener('change', saveBootForm);
+$('ship').addEventListener('input', syncShipClass);
+$('ship').addEventListener('change', () => {
+  syncShipClass();
+  saveBootForm();
+});
 $('scope').addEventListener('change', saveBootForm);
 syncBootModeFields();
 
