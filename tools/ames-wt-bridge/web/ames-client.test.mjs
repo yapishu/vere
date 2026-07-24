@@ -7,6 +7,11 @@ import {
   readStreamBytes,
   webTransportOptions,
 } from './ames-client.mjs';
+import {
+  decodeUdpFrame,
+  encodeUdpHear,
+  UDP_FRAME,
+} from './ames-udp-frame.mjs';
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -177,28 +182,44 @@ test('client connects with cert pin options and receives datagrams', async () =>
   assert.deepEqual(statuses, ['connecting', 'open']);
   assert.equal(client.sessionOpen, true);
 
-  await session.pushDatagram([8, 9]);
+  await session.pushDatagram(encodeUdpHear(
+    { type: 'if', ip: 0x7f000001, port: 13337 },
+    [8, 9],
+  ));
   await tick();
 
   assert.equal(packets.length, 1);
   assert.equal(packets[0].mode, 'datagram');
+  assert.deepEqual(packets[0].lane, {
+    type: 'if',
+    ip: 0x7f000001,
+    port: 13337,
+  });
   assert.deepEqual(Array.from(packets[0].packet), [8, 9]);
 });
 
 test('client sends through datagrams or one-shot streams', async () => {
-  const FakeWebTransport = makeFakeWebTransportClass({ maxDatagramSize: 2 });
+  const FakeWebTransport = makeFakeWebTransportClass({ maxDatagramSize: 11 });
   const client = new AmesWebTransportClient({
     url: 'https://bridge/~_~/ames',
     WebTransport: FakeWebTransport,
   });
 
-  assert.equal(await client.send(Uint8Array.of(1, 2)), 'datagram');
-  assert.equal(await client.send(Uint8Array.of(3, 4, 5)), 'stream');
+  assert.equal(await client.sendTo(0n, Uint8Array.of(1, 2)), 'datagram');
+  assert.equal(await client.sendTo(0n, Uint8Array.of(3, 4, 5)), 'stream');
 
   const session = FakeWebTransport.instances[0];
   assert.equal(FakeWebTransport.instances.length, 1);
-  assert.deepEqual(Array.from(session.datagramsSent[0]), [1, 2]);
-  assert.deepEqual(Array.from(session.streamsSent[0][0]), [3, 4, 5]);
+  assert.deepEqual(decodeUdpFrame(session.datagramsSent[0]), {
+    type: UDP_FRAME.SEND,
+    lane: { type: 'galaxy', ship: 0 },
+    packet: Uint8Array.of(1, 2),
+  });
+  assert.deepEqual(decodeUdpFrame(session.streamsSent[0][0]), {
+    type: UDP_FRAME.SEND,
+    lane: { type: 'galaxy', ship: 0 },
+    packet: Uint8Array.of(3, 4, 5),
+  });
 });
 
 test('client receives one-shot stream packets', async () => {
@@ -211,7 +232,14 @@ test('client receives one-shot stream packets', async () => {
   });
 
   await client.connect();
-  await FakeWebTransport.instances[0].pushStream([[1], [2, 3]]);
+  const frame = encodeUdpHear(
+    { type: 'if', ip: 0x7f000001, port: 13337 },
+    [1, 2, 3],
+  );
+  await FakeWebTransport.instances[0].pushStream([
+    frame.slice(0, 5),
+    frame.slice(5),
+  ]);
   await tick();
 
   assert.equal(packets.length, 1);
@@ -228,18 +256,18 @@ test('client redials on next send after remote close', async () => {
     onStatus: status => statuses.push(status.type),
   });
 
-  await client.send(Uint8Array.of(1));
+  await client.sendTo(0n, Uint8Array.of(1));
   const first = FakeWebTransport.instances[0];
   await first.remoteClose();
   await tick();
 
   assert.equal(client.sessionOpen, false);
 
-  await client.send(Uint8Array.of(2));
+  await client.sendTo(0n, Uint8Array.of(2));
   const second = FakeWebTransport.instances[1];
 
   assert.notEqual(first, second);
-  assert.deepEqual(Array.from(second.datagramsSent[0]), [2]);
+  assert.deepEqual(Array.from(decodeUdpFrame(second.datagramsSent[0]).packet), [2]);
   assert.deepEqual(statuses, ['connecting', 'open', 'closed', 'connecting', 'open']);
 });
 
@@ -258,5 +286,5 @@ test('client close is terminal', async () => {
   assert.equal(client.sessionOpen, false);
   assert.equal(statuses.at(-1).type, 'closed');
   assert.equal(statuses.at(-1).terminal, true);
-  await assert.rejects(() => client.send(Uint8Array.of(1)), /client is closed/);
+  await assert.rejects(() => client.sendTo(0n, Uint8Array.of(1)), /client is closed/);
 });

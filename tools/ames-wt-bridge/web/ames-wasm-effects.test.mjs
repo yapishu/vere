@@ -2,15 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { encodePeek } from './mesa-pact.mjs';
-import {
-  amesWire,
-  mesaSessionLane,
-} from './ames-wasm-events.mjs';
-import {
-  extractMesaEffects,
-  isMesaSessionLane,
-  mesaSessionIdFromLane,
-} from './ames-wasm-effects.mjs';
+import { amesWire } from './ames-wasm-events.mjs';
+import { extractMesaEffects } from './ames-wasm-effects.mjs';
 import {
   atomFromBytesLE,
   cell,
@@ -37,7 +30,7 @@ test('extractMesaEffects accepts nil effect lists', () => {
 });
 
 test('extractMesaEffects normalizes raw Ames %give %push moves', () => {
-  const lane = mesaSessionLane(9n);
+  const lane = 9n;
   const effect = cell(
     list(amesWire()),
     tuple(
@@ -55,12 +48,10 @@ test('extractMesaEffects normalizes raw Ames %give %push moves', () => {
   assert.deepEqual(out.pushes[0].lanes, [lane]);
   assert.equal(out.pushes[0].packetAtom, packetAtom());
   assert.ok(out.pushes[0].packet.length > 0);
-  assert.equal(isMesaSessionLane(out.pushes[0].lanes[0]), true);
-  assert.equal(mesaSessionIdFromLane(out.pushes[0].lanes[0]), 9n);
 });
 
 test('extractMesaEffects normalizes lowered Ames %push cards', () => {
-  const lane = mesaSessionLane(1n);
+  const lane = tuple(termAtom('if'), 0x7f000001n, 13337n);
   const effect = cell(
     cell(0n, amesWire()),
     tuple(termAtom('push'), list(lane), packetAtom()),
@@ -70,7 +61,12 @@ test('extractMesaEffects normalizes lowered Ames %push cards', () => {
 
   assert.equal(out.pushes.length, 1);
   assert.equal(out.sends.length, 0);
-  assert.equal(out.pushes[0].lanes[0], lane);
+  assert.deepEqual(out.pushes[0].lanes[0], {
+    type: 'if',
+    ip: 0x7f000001,
+    port: 13337,
+    noun: lane,
+  });
   assert.deepEqual(out.pushes[0].wire[1], amesWire());
 });
 

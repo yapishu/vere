@@ -416,7 +416,6 @@
 #   define c3__fast   c3_s4('f','a','s','t')
 #   define c3__fdec   c3_s4('f','d','e','c')
 #   define c3__felk   c3_s4('f','e','l','k')
-#   define c3__fell   c3_s4('f','e','l','l')
 #   define c3__feng   c3_s4('f','e','n','g')
 #   define c3__fent   c3_s4('f','e','n','t')
 #   define c3__ferd   c3_s4('f','e','r','d')

@@ -9,6 +9,7 @@ import {
 import {
   IndexedDBVereWasmFileStore,
 } from './vere-wasm-host.mjs';
+import { patp } from './ames-ship.mjs';
 
 function asBigInt(value, name) {
   if (value == null || value === '') {
@@ -105,6 +106,109 @@ async function fetchBytes(fetchFn, url) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+function dawnPointPath(ship) {
+  return `/boot/point-${BigInt(ship).toString(16).padStart(32, '0')}.json`;
+}
+
+export function snapshotHasPier(snapshot) {
+  return Boolean(
+    snapshot?.files?.has?.('/pier/.urb/log/meta.bin') ||
+    [...(snapshot?.files?.keys?.() ?? [])].some(path => (
+      String(path).startsWith('/pier/.urb/log/') &&
+      String(path).endsWith('/events.bin')
+    )),
+  );
+}
+
+async function fetchDawnResponse(fetchFn, url, payload) {
+  const response = await fetchFn(url, {
+    method: 'POST',
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`dawn request failed: HTTP ${response.status}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+export async function prepareOwnedBoot({
+  fetchFn,
+  proxyUrl,
+  ship,
+  keyBytes,
+  rollerUrl = 'https://roller.urbit.org/v1/azimuth',
+  emit = () => {},
+}) {
+  const ownedShip = BigInt(ship);
+  const key = asBytes(keyBytes, 'keyfile');
+  if (!key?.length) {
+    throw new Error('owned boot requires a non-empty keyfile');
+  }
+  const fetchPublic = createHttpClientProxyFetch({
+    fetchFn,
+    proxyUrl,
+    onLog: event => emit({ type: 'log', ...event }),
+  });
+  const files = {
+    '/boot/ship.key': key,
+  };
+
+  let current = ownedShip;
+  const seen = new Set();
+  for (;;) {
+    const id = current.toString();
+    if (seen.has(id)) {
+      throw new Error(`dawn sponsor cycle at ${patp(current)}`);
+    }
+    seen.add(id);
+    const bytes = await fetchDawnResponse(fetchPublic, rollerUrl, {
+      jsonrpc: '2.0',
+      id: `point-${id}`,
+      method: 'getPoint',
+      params: { ship: patp(current) },
+    });
+    files[dawnPointPath(current)] = bytes;
+    const json = JSON.parse(new TextDecoder().decode(bytes));
+    if (current < 256n) {
+      break;
+    }
+    const sponsor = json?.result?.network?.sponsor;
+    if (!sponsor?.has) {
+      throw new Error(`Roller returned no sponsor for ${patp(current)}`);
+    }
+    current = BigInt(sponsor.who);
+  }
+
+  // Roller expects the same batch shape Vere's +czar:give:dawn emits.
+  const galaxyRequests = Array.from({ length: 256 }, (_, galaxy) => ({
+    jsonrpc: '2.0',
+    id: `gal-${galaxy}`,
+    method: 'getPoint',
+    params: { ship: patp(BigInt(galaxy)) },
+  }));
+  files['/boot/galaxies.json'] = await fetchDawnResponse(
+    fetchPublic,
+    rollerUrl,
+    galaxyRequests,
+  );
+  files['/boot/turf.json'] = await fetchDawnResponse(fetchPublic, rollerUrl, {
+    jsonrpc: '2.0',
+    id: 'turf',
+    method: 'getDns',
+    params: {},
+  });
+  emit({
+    type: 'log',
+    message: `prepared public dawn state for ${patp(ownedShip)}; keyfile stayed local`,
+    className: 'rx',
+  });
+  return files;
+}
+
 class WasmLogBuffer {
   constructor(emit, className) {
     this.emit = emit;
@@ -183,10 +287,32 @@ export function createAmesRuntimeWorkerHandler({
     const fileStore = new FileStore({
       scope: String(message.scope || 'vere-runtime-worker'),
     });
-    if (message.clearStore !== false) {
+    if (message.clearStore === true) {
       await fileStore.clear();
     }
+    const persisted = typeof fileStore.load === 'function'
+      ? await fileStore.load()
+      : null;
+    const resumingPier = snapshotHasPier(persisted);
     const pillBytes = await fetchBytes(fetchFn, pillUrl);
+    const bootMode = String(message.bootMode || 'fake');
+    const bootFiles = bootMode === 'owned' && !resumingPier
+      ? await prepareOwnedBoot({
+        fetchFn,
+        proxyUrl: message.httpClientProxyUrl,
+        ship: asBigInt(message.fakeShip, 'ship'),
+        keyBytes: message.keyBytes,
+        rollerUrl: message.rollerUrl,
+        emit,
+      })
+      : {};
+    if (bootMode === 'owned' && resumingPier) {
+      emit({
+        type: 'log',
+        message: 'resuming owned pier from IndexedDB; keyfile is not required',
+        className: 'rx',
+      });
+    }
     emit({ type: 'log', message: `pill-bytes=${pillBytes.length}` });
     emit({
       type: 'log',
@@ -204,6 +330,8 @@ export function createAmesRuntimeWorkerHandler({
       certificateHash: message.certificateHash || '',
       memoryOptions: normalizeMemory(message),
       fakeShip: asBigInt(message.fakeShip ?? '0x100', 'fakeShip'),
+      bootMode,
+      bootFiles,
       sessionId: asBigInt(message.sessionId ?? '1', 'sessionId'),
       autoStartHttpClient: message.autoStartHttpClient !== false,
       httpClientHostFactory: input => new BrowserHttpClientHost({

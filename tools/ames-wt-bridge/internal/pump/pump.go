@@ -1,12 +1,10 @@
-// Package pump moves ames packets between a WebTransport session and a UDP
-// socket, in both directions.
+// Package pump moves framed Ames packets over a WebTransport session.
 //
 // One ames packet maps to one QUIC datagram when it fits. A packet too large
 // for the session's current max datagram size is sent instead as one
 // ephemeral unidirectional stream (open, write, FIN) — reliability on that
-// hop is harmless because ames packets are idempotent, and per-packet
-// streams preserve out-of-order delivery between packets. See
-// doc/spec/ames-over-quic.md §4.1 in the urbit repo.
+// hop is harmless because Ames packets are idempotent, and per-packet
+// streams preserve out-of-order delivery between packets.
 package pump
 
 import (
@@ -14,9 +12,7 @@ import (
 	"encoding/hex"
 	"io"
 	"log"
-	"net"
 
-	"github.com/quic-go/quic-go"
 	"github.com/quic-go/webtransport-go"
 )
 
@@ -94,60 +90,4 @@ func ReceiveToFunc(ctx context.Context, sess *webtransport.Session, fn func(pkt 
 	receiveToFunc(ctx, "wt->udp", func(ctx context.Context) (io.Reader, error) {
 		return sess.AcceptUniStream(ctx)
 	}, sess.ReceiveDatagram, fn)
-}
-
-// SendQUICPacket sends one ames packet over a raw QUIC ames/1 connection.
-func SendQUICPacket(ctx context.Context, conn *quic.Conn, pkt []byte) {
-	sendPacket(ctx, "udp->quic", conn.SendDatagram, func(ctx context.Context) (io.WriteCloser, error) {
-		return conn.OpenUniStreamSync(ctx)
-	}, pkt)
-}
-
-// QUICReceiveToFunc delivers every packet arriving on a raw QUIC connection.
-func QUICReceiveToFunc(ctx context.Context, conn *quic.Conn, fn func(pkt []byte)) {
-	receiveToFunc(ctx, "quic->udp", func(ctx context.Context) (io.Reader, error) {
-		return conn.AcceptUniStream(ctx)
-	}, conn.ReceiveDatagram, fn)
-}
-
-// UDPToSession reads packets from conn and sends each over sess.
-func UDPToSession(ctx context.Context, conn *net.UDPConn, sess *webtransport.Session) {
-	buf := make([]byte, maxPacket)
-	for {
-		n, _, err := conn.ReadFromUDP(buf)
-		if err != nil {
-			return // socket closed
-		}
-		SendPacket(ctx, sess, buf[:n])
-	}
-}
-
-// SessionToUDP delivers every packet from sess to the connected socket conn.
-func SessionToUDP(ctx context.Context, sess *webtransport.Session, conn *net.UDPConn) {
-	ReceiveToFunc(ctx, sess, func(pkt []byte) {
-		if _, err := conn.Write(pkt); err != nil {
-			log.Printf("pump: udp write: %v", err)
-		}
-	})
-}
-
-// UDPToQUIC reads packets from conn and sends each over a raw QUIC connection.
-func UDPToQUIC(ctx context.Context, conn *net.UDPConn, qconn *quic.Conn) {
-	buf := make([]byte, maxPacket)
-	for {
-		n, _, err := conn.ReadFromUDP(buf)
-		if err != nil {
-			return // socket closed
-		}
-		SendQUICPacket(ctx, qconn, buf[:n])
-	}
-}
-
-// QUICToUDP delivers every packet from qconn to the connected socket conn.
-func QUICToUDP(ctx context.Context, qconn *quic.Conn, conn *net.UDPConn) {
-	QUICReceiveToFunc(ctx, qconn, func(pkt []byte) {
-		if _, err := conn.Write(pkt); err != nil {
-			log.Printf("pump: udp write: %v", err)
-		}
-	})
 }

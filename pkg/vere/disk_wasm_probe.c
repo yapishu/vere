@@ -231,15 +231,26 @@ _probe_loom_exp(int argc, char** argv, c3_w* exp_w)
 }
 
 static c3_o
-_probe_fake_ship(int argc, char** argv, c3_d who_d[2])
+_probe_ship_mode(int argc, char** argv, c3_d who_d[2], c3_o* fake_o)
 {
+  const c3_c* fake_c;
+  const c3_c* owned_c;
   const c3_c* val_c;
   who_d[0] = 0;
   who_d[1] = 0;
+  *fake_o = c3y;
 
-  if ( c3n == _probe_arg_value(argc, argv, "--fake-ship", &val_c) ) {
+  if (  (c3n == _probe_arg_value(argc, argv, "--fake-ship", &fake_c))
+     || (c3n == _probe_arg_value(argc, argv, "--owned-ship", &owned_c)) )
+  {
     return c3n;
   }
+  if ( fake_c && owned_c ) {
+    fprintf(stderr, "disk-wasm: choose --fake-ship or --owned-ship\r\n");
+    return c3n;
+  }
+  val_c = owned_c ? owned_c : fake_c;
+  *fake_o = owned_c ? c3n : c3y;
   if ( !val_c ) {
     return c3y;
   }
@@ -282,6 +293,29 @@ _probe_read_jam(const c3_c* pat_c, u3_noun* out)
     return c3n;
   }
 
+  return c3y;
+}
+
+static c3_o
+_probe_read_octs(const c3_c* pat_c, u3_noun* out)
+{
+  c3_d len_d;
+  c3_y* buf_y;
+
+  if ( c3n == u3fs_mmap_read((c3_c*)"disk-wasm: read dawn response",
+                             (c3_c*)pat_c,
+                             &len_d,
+                             &buf_y) )
+  {
+    return c3n;
+  }
+  if ( len_d > 0xffffffffULL ) {
+    u3fs_munmap(len_d, buf_y);
+    return c3n;
+  }
+
+  *out = u3nc(u3i_word((c3_w)len_d), u3i_bytes(len_d, buf_y));
+  u3fs_munmap(len_d, buf_y);
   return c3y;
 }
 
@@ -332,10 +366,240 @@ _probe_list_len(u3_noun lit, c3_w* len_w)
 }
 
 static c3_o
+_probe_point_response(u3_noun ship, u3_noun* out)
+{
+  c3_d who_d[2] = {0};
+  c3_c pat_c[80];
+  u3_noun oct;
+
+  u3r_chubs(0, 2, who_d, ship);
+  snprintf(pat_c, sizeof(pat_c),
+           "/boot/point-%016" PRIx64 "%016" PRIx64 ".json",
+           who_d[1], who_d[0]);
+  if ( c3n == _probe_read_octs(pat_c, &oct) ) {
+    fprintf(stderr, "disk-wasm: missing dawn point response %s\r\n", pat_c);
+    return c3n;
+  }
+
+  u3_noun uni = u3dc("point:take:dawn", u3k(ship), oct);
+  if ( u3_nul == uni ) {
+    fprintf(stderr, "disk-wasm: invalid dawn point response %s\r\n", pat_c);
+    return c3n;
+  }
+
+  *out = u3k(u3t(uni));
+  u3z(uni);
+  return c3y;
+}
+
+static c3_o
+_probe_take_response(const c3_c* gate_c,
+                     const c3_c* path_c,
+                     u3_noun*    out)
+{
+  u3_noun oct;
+  if ( c3n == _probe_read_octs(path_c, &oct) ) {
+    fprintf(stderr, "disk-wasm: missing dawn response %s\r\n", path_c);
+    return c3n;
+  }
+
+  u3_noun uni = u3do(gate_c, oct);
+  if ( u3_nul == uni ) {
+    fprintf(stderr, "disk-wasm: invalid dawn response %s\r\n", path_c);
+    return c3n;
+  }
+
+  *out = u3k(u3t(uni));
+  u3z(uni);
+  return c3y;
+}
+
+static c3_o
+_probe_read_feed(u3_noun* out)
+{
+  u3_noun key = u3m_file((c3_c*)"/boot/ship.key");
+  c3_c* key_c = u3r_string(key);
+  c3_w len_w = strlen(key_c);
+  c3_w old_w = len_w;
+  while (  len_w
+        && (  ('\n' == key_c[len_w - 1])
+           || ('\r' == key_c[len_w - 1])
+           || (' ' == key_c[len_w - 1])
+           || ('\t' == key_c[len_w - 1]) ) )
+  {
+    key_c[--len_w] = 0;
+  }
+  if ( old_w != len_w ) {
+    u3z(key);
+    key = u3i_string(key_c);
+  }
+  c3_free(key_c);
+
+  u3_noun des = u3dc("slaw", c3__uw, key);
+  if ( u3_nul == des ) {
+    fprintf(stderr, "disk-wasm: invalid @uw keyfile\r\n");
+    return c3n;
+  }
+
+  u3_noun pro = u3m_soft(0, u3ke_cue, u3k(u3t(des)));
+  u3z(des);
+  if (  (c3n == u3du(pro))
+     || (u3_blip != u3h(pro)) )
+  {
+    fprintf(stderr, "disk-wasm: unable to cue keyfile\r\n");
+    u3z(pro);
+    return c3n;
+  }
+
+  *out = u3k(u3t(pro));
+  u3z(pro);
+  return c3y;
+}
+
+static c3_o
+_probe_make_dawn(c3_d who_d[2], u3_noun* out)
+{
+  u3_noun who = u3i_chubs(2, who_d);
+  u3_noun feed = u3_none;
+  u3_noun point = u3_none;
+  u3_noun galaxies = u3_none;
+  u3_noun turfs = u3_none;
+
+  if ( c3n == _probe_read_feed(&feed) ) {
+    goto dawn_input_fail;
+  }
+  if ( c3n == _probe_point_response(who, &point) ) {
+    goto dawn_input_fail;
+  }
+  if ( c3n == _probe_take_response("czar:take:dawn",
+                                   "/boot/galaxies.json",
+                                   &galaxies) )
+  {
+    goto dawn_input_fail;
+  }
+  if ( c3n == _probe_take_response("turf:take:dawn",
+                                   "/boot/turf.json",
+                                   &turfs) )
+  {
+    goto dawn_input_fail;
+  }
+
+  u3_noun verified = u3dq("veri:dawn",
+                          u3k(who),
+                          u3k(feed),
+                          u3k(point),
+                          u3_nul);
+  if ( c3n == u3h(verified) ) {
+    fprintf(stderr, "disk-wasm: keyfile does not match %s\r\n",
+            "/boot public network state");
+    u3z(verified);
+    u3z(feed);
+    u3z(point);
+    u3z(galaxies);
+    u3z(turfs);
+    u3z(who);
+    return c3n;
+  }
+
+  u3_noun rank = u3do("clan:title", u3k(who));
+  u3_noun sponsor = u3_none;
+  u3_noun sponsors = u3_nul;
+  if ( c3__czar != rank ) {
+    u3_noun unit = u3dc("sponsor:dawn",
+                        u3k(who),
+                        u3k(point));
+    if ( c3n == u3h(unit) ) {
+      fprintf(stderr, "disk-wasm: unable to determine sponsor\r\n");
+      u3z(unit);
+      goto dawn_fail;
+    }
+    sponsor = u3k(u3t(unit));
+    u3z(unit);
+  }
+
+  while ( c3__czar != rank ) {
+    u3_noun sponsor_point;
+    if ( c3n == _probe_point_response(sponsor, &sponsor_point) ) {
+      goto dawn_fail;
+    }
+    sponsors = u3nc(u3nc(u3k(sponsor), u3k(sponsor_point)), sponsors);
+
+    u3z(who);
+    u3z(point);
+    u3z(rank);
+    who = sponsor;
+    point = sponsor_point;
+    rank = u3do("clan:title", u3k(who));
+    sponsor = u3_none;
+    if ( c3__czar != rank ) {
+      u3_noun unit = u3dc("sponsor:dawn",
+                          u3k(who),
+                          u3k(point));
+      if ( c3n == u3h(unit) ) {
+        u3z(unit);
+        goto dawn_fail;
+      }
+      sponsor = u3k(u3t(unit));
+      u3z(unit);
+    }
+  }
+
+  {
+    u3_noun vent = u3nc(c3__dawn,
+                        u3nq(u3k(u3t(verified)),
+                             sponsors,
+                             galaxies,
+                             u3nt(turfs, 0, u3_nul)));
+    sponsors = u3_nul;
+    galaxies = u3_nul;
+    turfs = u3_nul;
+    *out = vent;
+  }
+
+  u3z(verified);
+  u3z(feed);
+  u3z(point);
+  u3z(rank);
+  u3z(who);
+  return c3y;
+
+dawn_input_fail:
+  if ( u3_none != feed ) {
+    u3z(feed);
+  }
+  if ( u3_none != point ) {
+    u3z(point);
+  }
+  if ( u3_none != galaxies ) {
+    u3z(galaxies);
+  }
+  if ( u3_none != turfs ) {
+    u3z(turfs);
+  }
+  u3z(who);
+  return c3n;
+
+dawn_fail:
+  if ( u3_none != sponsor ) {
+    u3z(sponsor);
+  }
+  u3z(sponsors);
+  u3z(verified);
+  u3z(feed);
+  u3z(point);
+  u3z(galaxies);
+  u3z(turfs);
+  u3z(rank);
+  u3z(who);
+  return c3n;
+}
+
+static c3_o
 _probe_make_boot(u3_noun* out_ova,
                  u3_noun* out_cax,
                  u3_meta* out_met,
-                 c3_d who_d[2])
+                 c3_d who_d[2],
+                 c3_o fake_o)
 {
   u3_mars_boot_opts inp_u = {0};
   for ( c3_w i_w = 0; i_w < 16; i_w++ ) {
@@ -355,7 +619,15 @@ _probe_make_boot(u3_noun* out_ova,
   }
 
   u3_noun pill = u3nc(u3m_file((c3_c*)PROBE_REAL_PILL_PATH), u3_nul);
-  u3_noun com = u3nt(pill, u3nc(c3__fake, u3i_chubs(2, who_d)), u3_nul);
+  u3_noun event;
+  if ( c3y == fake_o ) {
+    event = u3nc(c3__fake, u3i_chubs(2, who_d));
+  }
+  else if ( c3n == _probe_make_dawn(who_d, &event) ) {
+    u3z(pill);
+    return c3n;
+  }
+  u3_noun com = u3nt(pill, event, u3_nul);
   u3_mars_boot_meta met_u = {0};
   u3_noun ova = u3_nul;
   u3_noun cax = u3_nul;
@@ -384,6 +656,16 @@ _probe_meta_match(const u3_meta* a_u, const u3_meta* b_u)
          && (a_u->who_d[1] == b_u->who_d[1])
          && (a_u->fak_o == b_u->fak_o)
          && (a_u->lif_w == b_u->lif_w) )
+       ? c3y
+       : c3n;
+}
+
+static c3_o
+_probe_owned_meta_match(c3_d who_d[2], const u3_meta* met_u)
+{
+  return (  (c3n == met_u->fak_o)
+         && (who_d[0] == met_u->who_d[0])
+         && (who_d[1] == met_u->who_d[1]) )
        ? c3y
        : c3n;
 }
@@ -693,7 +975,7 @@ _probe_reactor_arg(c3_c* arg_c)
 }
 
 static c3_o
-_probe_reactor_load(c3_w exp_w, c3_d who_d[2])
+_probe_reactor_load(c3_w exp_w, c3_d who_d[2], c3_o fake_o)
 {
   u3_noun ova = u3_nul;
   u3_noun cax = u3_nul;
@@ -701,6 +983,7 @@ _probe_reactor_load(c3_w exp_w, c3_d who_d[2])
   c3_w len_w = 0;
   u3_disk* log_u = 0;
   u3_noun lova = u3_none;
+  c3_o exists_o = u3fs_exists((c3_c*)PROBE_PIER_PATH);
 
   if (  (exp_w < 20)
      || (exp_w > 31) )
@@ -716,13 +999,21 @@ _probe_reactor_load(c3_w exp_w, c3_d who_d[2])
   u3C.wag_w |= u3o_hashless;
   u3m_boot_lite((size_t)1 << exp_w);
 
-  if (  (c3n == _probe_make_boot(&ova, &cax, &met_u, who_d))
+  // An existing owned pier already contains its validated %dawn event and
+  // metadata. Build only the pill cache on restart, without requiring the
+  // user's keyfile or fresh network state.
+  c3_o construct_fake_o = (  (c3y == exists_o)
+                           && (c3n == fake_o) )
+                        ? c3y
+                        : fake_o;
+  if (  (c3n == _probe_make_boot(&ova, &cax, &met_u,
+                                 who_d, construct_fake_o))
      || (c3n == _probe_list_len(ova, &len_w)) )
   {
     goto fail;
   }
 
-  if ( c3n == u3fs_exists((c3_c*)PROBE_PIER_PATH) ) {
+  if ( c3n == exists_o ) {
     if ( c3n == u3_disk_make((c3_c*)PROBE_PIER_PATH) ) {
       fprintf(stderr, "disk-wasm: reactor make failed\r\n");
       goto fail;
@@ -762,7 +1053,9 @@ _probe_reactor_load(c3_w exp_w, c3_d who_d[2])
   {
     u3_meta rem_u = {0};
     if (  (c3n == u3_disk_read_meta(log_u->mdb_u, &rem_u))
-       || (c3n == _probe_meta_match(&met_u, &rem_u)) )
+       || (  (c3y == fake_o)
+          ? (c3n == _probe_meta_match(&met_u, &rem_u))
+          : (c3n == _probe_owned_meta_match(who_d, &rem_u)) ) )
     {
       fprintf(stderr, "disk-wasm: reactor reload meta mismatch\r\n");
       goto fail;
@@ -777,7 +1070,9 @@ _probe_reactor_load(c3_w exp_w, c3_d who_d[2])
     fprintf(stderr, "disk-wasm: reactor read list failed\r\n");
     goto fail;
   }
-  if ( c3n == u3r_sing(ova, lova) ) {
+  if (  (c3y == fake_o)
+     && (c3n == u3r_sing(ova, lova)) )
+  {
     fprintf(stderr, "disk-wasm: reactor read list mismatch\r\n");
     goto fail;
   }
@@ -855,11 +1150,13 @@ u3_disk_wasm_arg1_ptr(void)
 
 PROBE_EXPORT("u3_disk_wasm_init")
 c3_i PROBE_NO_STACK_PROTECTOR
-u3_disk_wasm_init(c3_w exp_w, c3_d who_l, c3_d who_h)
+u3_disk_wasm_init(c3_w exp_w, c3_d who_l, c3_d who_h, c3_i fake_i)
 {
   c3_d who_d[2] = { who_l, who_h };
   _probe_reactor_call_ctors();
-  return (c3y == _probe_reactor_load(exp_w, who_d)) ? 0 : 1;
+  return (c3y == _probe_reactor_load(exp_w,
+                                     who_d,
+                                     fake_i ? c3y : c3n)) ? 0 : 1;
 }
 
 PROBE_EXPORT("u3_disk_wasm_poke_load_mesa")
@@ -925,7 +1222,8 @@ main(int argc, char** argv)
     return 1;
   }
   c3_d who_d[2];
-  if ( c3n == _probe_fake_ship(argc, argv, who_d) ) {
+  c3_o fake_o;
+  if ( c3n == _probe_ship_mode(argc, argv, who_d, &fake_o) ) {
     return 1;
   }
   c3_o run_o = _probe_has_arg(argc, argv, "--run-boot");
@@ -962,8 +1260,13 @@ main(int argc, char** argv)
   u3_noun cax = u3_nul;
   u3_meta met_u = {0};
   c3_w len_w = 0;
+  c3_o construct_fake_o = (  (c3y == load_only_o)
+                           && (c3n == fake_o) )
+                        ? c3y
+                        : fake_o;
 
-  if (  (c3n == _probe_make_boot(&ova, &cax, &met_u, who_d))
+  if (  (c3n == _probe_make_boot(&ova, &cax, &met_u,
+                                 who_d, construct_fake_o))
      || (c3n == _probe_list_len(ova, &len_w)) )
   {
     return 1;
@@ -1010,7 +1313,9 @@ main(int argc, char** argv)
 
   u3_meta rem_u = {0};
   if (  (c3n == u3_disk_read_meta(log_u->mdb_u, &rem_u))
-     || (c3n == _probe_meta_match(&met_u, &rem_u)) )
+     || (  (c3y == fake_o)
+        ? (c3n == _probe_meta_match(&met_u, &rem_u))
+        : (c3n == _probe_owned_meta_match(who_d, &rem_u)) ) )
   {
     fprintf(stderr, "disk-wasm: reload meta mismatch\r\n");
     return 1;
@@ -1022,7 +1327,9 @@ main(int argc, char** argv)
     fprintf(stderr, "disk-wasm: read list failed\r\n");
     return 1;
   }
-  if ( c3n == u3r_sing(ova, lova) ) {
+  if (  (c3y == fake_o)
+     && (c3n == u3r_sing(ova, lova)) )
+  {
     fprintf(stderr, "disk-wasm: read list mismatch\r\n");
     u3z(lova);
     return 1;

@@ -7,8 +7,6 @@ import {
   tuple,
 } from './urbit-noun.mjs';
 
-export const MESA_SESSION_LANE_TAG = 1n << 63n;
-
 export function amesWire() {
   return cell(termAtom('ames'), 0n);
 }
@@ -48,14 +46,6 @@ function loobean(value) {
   return value ? 0n : 1n;
 }
 
-export function oldAmesAddressLane(address) {
-  return cell(1n, BigInt(address));
-}
-
-export function oldAmesShipLane(ship) {
-  return cell(0n, BigInt(ship));
-}
-
 export function mateTask({ ship = null, dry = false } = {}) {
   return tuple(
     termAtom('mate'),
@@ -66,21 +56,6 @@ export function mateTask({ ship = null, dry = false } = {}) {
 
 export function mateOvumJam({ ship = null, dry = false } = {}) {
   return amesRuntimeOvumJam(mateTask({ ship, dry }));
-}
-
-export function dearTask({
-  ship,
-  lane = oldAmesAddressLane(mesaSessionLane()),
-}) {
-  if (ship == null) {
-    throw new Error('ship is required');
-  }
-
-  return tuple(termAtom('dear'), BigInt(ship), lane);
-}
-
-export function dearOvumJam(input) {
-  return amesRuntimeOvumJam(dearTask(input));
 }
 
 export function pathNoun(path) {
@@ -108,15 +83,10 @@ export function keenOvumJam({ ship, path, security = 0n }) {
   return amesRuntimeOvumJam(keenTask({ ship, path, security }));
 }
 
-export function mesaSessionLane(sessionId = 1n) {
-  const sid = BigInt(sessionId);
-  if (sid < 0n || sid >= MESA_SESSION_LANE_TAG) {
-    throw new Error('session id must fit below bit 63');
+export function mesaHeerTask({ lane, packet }) {
+  if (lane == null) {
+    throw new Error('source lane is required');
   }
-  return MESA_SESSION_LANE_TAG | sid;
-}
-
-export function mesaHeerTask({ lane = mesaSessionLane(), packet }) {
   if (packet == null) {
     throw new Error('packet is required');
   }
@@ -127,10 +97,13 @@ export function mesaHeerTask({ lane = mesaSessionLane(), packet }) {
 
   return cell(
     termAtom('heer'),
-    cell(BigInt(lane), atomFromBytesLE(packetBytes)),
+    cell(
+      Array.isArray(lane) ? lane : BigInt(lane),
+      atomFromBytesLE(packetBytes),
+    ),
   );
 }
 
-export function mesaHeerOvumJam({ lane = mesaSessionLane(), packet }) {
+export function mesaHeerOvumJam({ lane, packet }) {
   return amesRuntimeOvumJam(mesaHeerTask({ lane, packet }));
 }

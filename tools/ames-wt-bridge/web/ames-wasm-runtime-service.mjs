@@ -4,16 +4,13 @@ import {
   keenOvumJam,
   mateOvumJam,
   mesaHeerOvumJam,
-  mesaSessionLane,
 } from './ames-wasm-events.mjs';
 import {
   decodeEffectList,
   extractMesaEffects,
 } from './ames-wasm-effects.mjs';
-import {
-  MesaSessionRouteTable,
-  routeMesaEffects,
-} from './ames-wasm-router.mjs';
+import { routeMesaEffects } from './ames-wasm-router.mjs';
+import { udpLaneNoun } from './ames-udp-frame.mjs';
 import {
   BoundedPacketQueue,
   runWasmMesaEventLoop,
@@ -45,8 +42,11 @@ const DEFAULT_MEMORY_OPTIONS = Object.freeze({
 
 const DEFAULT_LARGE_HTTP_SERVER_EFFECT_BYTES = 256 * 1024;
 
-function packetCopy(packet) {
-  return packet instanceof Uint8Array ? Uint8Array.from(packet) : Uint8Array.from(packet);
+function packetCopy(event) {
+  return {
+    lane: { ...event.lane },
+    packet: Uint8Array.from(event.packet),
+  };
 }
 
 function routeCount(value) {
@@ -244,6 +244,8 @@ export class AmesWasmRuntimeService {
     certificateHash = '',
     memoryOptions = DEFAULT_MEMORY_OPTIONS,
     fakeShip = 0x100n,
+    bootMode = 'fake',
+    bootFiles = {},
     sessionId = 1n,
     maxPackets = 32,
     runtimeFactory = defaultRuntimeFactory,
@@ -252,6 +254,7 @@ export class AmesWasmRuntimeService {
     httpClientHost = null,
     httpClientHostFactory = defaultHttpClientHostFactory,
     autoStartHttpClient = true,
+    autoSave = true,
     behnHost = null,
     behnHostFactory = defaultBehnHostFactory,
     httpServerHost = null,
@@ -283,11 +286,16 @@ export class AmesWasmRuntimeService {
     this.certificateHash = certificateHash;
     this.memoryOptions = { ...DEFAULT_MEMORY_OPTIONS, ...memoryOptions };
     this.fakeShip = BigInt(fakeShip);
+    this.bootMode = String(bootMode);
+    this.bootFiles = Object.fromEntries(
+      Object.entries(bootFiles).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+    );
     this.sessionId = BigInt(sessionId);
     this.runtimeFactory = runtimeFactory;
     this.replayProbe = replayProbe;
     this.clientFactory = clientFactory;
     this.autoStartHttpClient = Boolean(autoStartHttpClient);
+    this.autoSave = Boolean(autoSave);
     this.onLog = onLog;
     this.onStdout = onStdout;
     this.onStderr = onStderr;
@@ -325,9 +333,9 @@ export class AmesWasmRuntimeService {
     this.runtimeCommitWaiterOrder = 0;
     this.nextFileId = 0;
     this.nextPacketId = 0;
-    this.sessionRoutes = new MesaSessionRouteTable();
     this.inboundPackets = new BoundedPacketQueue({
       maxPackets,
+      copy: packetCopy,
       onDrop: drop => {
         log(this.onLog, `dropped inbound WebTransport packet count=${drop.dropped}`, 'err');
       },
@@ -379,6 +387,7 @@ export class AmesWasmRuntimeService {
       fileStore: this.fileStore,
       initialFiles: {
         '/brass.pill': this.pillBytes,
+        ...this.bootFiles,
       },
       memoryOptions: this.memoryOptions,
       onStdout: this.onStdout,
@@ -388,7 +397,16 @@ export class AmesWasmRuntimeService {
     this.runtime.init({
       loomExponent: this.memoryOptions.loomExponent,
       ship: this.fakeShip,
+      fake: this.bootMode !== 'owned',
     });
+    // Boot inputs include private key material and are not part of the pier.
+    // Drop them before the first IndexedDB checkpoint.
+    this.runtime.host?.files?.delete('/brass.pill');
+    for (const path of this.runtime.host?.files?.keys?.() ?? []) {
+      if (String(path).startsWith('/boot/')) {
+        this.runtime.host.files.delete(path);
+      }
+    }
     this.started = true;
     log(this.onLog, `runtime initialized event=${this.runtime.event()}`, 'rx');
 
@@ -424,6 +442,10 @@ export class AmesWasmRuntimeService {
       label: 'born',
       ovumBytes: bornOvumJam(),
     });
+    if (this.autoSave) {
+      await this.runtime.save?.();
+      log(this.onLog, `persisted browser pier event=${this.runtime.event()}`, 'rx');
+    }
 
     return {
       load,
@@ -460,7 +482,7 @@ export class AmesWasmRuntimeService {
           }
         },
         onPacket: event => {
-          this.inboundPackets.push(event.packet);
+          this.inboundPackets.push(event);
           this.totals.inboundPackets++;
           this.onPacket(event);
           log(this.onLog, `rx ${event.mode} ${event.packet.length}B`, 'rx');
@@ -468,9 +490,6 @@ export class AmesWasmRuntimeService {
         onError: ({ type, error }) => {
           log(this.onLog, `${type}: ${error}`, 'err');
         },
-      });
-      this.sessionRoutes.registerSession(this.sessionId, {
-        send: packet => this.client.send(packet),
       });
     }
 
@@ -492,7 +511,6 @@ export class AmesWasmRuntimeService {
 
     await this.client.close?.({ reason: 'browser runtime service close' });
     this.client = null;
-    this.sessionRoutes.unregisterSession(this.sessionId);
     this.inboundPackets.close();
     return {
       snapshot: this.snapshot(),
@@ -530,17 +548,20 @@ export class AmesWasmRuntimeService {
 
   async injectPacket({
     packet,
-    lane = mesaSessionLane(this.sessionId),
+    lane,
     label = `reply-${this.nextPacketId++}`,
   } = {}) {
     if (packet == null) {
       throw new Error('packet is required');
     }
+    if (lane == null) {
+      throw new Error('source lane is required');
+    }
     return this.#pokeOvum({
       label,
       ovumBytes: mesaHeerOvumJam({
-        lane: BigInt(lane),
-        packet: packetCopy(packet),
+        lane: udpLaneNoun(lane),
+        packet,
       }),
     });
   }
@@ -845,12 +866,12 @@ export class AmesWasmRuntimeService {
       },
       runBatch: async ({ packets }) => {
         const effects = [];
-        for (const packet of packets) {
+        for (const event of packets) {
           const result = await this.#commitOvum({
             label: `reply-${this.nextPacketId++}`,
             ovumBytes: mesaHeerOvumJam({
-              lane: mesaSessionLane(this.sessionId),
-              packet: packetCopy(packet),
+              lane: udpLaneNoun(event.lane),
+              packet: event.packet,
             }),
           });
           effects.push({
@@ -1028,6 +1049,9 @@ export class AmesWasmRuntimeService {
       );
     }
     this.runtime.pokeOvum({ ovumPath, effectsPath });
+    if (this.autoSave) {
+      await this.runtime.save?.();
+    }
     if (!isRoutineHostLabel(label)) {
       log(this.onLog, `injected %${label} event=${this.runtime.event()}`, 'rx');
     }
@@ -1058,26 +1082,17 @@ export class AmesWasmRuntimeService {
     const routine = isRoutineHostLabel(label);
 
     const routes = await routeMesaEffects(effectsNoun, {
-      sessionRoutes: this.sessionRoutes,
-      sendGalaxy: async (ship, packet) => {
+      sendLane: async (lane, packet) => {
         if (!this.client) {
           throw new Error('WebTransport client is not connected');
         }
         if (!routine) {
-          log(this.onLog, `${label}: route galaxy ${ship.toString()} ${packet.length}B`);
+          log(
+            this.onLog,
+            `${label}: route ${lane.type} ${JSON.stringify(lane)} ${packet.length}B`,
+          );
         }
-        return this.client.send(packet);
-      },
-      onBind: binding => {
-        log(
-          this.onLog,
-          `${label}: bind ${binding.ship.toString()} -> session ` +
-            `${binding.sessionId.toString()}`,
-          'rx',
-        );
-      },
-      onDropBind: ({ reason, bind }) => {
-        log(this.onLog, `${label}: drop bind ${bind.ship.toString()} reason=${reason}`, 'err');
+        return this.client.sendTo(lane, packet);
       },
       onRoute: routed => {
         if (!routine) {
@@ -1188,7 +1203,9 @@ export class AmesWasmRuntimeService {
     return [
       '--loom',
       String(this.memoryOptions.loomExponent),
-      ...(this.fakeShip === 0n ? [] : ['--fake-ship', this.fakeShip.toString()]),
+      ...(this.bootMode === 'owned'
+        ? ['--owned-ship', this.fakeShip.toString()]
+        : (this.fakeShip === 0n ? [] : ['--fake-ship', this.fakeShip.toString()])),
       '--load-only',
       '--run-boot',
     ];

@@ -5,10 +5,6 @@ import {
   termAtom,
 } from './urbit-noun.mjs';
 
-import {
-  MESA_SESSION_LANE_TAG,
-} from './ames-wasm-events.mjs';
-
 const TERMS = Object.freeze({
   ames: termAtom('ames'),
   bind: termAtom('bind'),
@@ -172,17 +168,6 @@ function decodeEffectsInput(input) {
 
 export function decodeEffectList(input) {
   return decodeEffectsInput(input);
-}
-
-export function isMesaSessionLane(lane) {
-  return typeof lane === 'bigint' && (lane & MESA_SESSION_LANE_TAG) !== 0n;
-}
-
-export function mesaSessionIdFromLane(lane) {
-  if (!isMesaSessionLane(lane)) {
-    throw new Error('lane is not a Mesa session lane');
-  }
-  return lane & (MESA_SESSION_LANE_TAG - 1n);
 }
 
 export function extractMesaEffects(input) {

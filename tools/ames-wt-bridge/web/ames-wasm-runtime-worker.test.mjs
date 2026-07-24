@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   createAmesRuntimeWorkerHandler,
+  prepareOwnedBoot,
 } from './ames-wasm-runtime-worker.mjs';
 
 function okFetch(bytes = [1, 2, 3]) {
@@ -43,6 +44,10 @@ class FakeStore {
 
   async clear() {
     this.cleared = true;
+  }
+
+  async load() {
+    return { files: new Map(), directories: new Set(['/']) };
   }
 }
 
@@ -212,6 +217,88 @@ class FakeService {
   }
 }
 
+test('prepareOwnedBoot keeps the key local and fetches only public dawn data', async () => {
+  const calls = [];
+  const fetchFn = async (resource, init = {}) => {
+    assert.equal(String(resource), 'https://demo.invalid/_vere/http-client');
+    const outer = JSON.parse(init.body);
+    assert.equal(outer.url, 'https://roller.urbit.org/v1/azimuth');
+    const payload = JSON.parse(
+      Buffer.from(outer.bodyBase64, 'base64').toString('utf8'),
+    );
+    calls.push(payload);
+    const body = Array.isArray(payload)
+      ? payload.map(request => ({ jsonrpc: '2.0', id: request.id, result: {} }))
+      : { jsonrpc: '2.0', id: payload.id, result: {} };
+    const bytes = new TextEncoder().encode(JSON.stringify(body));
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return bytes.buffer;
+      },
+    };
+  };
+  const keyBytes = new TextEncoder().encode('0w1.test-key');
+  const files = await prepareOwnedBoot({
+    fetchFn,
+    proxyUrl: 'https://demo.invalid/_vere/http-client',
+    ship: 0n,
+    keyBytes,
+  });
+
+  assert.deepEqual(files['/boot/ship.key'], keyBytes);
+  assert.ok(files['/boot/point-00000000000000000000000000000000.json']);
+  assert.ok(files['/boot/galaxies.json']);
+  assert.ok(files['/boot/turf.json']);
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0].method, 'getPoint');
+  assert.equal(calls[0].params.ship, '~zod');
+  assert.equal(calls[1].length, 256);
+  assert.equal(calls[2].method, 'getDns');
+});
+
+test('runtime worker resumes an owned pier without loading a keyfile', async () => {
+  class PersistedStore extends FakeStore {
+    async load() {
+      return {
+        files: new Map([
+          ['/pier/.urb/log/meta.bin', Uint8Array.of(1)],
+          ['/pier/.urb/log/0i0/events.bin', Uint8Array.of(2)],
+        ]),
+        directories: new Set(['/']),
+      };
+    }
+  }
+  FakeService.instances = [];
+  const emitted = [];
+  const fetchFn = recordingFetch([4, 5]);
+  const handler = createAmesRuntimeWorkerHandler({
+    emit: message => emitted.push(message),
+    Service: FakeService,
+    FileStore: PersistedStore,
+    fetchFn,
+  });
+
+  await handler.handle({
+    id: 1,
+    type: 'start',
+    wasmUrl: 'https://example.invalid/vere-disk-wasm.wasm',
+    pillUrl: 'https://example.invalid/brass.pill',
+    bootMode: 'owned',
+    fakeShip: '0x100',
+    scope: 'owned-resume',
+  });
+
+  assert.equal(fetchFn.calls.length, 1);
+  assert.equal(FakeService.instances[0].options.bootMode, 'owned');
+  assert.deepEqual(FakeService.instances[0].options.bootFiles, {});
+  assert.ok(emitted.some(message => (
+    message.type === 'log' &&
+    message.message.includes('keyfile is not required')
+  )));
+});
+
 test('runtime worker handler runs command lifecycle and serializes results', async () => {
   FakeStore.instances = [];
   FakeService.instances = [];
@@ -259,7 +346,7 @@ test('runtime worker handler runs command lifecycle and serializes results', asy
 
   assert.equal(FakeStore.instances.length, 1);
   assert.equal(FakeStore.instances[0].options.scope, 'worker-test');
-  assert.equal(FakeStore.instances[0].cleared, true);
+  assert.equal(FakeStore.instances[0].cleared, false);
   assert.equal(FakeService.instances.length, 1);
   assert.deepEqual([...FakeService.instances[0].options.pillBytes], [4, 5]);
   assert.equal(FakeService.instances[0].options.fakeShip, 0x100n);

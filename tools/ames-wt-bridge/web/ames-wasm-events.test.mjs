@@ -4,13 +4,10 @@ import test from 'node:test';
 import { encodePeek } from './mesa-pact.mjs';
 import {
   bornOvumJam,
-  dearOvumJam,
   keenOvumJam,
   loadMesaOvumJam,
   mateOvumJam,
   mesaHeerOvumJam,
-  mesaSessionLane,
-  oldAmesAddressLane,
   pathNoun,
 } from './ames-wasm-events.mjs';
 import {
@@ -99,33 +96,18 @@ test('mateOvumJam can build a dry migration test task', () => {
   );
 });
 
-test('dearOvumJam wraps a session atom as an old-Ames address lane', () => {
-  const lane = oldAmesAddressLane(mesaSessionLane(3n));
-  const ovum = cue(atomFromBytesLE(dearOvumJam({ ship: 0x100n, lane })));
-
-  sameNoun(
-    ovum[1],
-    tuple(
-      termAtom('dear'),
-      0x100n,
-      cell(1n, (1n << 63n) | 3n),
-    ),
-  );
-});
-
-test('mesaHeerOvumJam builds a session-lane Mesa packet ovum', () => {
+test('mesaHeerOvumJam builds an IPv4-lane Mesa packet ovum', () => {
   const packet = encodePeek({
     ship: 0x100n,
     path: '/~zod/0/1/c/x/1/base/sys/kelvin',
   });
-  const lane = mesaSessionLane(7n);
+  const lane = tuple(termAtom('if'), 0x7f000001n, 13337n);
   const ovum = cue(atomFromBytesLE(mesaHeerOvumJam({ lane, packet })));
   const task = ovum[1];
   const packetAtom = task[1][1];
 
-  assert.equal(lane, (1n << 63n) | 7n);
   assert.equal(task[0], termAtom('heer'));
-  assert.equal(task[1][0], lane);
+  assert.deepEqual(task[1][0], lane);
   assert.deepEqual(
     Array.from(bytesFromAtomLE(packetAtom, packet.length)),
     Array.from(packet),

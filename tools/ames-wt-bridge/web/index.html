@@ -20,6 +20,8 @@
 <input id="url" value="https://127.0.0.1:8443/~_~/ames">
 <label>dev cert sha-256 (base64, from the bridge's <code>-dev</code> log)</label>
 <input id="hash" placeholder="paste the bridge's printed hash">
+<label>gateway destination galaxy (0-255)</label>
+<input id="gateway-galaxy" value="0">
 <label>source ship atom (decimal or 0x; default is ~marzod)</label>
 <input id="ship" value="0x100">
 <label>source life</label>
@@ -115,10 +117,7 @@ import {
   mesaHeerOvumJam,
 } from './ames-wasm-events.mjs';
 import { extractMesaEffects } from './ames-wasm-effects.mjs';
-import {
-  MesaSessionRouteTable,
-  routeMesaEffects,
-} from './ames-wasm-router.mjs';
+import { routeMesaEffects } from './ames-wasm-router.mjs';
 import {
   BoundedPacketQueue,
   runQueuedWasmMesaLoop,
@@ -405,45 +404,17 @@ const jsonLog = value => JSON.stringify(
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function routeWasmMesaEffects(label, bytes, opened, {
-  sessionRoutes,
-} = {}) {
+async function routeWasmMesaEffects(label, bytes, opened) {
   if (!bytes) {
     return { sent: [], dropped: [] };
   }
 
   return routeMesaEffects(bytes, {
-    sessionRoutes,
-    sendGalaxy: async (ship, packet) => {
-      log(`${label}: route galaxy ${patp(ship)} ${packet.length}B`);
-      const mode = await opened.client.send(packet);
+    sendLane: async (lane, packet) => {
+      log(`${label}: route lane ${jsonLog(lane)} ${packet.length}B`);
+      const mode = await opened.client.sendTo(lane, packet);
       log(`${label}: tx ${mode} ${packet.length}B: ${bytesToHex(packet)}`, 'tx');
       return mode;
-    },
-    sendSession: sessionRoutes
-      ? async (sessionId, packet, push) => {
-        log(`${label}: route session ${sessionId.toString()} ${packet.length}B`);
-        const mode = await sessionRoutes.sendSession(sessionId, packet, push);
-        log(`${label}: tx ${mode} ${packet.length}B: ${bytesToHex(packet)}`, 'tx');
-        return mode;
-      }
-      : undefined,
-    onBind: binding => {
-      log(
-        `${label}: bind ${patp(binding.ship)} -> session ` +
-        `${binding.sessionId.toString()} ` +
-        `fresh=${binding.rift.toString()}/` +
-        `${binding.bone.toString()}/` +
-        `${binding.sequence.toString()}`,
-        'rx',
-      );
-    },
-    onDropBind: ({ reason, bind, lane }) => {
-      log(
-        `${label}: drop bind ${patp(bind.ship)} reason=${reason} ` +
-        `lane=${jsonLog(lane)}`,
-        'err',
-      );
     },
     onDrop: ({ lane, push }) => {
       log(`${label}: drop lane=${jsonLog(lane)} packet=${push.packet.length}B`, 'err');
@@ -477,10 +448,24 @@ async function openClient({
 
   const hash = $('hash').value.trim();
   let nextClient = null;
+  let replyLane = null;
   let chumPeer = null;
+  const sendReply = packet => {
+    if (!replyLane) {
+      throw new Error('cannot reply before receiving a UDP source lane');
+    }
+    return nextClient.sendTo(replyLane, packet);
+  };
+  const sendDefault = packet => {
+    const galaxy = Number($('gateway-galaxy').value);
+    if (!Number.isSafeInteger(galaxy) || galaxy < 0 || galaxy > 255) {
+      throw new Error('gateway destination galaxy must be 0-255');
+    }
+    return nextClient.sendTo({ type: 'galaxy', ship: galaxy }, packet);
+  };
   const nextResponder = new AmesCometProofResponder({
     getIdentity: () => identity,
-    send: packet => nextClient.send(packet),
+    send: sendReply,
     onPacket: ({ mode, packet }) => {
       log(`rx ${mode} ${packet.length}B: ${bytesToHex(packet)}`, 'rx');
     },
@@ -494,7 +479,7 @@ async function openClient({
       log(`${type}: ${error}`, 'err');
     },
   });
-  chumPeer = await makeChumPeer(packet => nextClient.send(packet), { required: requireChum });
+  chumPeer = await makeChumPeer(sendDefault, { required: requireChum });
 
   nextClient = new AmesWebTransportClient({
     url,
@@ -505,6 +490,7 @@ async function openClient({
       if (status.type === 'closed' && !status.terminal) log('session closed');
     },
     onPacket: event => {
+      replyLane = event.lane;
       onPacket(event);
       void nextResponder.handlePacket(event);
       if (learnProofs) {
@@ -539,9 +525,12 @@ async function sendPacket(pkt, { override = false } = {}) {
   }
 
   const opened = await openClient();
-  // send the ames packet as a datagram or one-shot stream, per spec §4.1
   try {
-    const mode = await opened.client.send(pkt);
+    const galaxy = Number($('gateway-galaxy').value);
+    if (!Number.isSafeInteger(galaxy) || galaxy < 0 || galaxy > 255) {
+      throw new Error('gateway destination galaxy must be 0-255');
+    }
+    const mode = await opened.client.sendTo({ type: 'galaxy', ship: galaxy }, pkt);
     log(`tx ${mode} ${pkt.length}B: ${bytesToHex(pkt)}`, 'tx');
     log('sent — watching for response…');
   } catch (e) {
@@ -911,21 +900,15 @@ async function runVereDisk({
             inboundPackets.push(packet);
           },
         });
-        const sessionRoutes = new MesaSessionRouteTable();
-        sessionRoutes.registerSession(1n, {
-          send: packet => opened.client.send(packet),
-        });
         const mateRoutes = await routeWasmMesaEffects(
           'mesa-mate',
           mateEffectsBytes,
           opened,
-          { sessionRoutes },
         );
         const keenRoutes = await routeWasmMesaEffects(
           'mesa-keen',
           keenEffectsBytes,
           opened,
-          { sessionRoutes },
         );
         log(
           `routed Mesa pushes sent=${mateRoutes.sent.length + keenRoutes.sent.length} ` +
@@ -1114,19 +1097,11 @@ async function runVereDisk({
           inboundPackets.push(packet);
         },
       });
-      const sessionRoutes = new MesaSessionRouteTable();
-      sessionRoutes.registerSession(1n, {
-        send: packet => opened.client.send(packet),
-      });
       const mateRoutes = injectMate
-        ? await routeWasmMesaEffects('mesa-mate', mateEffectsBytes, opened, {
-          sessionRoutes,
-        })
+        ? await routeWasmMesaEffects('mesa-mate', mateEffectsBytes, opened)
         : { sent: [], dropped: [] };
       const keenRoutes = keen
-        ? await routeWasmMesaEffects('mesa-keen', keenEffectsBytes, opened, {
-          sessionRoutes,
-        })
+        ? await routeWasmMesaEffects('mesa-keen', keenEffectsBytes, opened)
         : { sent: [], dropped: [] };
       log(
         `routed Mesa pushes sent=${mateRoutes.sent.length + keenRoutes.sent.length} ` +

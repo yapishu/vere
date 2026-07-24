@@ -20,6 +20,7 @@ import {
   mesaHeerOvumJam,
 } from './ames-wasm-events.mjs';
 import { extractMesaEffects } from './ames-wasm-effects.mjs';
+import { udpLaneNoun } from './ames-udp-frame.mjs';
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -414,7 +415,10 @@ test(
       initialFiles: {
         ...initialFiles,
         [ovumPath]: loadMesaOvumJam(),
-        [heerPath]: mesaHeerOvumJam({ packet }),
+        [heerPath]: mesaHeerOvumJam({
+          lane: udpLaneNoun({ type: 'if', ip: 0x7f000001, port: 13337 }),
+          packet,
+        }),
       },
       memoryOptions,
       onStderr: bytes => {
@@ -518,7 +522,10 @@ test(
     });
     const heerPath = '/in/reactor-peek-heer.ovum.jam';
     const heerEffectsPath = '/out/reactor-peek-heer.effects.jam';
-    runtime.host.files.set(heerPath, mesaHeerOvumJam({ packet }));
+    runtime.host.files.set(heerPath, mesaHeerOvumJam({
+      lane: udpLaneNoun({ type: 'if', ip: 0x7f000001, port: 13337 }),
+      packet,
+    }));
 
     runtime.pokeOvum({
       ovumPath: heerPath,

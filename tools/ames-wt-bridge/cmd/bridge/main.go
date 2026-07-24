@@ -1,11 +1,9 @@
-// bridge is the galaxy-side WebTransport↔UDP ames bridge (phase 0 of
-// doc/spec/ames-over-quic.md in the urbit repo).
+// bridge gives each WebTransport session its own ordinary UDP socket.
 //
-// Each accepted WebTransport session gets its own UDP socket to the ship's
-// ames port, so the ship sees each remote peer as a distinct local lane and
-// the UDP 4-tuple provides the return path: the bridge is fully transparent
-// and keeps no ship-level state. Because ames packets are end-to-end
-// authenticated, the bridge is trustless for content.
+// Browser->gateway frames contain an Ames destination lane and packet.
+// Gateway->browser frames contain the actual UDP source lane and packet. The
+// rest of the network therefore sees an entirely ordinary UDP Ames endpoint;
+// no peer, sponsor, galaxy, kernel, or native Vere changes are required.
 //
 // Certificates: pass -cert/-key for a real (webpki) cert, or -dev to mint a
 // self-signed ECDSA cert valid ≤14 days, usable from browsers via
@@ -21,33 +19,71 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 
+	"ames-wt-bridge/internal/gateway"
 	"ames-wt-bridge/internal/pump"
 )
 
+const galaxySuffixes = "" +
+	"zodnecbudwessevpersutletfulpensytdurwepserwylsun" +
+	"rypsyxdyrnuphebpeglupdepdysputlughecryttyvsydnex" +
+	"lunmeplutseppesdelsulpedtemledtulmetwenbynhexfeb" +
+	"pyldulhetmevruttylwydtepbesdexsefwycburderneppur" +
+	"rysrebdennutsubpetrulsynregtydsupsemwynrecmegnet" +
+	"secmulnymtevwebsummutnyxrextebfushepbenmuswyxsym" +
+	"selrucdecwexsyrwetdylmynmesdetbetbeltuxtugmyrpel" +
+	"syptermebsetdutdegtexsurfeltudnuxruxrenwytnubmed" +
+	"lytdusnebrumtynseglyxpunresredfunrevrefmectedrus" +
+	"bexlebduxrynnumpyxrygryxfeptyrtustyclegnemfermer" +
+	"tenlusnussyltecmexpubrymtucfyllepdebbermughuttun" +
+	"bylsudpemdevlurdefbusbeprunmelpexdytbyttyplevmyl" +
+	"wedducfurfexnulluclennerlexrupnedlecrydlydfenwel" +
+	"nydhusrelrudneshesfetdesretdunlernyrsebhulryllud" +
+	"remlysfynwerrycsugnysnyllyndyndemluxfedsedbecmun" +
+	"lyrtesmudnytbyrsenwegfyrmurtelreptegpecnelnevfes"
+
 func main() {
 	var (
-		listen = flag.String("listen", ":8443", "UDP address to serve WebTransport on")
-		ames   = flag.String("ames", "127.0.0.1:31337", "ship's ames UDP address")
-		path   = flag.String("path", "/~_~/ames", "WebTransport CONNECT path")
-		cert   = flag.String("cert", "", "TLS certificate file (webpki)")
-		key    = flag.String("key", "", "TLS key file (webpki)")
-		dev    = flag.Bool("dev", false, "use a self-signed short-lived certificate")
+		listen         = flag.String("listen", ":8443", "UDP address to serve WebTransport on")
+		path           = flag.String("path", "/~_~/ames", "WebTransport CONNECT path")
+		token          = flag.String("token", "", "optional shared token required as the URL token query parameter")
+		cert           = flag.String("cert", "", "TLS certificate file (webpki)")
+		key            = flag.String("key", "", "TLS key file (webpki)")
+		dev            = flag.Bool("dev", false, "use a self-signed short-lived certificate")
+		udpIP          = flag.String("udp-ip", "0.0.0.0", "local IPv4 address for per-session UDP sockets")
+		udpMin         = flag.Int("udp-port-min", 0, "first UDP port to allocate (0 uses ephemeral ports)")
+		udpMax         = flag.Int("udp-port-max", 0, "last UDP port to allocate (0 uses ephemeral ports)")
+		domain         = flag.String("ames-domain", "urbit.org", "galaxy Ames DNS domain")
+		galaxyBasePort = flag.Int("galaxy-base-port", 13337, "UDP port for ~zod; galaxy number is added")
 	)
 	flag.Parse()
-
-	amesAddr, err := net.ResolveUDPAddr("udp", *ames)
-	if err != nil {
-		log.Fatalf("bridge: bad -ames address: %v", err)
+	if (*udpMin == 0) != (*udpMax == 0) || *udpMin < 0 || *udpMax < *udpMin || *udpMax > 65535 {
+		log.Fatal("bridge: UDP port range must be 0/0 or a valid inclusive range")
+	}
+	ip := net.ParseIP(*udpIP).To4()
+	if ip == nil {
+		log.Fatalf("bridge: -udp-ip must be an IPv4 address: %q", *udpIP)
+	}
+	if *galaxyBasePort <= 0 || *galaxyBasePort+255 > 65535 {
+		log.Fatal("bridge: invalid -galaxy-base-port")
+	}
+	allocator := &udpAllocator{ip: ip, min: *udpMin, max: *udpMax, next: *udpMin}
+	resolver := &galaxyResolver{
+		domain:   strings.Trim(*domain, "."),
+		basePort: *galaxyBasePort,
 	}
 
 	tlsConf, err := tlsConfig(*cert, *key, *dev)
@@ -69,32 +105,143 @@ func main() {
 	webtransport.ConfigureHTTP3Server(srv.H3)
 
 	http.HandleFunc(*path, func(w http.ResponseWriter, r *http.Request) {
+		if *token != "" && r.URL.Query().Get("token") != *token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		sess, err := srv.Upgrade(w, r)
 		if err != nil {
 			log.Printf("bridge: upgrade: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		go serve(sess, amesAddr)
+		go serve(sess, allocator, resolver)
 	})
+	if *token == "" {
+		log.Printf("bridge: WARNING no -token set; this endpoint is an unauthenticated UDP relay")
+	}
 
-	log.Printf("bridge: webtransport on %s%s -> ames at %s", *listen, *path, *ames)
+	log.Printf(
+		"bridge: WebTransport %s%s; one UDP socket per session on %s ports %d-%d",
+		*listen,
+		*path,
+		ip,
+		*udpMin,
+		*udpMax,
+	)
 	log.Fatal(srv.ListenAndServe())
 }
 
-// serve pumps one session against its own socket to the ship.
-func serve(sess *webtransport.Session, ames *net.UDPAddr) {
-	conn, err := net.DialUDP("udp", nil, ames)
+type udpAllocator struct {
+	mu       sync.Mutex
+	ip       net.IP
+	min, max int
+	next     int
+}
+
+func (a *udpAllocator) listen() (*net.UDPConn, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.min == 0 {
+		return net.ListenUDP("udp4", &net.UDPAddr{IP: a.ip})
+	}
+	count := a.max - a.min + 1
+	for range count {
+		port := a.next
+		a.next++
+		if a.next > a.max {
+			a.next = a.min
+		}
+		conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: a.ip, Port: port})
+		if err == nil {
+			return conn, nil
+		}
+	}
+	return nil, fmt.Errorf("no free UDP port in %d-%d", a.min, a.max)
+}
+
+type galaxyResolver struct {
+	mu       sync.Mutex
+	domain   string
+	basePort int
+	cache    [256]*net.UDPAddr
+}
+
+func (r *galaxyResolver) resolve(ship byte) (*net.UDPAddr, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if cached := r.cache[ship]; cached != nil {
+		return cached, nil
+	}
+	offset := int(ship) * 3
+	host := galaxySuffixes[offset:offset+3] + "." + r.domain
+	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%d", host, r.basePort+int(ship)))
 	if err != nil {
-		log.Printf("bridge: udp dial: %v", err)
-		sess.CloseWithError(1, "ames unreachable")
+		return nil, err
+	}
+	r.cache[ship] = addr
+	return addr, nil
+}
+
+func resolveLane(lane gateway.Lane, galaxies *galaxyResolver) (*net.UDPAddr, error) {
+	if lane.Galaxy != nil {
+		return galaxies.resolve(*lane.Galaxy)
+	}
+	if lane.IPv4.To4() == nil || lane.Port == 0 {
+		return nil, errors.New("invalid IPv4 destination lane")
+	}
+	return &net.UDPAddr{IP: lane.IPv4.To4(), Port: int(lane.Port)}, nil
+}
+
+// serve pumps one browser ship against its own public-facing UDP socket.
+func serve(
+	sess *webtransport.Session,
+	allocator *udpAllocator,
+	galaxies *galaxyResolver,
+) {
+	conn, err := allocator.listen()
+	if err != nil {
+		log.Printf("bridge: UDP allocate: %v", err)
+		sess.CloseWithError(1, "no UDP socket available")
 		return
 	}
-	log.Printf("bridge: session %s -> %s", sess.RemoteAddr(), conn.LocalAddr())
+	log.Printf("bridge: session %s owns UDP %s", sess.RemoteAddr(), conn.LocalAddr())
 
 	ctx := sess.Context()
-	go pump.UDPToSession(ctx, conn, sess)
-	pump.SessionToUDP(ctx, sess, conn)
+	go func() {
+		buf := make([]byte, 65536)
+		for {
+			n, source, err := conn.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			frame, err := gateway.Encode(
+				gateway.FrameHear,
+				gateway.IPv4Lane(source.IP, uint16(source.Port)),
+				buf[:n],
+			)
+			if err == nil {
+				pump.SendPacket(ctx, sess, frame)
+			}
+		}
+	}()
+	pump.ReceiveToFunc(ctx, sess, func(input []byte) {
+		frame, err := gateway.Decode(input)
+		if err != nil || frame.Type != gateway.FrameSend {
+			if err != nil {
+				log.Printf("bridge: drop malformed frame from %s: %v", sess.RemoteAddr(), err)
+			}
+			return
+		}
+		destination, err := resolveLane(frame.Lane, galaxies)
+		if err != nil {
+			log.Printf("bridge: drop unresolved lane from %s: %v", sess.RemoteAddr(), err)
+			return
+		}
+		if _, err := conn.WriteToUDP(frame.Packet, destination); err != nil {
+			log.Printf("bridge: UDP send %s: %v", destination, err)
+		}
+	})
 
 	conn.Close()
 	log.Printf("bridge: session %s closed", sess.RemoteAddr())

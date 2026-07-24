@@ -13,9 +13,6 @@
         .openssl = .{
             .path = "../openssl",
         },
-        .picotls = .{
-            .path = "../picotls",
-        },
         .curl = .{
             .path = "../curl",
         },

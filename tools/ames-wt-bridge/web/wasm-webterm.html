@@ -84,6 +84,10 @@
     padding: 0.48rem 0.58rem;
   }
 
+  input[type="checkbox"] {
+    width: auto;
+  }
+
   textarea {
     min-height: 4.5rem;
     resize: vertical;
@@ -409,19 +413,49 @@
         </label>
         <input id="pill-url" type="hidden" value="../../../../urbit/bin/brass.pill">
         <div class="grid2">
-          <label>fake ship
-            <select id="fake-ship">
-              <option value="0x100">Demo ship 0x100</option>
-              <option value="0">Fake galaxy ~zod</option>
-              <option value="0x101">Demo peer 0x101</option>
+          <label>boot mode
+            <select id="boot-mode">
+              <option value="fake">Fake ship (development)</option>
+              <option value="owned">Owned ship from keyfile</option>
             </select>
           </label>
-          <label>state slot
-            <select id="scope">
-              <option value="wasm-dojo-demo">Demo fresh boot</option>
-              <option value="wasm-dojo-demo-4-6">4.6 test boot</option>
-              <option value="wasm-dojo-demo-alt">Alternate demo boot</option>
-            </select>
+          <label>ship
+            <input id="ship" list="ship-options" value="0x100" spellcheck="false">
+            <datalist id="ship-options">
+              <option value="0x100">Demo ship 0x100</option>
+              <option value="~zod">Fake galaxy ~zod</option>
+              <option value="0x101">Demo peer 0x101</option>
+            </datalist>
+          </label>
+        </div>
+        <div class="grid2">
+          <label id="keyfile-label" hidden>keyfile
+            <input id="keyfile" type="file">
+          </label>
+          <label>persistent pier slot
+            <input id="scope" list="scope-options" value="wasm-dojo-demo" spellcheck="false">
+            <datalist id="scope-options">
+              <option value="wasm-dojo-demo">
+              <option value="wasm-dojo-demo-4-6">
+              <option value="wasm-dojo-demo-alt">
+            </datalist>
+          </label>
+        </div>
+        <div id="owned-boot-note" hidden>
+          A fresh owned pier requires its keyfile; a saved pier resumes
+          without one. The key stays in this browser. Only public Azimuth boot
+          data is fetched through the demo server.
+        </div>
+        <label>
+          <input id="clear-store" type="checkbox">
+          Erase this pier slot before boot
+        </label>
+        <div class="grid2">
+          <label>WebTransport gateway URL (optional)
+            <input id="bridge-url" value="" placeholder="https://gateway.example/~_~/ames?token=..." spellcheck="false">
+          </label>
+          <label>development certificate SHA-256 (optional)
+            <input id="certificate-hash" value="" spellcheck="false">
           </label>
         </div>
         <input id="session-id" type="hidden" value="1">
@@ -449,7 +483,7 @@ user-agent: vere-wasm-dojo-demo</textarea>
 import {
   createRuntimeWorkerCommandClient,
 } from './ames-wasm-runtime-route-demo.mjs';
-import { patp } from './ames-ship.mjs';
+import { patp, patpToAtom } from './ames-ship.mjs';
 
 const $ = id => document.getElementById(id);
 const decoder = new TextDecoder();
@@ -459,6 +493,7 @@ let client = null;
 let started = false;
 let terminalStarted = false;
 let httpClientStarted = false;
+let transportStarted = false;
 let webFrameLoaded = false;
 let activeWebPath = '/~debug';
 let terminal = null;
@@ -477,7 +512,8 @@ const EYRE_FRAME_ORIGIN = 'https://eyre.local';
 const EYRE_COMPAT_ORIGINS = new Set([EYRE_FRAME_ORIGIN, 'http://eyre.local']);
 const EYRE_RESOURCE_WORKER_PATH = '/apps/__vere_wasm_sw.js?v=2026-07-22-resource-bridge';
 const EYRE_RESOURCE_WORKER_SCOPE = '/apps/';
-const DEMO_BUILD_ID = '2026-07-22-frame-path';
+const DEMO_BUILD_ID = '2026-07-24-udp-gateway';
+const BOOT_FORM_STORAGE_KEY = 'vere-wasm-boot-form-v1';
 const WASM_URL_CANDIDATES = [
   './assets/vere-disk-wasm.wasm',
   '../../../zig-out/bin/vere-disk-wasm.wasm',
@@ -863,6 +899,64 @@ function parseBigIntField(id, name) {
     throw new Error(`${name} is required`);
   }
   return BigInt(raw);
+}
+
+function parseShipField() {
+  const raw = $('ship').value.trim();
+  if (!raw) {
+    throw new Error('ship is required');
+  }
+  return raw.startsWith('~') ? patpToAtom(raw) : BigInt(raw);
+}
+
+async function ownedKeyBytes() {
+  if ($('boot-mode').value !== 'owned') {
+    return null;
+  }
+  const file = $('keyfile').files?.[0];
+  if (!file) {
+    return null;
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (!bytes.length) {
+    throw new Error('keyfile is empty');
+  }
+  return bytes;
+}
+
+function syncBootModeFields() {
+  const owned = $('boot-mode').value === 'owned';
+  $('keyfile-label').hidden = !owned;
+  $('owned-boot-note').hidden = !owned;
+}
+
+function restoreBootForm() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BOOT_FORM_STORAGE_KEY) || 'null');
+    if (saved?.bootMode === 'fake' || saved?.bootMode === 'owned') {
+      $('boot-mode').value = saved.bootMode;
+    }
+    if (typeof saved?.ship === 'string' && saved.ship) {
+      $('ship').value = saved.ship;
+    }
+    if (typeof saved?.scope === 'string' && saved.scope) {
+      $('scope').value = saved.scope;
+    }
+  }
+  catch (_) {
+  }
+}
+
+function saveBootForm() {
+  try {
+    localStorage.setItem(BOOT_FORM_STORAGE_KEY, JSON.stringify({
+      bootMode: $('boot-mode').value,
+      ship: $('ship').value.trim(),
+      scope: $('scope').value.trim(),
+    }));
+  }
+  catch (_) {
+  }
 }
 
 function parseNumberField(id, name) {
@@ -1310,6 +1404,8 @@ async function startRuntime({
     resizeTerminalFromControls();
     clearTerminal();
     const memory = runtimeMemoryFields();
+    const ship = parseShipField();
+    saveBootForm();
     const result = await ensureClient().command('start', {
       wasmUrl: absoluteHref($('wasm-url').value),
       pillUrl: absoluteHref($('pill-url').value),
@@ -1317,14 +1413,29 @@ async function startRuntime({
       loomExponent: memory.loomExponent,
       overheadMiB: memory.overheadMiB,
       maximumMiB: memory.maximumMiB,
-      fakeShip: parseBigIntField('fake-ship', 'fake ship').toString(),
+      bootMode: $('boot-mode').value,
+      fakeShip: ship.toString(),
+      keyBytes: await ownedKeyBytes(),
       sessionId: parseBigIntField('session-id', 'session id').toString(),
       httpClientProxyUrl: new URL('/_vere/http-client', location.href).href,
       autoStartHttpClient: true,
-      clearStore: true,
+      clearStore: $('clear-store').checked,
     });
     httpClientStarted = Boolean(result?.snapshot?.hostedHttpStarted);
     started = true;
+  }
+
+  const bridgeUrl = $('bridge-url').value.trim();
+  if (bridgeUrl && !transportStarted) {
+    await ensureClient().command('connect', {
+      bridgeUrl,
+      certificateHash: $('certificate-hash').value.trim(),
+    });
+    await ensureClient().command('pump-start', {
+      firstIdleTimeoutMs: null,
+      idleTimeoutMs: null,
+    });
+    transportStarted = true;
   }
 
   if (!terminalStarted) {
@@ -2789,7 +2900,7 @@ function syntheticDebugResource(path, expected) {
   if (!eyreResourceTypeMatches('text/javascript', expected)) {
     return null;
   }
-  const ship = patp(parseBigIntField('fake-ship', 'fake ship')).replace(/^~/, '');
+  const ship = patp(parseShipField()).replace(/^~/, '');
   const source = `window.ship = ${JSON.stringify(ship)};\n`;
   return {
     body: new TextEncoder().encode(source),
@@ -3211,6 +3322,7 @@ async function shutdownRuntime() {
     started = false;
     terminalStarted = false;
     httpClientStarted = false;
+    transportStarted = false;
     terminalInputChars = 0;
     terminalInputBuffer = '';
     terminalInputQueue = Promise.resolve();
@@ -3261,6 +3373,14 @@ $('pill-preset').addEventListener('change', () => {
   syncRuntimePresetFields({ applyPillMemory: true });
 });
 $('memory-preset').addEventListener('change', () => syncRuntimePresetFields());
+restoreBootForm();
+$('boot-mode').addEventListener('change', () => {
+  syncBootModeFields();
+  saveBootForm();
+});
+$('ship').addEventListener('change', saveBootForm);
+$('scope').addEventListener('change', saveBootForm);
+syncBootModeFields();
 
 window.addEventListener('message', event => {
   const message = event.data || {};

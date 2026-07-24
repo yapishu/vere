@@ -1,4 +1,9 @@
 import { sendPacket } from './ames-transport.mjs';
+import {
+  decodeUdpFrame,
+  encodeUdpSend,
+  UDP_FRAME,
+} from './ames-udp-frame.mjs';
 
 function asBytes(packet) {
   return packet instanceof Uint8Array ? packet : Uint8Array.from(packet);
@@ -124,9 +129,13 @@ export class AmesWebTransportClient {
     }
   }
 
-  async send(packet) {
+  async sendFrame(frame) {
     const session = await this.connect();
-    return sendPacket(session, packet);
+    return sendPacket(session, frame);
+  }
+
+  async sendTo(lane, packet) {
+    return this.sendFrame(encodeUdpSend(lane, packet));
   }
 
   async close({ closeCode = 0, reason = 'closed' } = {}) {
@@ -185,9 +194,23 @@ export class AmesWebTransportClient {
     this.onStatus({ type: 'closed', url: this.url, terminal: false });
   }
 
-  #emitPacket(session, mode, packet) {
-    if (this.#session === session) {
-      this.onPacket({ mode, packet: asBytes(packet) });
+  #emitPacket(session, mode, input) {
+    if (this.#session !== session) {
+      return;
+    }
+    try {
+      const frame = decodeUdpFrame(input);
+      if (frame.type !== UDP_FRAME.HEAR) {
+        throw new Error(`expected HEAR frame, got type ${frame.type}`);
+      }
+      this.onPacket({
+        mode,
+        lane: frame.lane,
+        packet: frame.packet,
+      });
+    }
+    catch (error) {
+      this.#emitError(session, 'receive-frame', error);
     }
   }
 

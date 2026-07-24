@@ -1081,7 +1081,6 @@ _pier_init(c3_w wag_w, c3_c* pax_c, u3_weak ryf)
   pir_u->per_s = u3_Host.ops_u.per_s;
   pir_u->pes_s = u3_Host.ops_u.pes_s;
   pir_u->por_s = u3_Host.ops_u.por_s;
-  pir_u->poq_s = u3_Host.ops_u.poq_s;
 
   //  initialize compute
   //

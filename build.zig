@@ -126,7 +126,6 @@ pub fn build(b: *std.Build) !void {
     const release = b.option(bool, "release", "Build for release") orelse false;
     if (release) optimize = .ReleaseFast;
 
-    addMesaSessionWasmStep(b, optimize);
     addNounLoomWasmStep(b, optimize);
     addNounHostfsWasmStep(b, optimize);
     addNounEventsWasmStep(b, optimize);
@@ -791,55 +790,6 @@ fn addNounLoomWasmStep(
     step.dependOn(&install.step);
 }
 
-fn addMesaSessionWasmStep(
-    b: *std.Build,
-    optimize: std.builtin.OptimizeMode,
-) void {
-    const wasm_target = b.resolveTargetQuery(.{
-        .cpu_arch = .wasm32,
-        .os_tag = .wasi,
-        .abi = .musl,
-    });
-
-    const step = b.step(
-        "mesa-session-wasm",
-        "Build the portable Mesa session core for wasm32-wasi",
-    );
-
-    const exe = b.addExecutable(.{
-        .name = "mesa-session-wasm",
-        .root_module = b.createModule(.{
-            .target = wasm_target,
-            .optimize = optimize,
-        }),
-    });
-
-    configureBrowserWasmMemory(exe);
-    exe.linkLibC();
-    exe.addIncludePath(b.path("pkg"));
-    exe.addIncludePath(b.path("pkg/noun"));
-    exe.addIncludePath(b.path("pkg/vere/io/mesa"));
-    exe.addCSourceFiles(.{
-        .files = &.{
-            "pkg/vere/io/mesa/session_wasm_probe.c",
-            "pkg/vere/io/mesa/session.c",
-        },
-        .flags = &.{
-            "-std=gnu23",
-            "-Wall",
-            "-Werror",
-            "-Wno-gnu-statement-expression",
-            "-Wno-unused-function",
-            "-fno-sanitize=all",
-            "-DU3_OS_wasm=1",
-            "-DU3_OS_ENDIAN_little=1",
-        },
-    });
-
-    const install = b.addInstallArtifact(exe, .{});
-    step.dependOn(&install.step);
-}
-
 fn buildBinary(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -1058,22 +1008,7 @@ fn buildBinary(
         .optimize = optimize,
     });
 
-    const nghttp3 = b.dependency("nghttp3", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const ngtcp2 = b.dependency("ngtcp2", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const openssl = b.dependency("openssl", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const picotls = b.dependency("picotls", .{
         .target = target,
         .optimize = optimize,
     });
@@ -1434,42 +1369,5 @@ fn buildBinary(
             test_step.dependOn(&exe_install.step);
         }
 
-        const quic_loopback_step =
-            b.step("quic-loopback", "Build & run ngtcp2/nghttp3/picotls loopback validation");
-        const quic_loopback = b.addExecutable(.{ .name = "quic-loopback", .root_module = b.createModule(.{
-            .target = target,
-            .optimize = optimize,
-        }) });
-
-        if (t.os.tag.isDarwin() and !target.query.isNative()) {
-            const macos_sdk = b.lazyDependency("macos_sdk", .{
-                .target = target,
-                .optimize = optimize,
-            });
-            if (macos_sdk != null) {
-                quic_loopback.addSystemIncludePath(macos_sdk.?.path("usr/include"));
-                quic_loopback.addLibraryPath(macos_sdk.?.path("usr/lib"));
-                quic_loopback.addFrameworkPath(macos_sdk.?.path("System/Library/Frameworks"));
-            }
-        }
-
-        quic_loopback.stack_size = 0;
-        quic_loopback.linkLibC();
-        quic_loopback.linkLibrary(ngtcp2.artifact("ngtcp2_crypto_picotls"));
-        quic_loopback.linkLibrary(ngtcp2.artifact("ngtcp2"));
-        quic_loopback.linkLibrary(nghttp3.artifact("nghttp3"));
-        quic_loopback.linkLibrary(picotls.artifact("picotls"));
-        quic_loopback.linkLibrary(openssl.artifact("ssl"));
-        quic_loopback.linkLibrary(openssl.artifact("crypto"));
-        quic_loopback.addCSourceFiles(.{
-            .files = &.{"pkg/vere/io/mesa/quic_loopback_test.c"},
-            .flags = urbit_flags.items,
-        });
-
-        const quic_loopback_install = b.addInstallArtifact(quic_loopback, .{});
-        const run_quic_loopback = b.addRunArtifact(quic_loopback);
-        run_quic_loopback.skip_foreign_checks = true;
-        quic_loopback_step.dependOn(&run_quic_loopback.step);
-        quic_loopback_step.dependOn(&quic_loopback_install.step);
     }
 }

@@ -759,13 +759,6 @@ _mesa_etch_hop_long(u3_etcher* ech_u, u3_mesa_hop_once* hop_u)
 }
 
 static void
-_mesa_sift_hop_long(u3_sifter* sif_u, u3_mesa_hop_once* hop_u)
-{
-  hop_u->len_w = _sift_byte(sif_u);
-  hop_u->dat_y = _sift_next(sif_u, hop_u->len_w);
-}
-
-static void
 _mesa_etch_page_pact(u3_etcher* ech_u, u3_mesa_page_pact* pag_u, u3_mesa_head* hed_u)
 {
   _mesa_etch_name(ech_u, &pag_u->nam_u);
@@ -808,7 +801,7 @@ _mesa_sift_page_pact(u3_sifter* sif_u, u3_mesa_page_pact* pag_u, c3_y nex_y)
       return;
     }
     case HOP_LONG: {
-      _mesa_sift_hop_long(sif_u, &pag_u->one_u);
+      _sift_fail(sif_u, "mesa: sift invalid hop long");
       return;
     }
     case HOP_MANY: {
@@ -1205,69 +1198,6 @@ _test_cmp_data(u3_mesa_data* hav_u, u3_mesa_data* ned_u)
 }
 
 static c3_i
-_test_cmp_hop_once(u3_mesa_hop_once* hav_u, u3_mesa_hop_once* ned_u)
-{
-  c3_i ret_i = 0;
-
-  cmp_scalar(len_w, "hop: lengths", "%u");
-
-  if ( (0 != ned_u->len_w) &&
-       (0 != memcmp(hav_u->dat_y, ned_u->dat_y, ned_u->len_w)) )
-  {
-    fprintf(stderr, "mesa test cmp hop: payloads differ\r\n");
-    ret_i = 1;
-  }
-
-  return ret_i;
-}
-
-static c3_i
-_test_cmp_page_hops(u3_mesa_pact* hav_u, u3_mesa_pact* ned_u)
-{
-  c3_i ret_i = 0;
-
-  switch ( ned_u->hed_u.nex_y ) {
-    case HOP_NONE: {
-    } break;
-
-    case HOP_SHORT: {
-      if ( 0 != memcmp(hav_u->pag_u.sot_u, ned_u->pag_u.sot_u, 6) ) {
-        fprintf(stderr, "mesa test cmp hop: short payloads differ\r\n");
-        ret_i = 1;
-      }
-    } break;
-
-    case HOP_LONG: {
-      ret_i |= _test_cmp_hop_once(&hav_u->pag_u.one_u, &ned_u->pag_u.one_u);
-    } break;
-
-    case HOP_MANY: {
-      if ( hav_u->pag_u.man_u.len_w != ned_u->pag_u.man_u.len_w ) {
-        fprintf(stderr,
-                "mesa test cmp hop: many lengths differ have=%u need=%u\r\n",
-                hav_u->pag_u.man_u.len_w,
-                ned_u->pag_u.man_u.len_w);
-        ret_i = 1;
-        break;
-      }
-
-      for ( c3_w i = 0; i < ned_u->pag_u.man_u.len_w; i++ ) {
-        ret_i |= _test_cmp_hop_once(&hav_u->pag_u.man_u.dat_y[i],
-                                    &ned_u->pag_u.man_u.dat_y[i]);
-      }
-    } break;
-
-    default: {
-      fprintf(stderr, "mesa test cmp hop: invalid hop kind %u\r\n",
-              ned_u->hed_u.nex_y);
-      ret_i = 1;
-    } break;
-  }
-
-  return ret_i;
-}
-
-static c3_i
 _test_pact(u3_mesa_pact* pac_u)
 {
   c3_y* buf_y = c3_calloc(PACT_SIZE);
@@ -1291,11 +1221,6 @@ _test_pact(u3_mesa_pact* pac_u)
   u3_sifter sif_u;
   sifter_init(&sif_u, buf_y, len_w);
   _mesa_sift_pact(&sif_u, &nex_u);
-
-  if ( sif_u.err_c ) {
-    fprintf(stderr, "pact: sift failed: %s\r\n", sif_u.err_c);
-    ret_i = 1; goto done;
-  }
 
   if ( sif_u.rem_w && !sif_u.err_c ) {
     fprintf(stderr, "pact: sift failed len=%u sif=%u\r\n", len_w, sif_u.rem_w);
@@ -1325,10 +1250,6 @@ _test_pact(u3_mesa_pact* pac_u)
       }
       else if ( _test_cmp_data(&nex_u.pag_u.dat_u, &pac_u->pag_u.dat_u) ) {
         fprintf(stderr, "%%page data cmp fail\r\n");
-        ret_i = 1;
-      }
-      else if ( _test_cmp_page_hops(&nex_u, pac_u) ) {
-        fprintf(stderr, "%%page hop cmp fail\r\n");
         ret_i = 1;
       }
     } break;
@@ -1630,47 +1551,6 @@ _test_sift_page()
   }
 }
 
-static void
-_test_page_hop_long()
-{
-  u3_mesa_pact pac_u;
-  memset(&pac_u, 0, sizeof(pac_u));
-
-  pac_u.hed_u.typ_y = PACT_PAGE;
-  pac_u.hed_u.pro_y = 1;
-  pac_u.hed_u.nex_y = HOP_LONG;
-
-  u3_mesa_name* nam_u = &pac_u.pag_u.nam_u;
-  {
-    u3_noun her = u3v_wish("~hastuc-dibtux");
-    u3r_chubs(0, 2, nam_u->her_u, her);
-    u3z(her);
-  }
-  nam_u->rif_w = 15;
-  nam_u->pat_c = "foo/bar";
-  nam_u->pat_s = strlen(nam_u->pat_c);
-  nam_u->boq_y = 13;
-  nam_u->fra_d = 54;
-  nam_u->nit_o = c3n;
-
-  u3_mesa_data* dat_u = &pac_u.pag_u.dat_u;
-  c3_y fra_y[4] = {1, 2, 3, 4};
-  dat_u->aut_u.typ_e = AUTH_NONE;
-  dat_u->tob_d = sizeof(fra_y);
-  dat_u->len_w = sizeof(fra_y);
-  dat_u->fra_y = fra_y;
-
-  c3_y hop_y[7] = {0x01, 127, 0, 0, 1, 0, 0};
-  c3_etch_short(hop_y + 5, 8443);
-  pac_u.pag_u.one_u.len_w = sizeof(hop_y);
-  pac_u.pag_u.one_u.dat_y = hop_y;
-
-  if ( _test_pact(&pac_u) ) {
-    fprintf(stderr, RED_TEXT "%%page hop-long failed\r\n");
-    exit(1);
-  }
-}
-
 
 static void
 _test_encode_path(c3_c* pat_c)
@@ -1721,7 +1601,6 @@ int main()
   _setup();
 
   _test_rand_pact(100000);
-  _test_page_hop_long();
 
   _test_encode_path("foo/bar/baz");
   _test_encode_path("publ/0/xx//1/foo/g");

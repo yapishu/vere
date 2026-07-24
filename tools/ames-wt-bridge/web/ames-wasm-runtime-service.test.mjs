@@ -5,7 +5,6 @@ import {
   AmesWasmRuntimeService,
   publicRuntimeSnapshot,
 } from './ames-wasm-runtime-service.mjs';
-import { mesaSessionLane } from './ames-wasm-events.mjs';
 import {
   BrowserHttpClientHost,
   httpClientWire,
@@ -205,10 +204,14 @@ function makeClientFactory({ echoReplies = false } = {}) {
         this.sessionOpen = true;
         onStatus({ type: 'open', url: 'https://bridge/~_~/ames' });
       },
-      async send(packet) {
-        sent.push(Uint8Array.from(packet));
+      async sendTo(lane, packet) {
+        sent.push({ lane, packet: Uint8Array.from(packet) });
         if (echoReplies) {
-          onPacket({ mode: 'datagram', packet: Uint8Array.from([9, 9]) });
+          onPacket({
+            mode: 'datagram',
+            lane: { type: 'if', ip: 0x7f000001, port: 13337 },
+            packet: Uint8Array.from([9, 9]),
+          });
         }
         return 'datagram';
       },
@@ -362,9 +365,9 @@ test('AmesWasmRuntimeService hosts a Dill terminal session', async () => {
   )));
 });
 
-test('AmesWasmRuntimeService can inject a packet directly over a session lane', async () => {
+test('AmesWasmRuntimeService can inject a packet heard from a UDP lane', async () => {
   const runtimeFactory = makeRuntimeFactory({
-    replyEffects: pushEffects(mesaSessionLane(1n), [7, 8]),
+    replyEffects: pushEffects(0n, [7, 8]),
   });
   const clientFactory = makeClientFactory();
   const service = new AmesWasmRuntimeService({
@@ -378,12 +381,13 @@ test('AmesWasmRuntimeService can inject a packet directly over a session lane', 
   await service.start();
   await service.connect();
   const injected = await service.injectPacket({
+    lane: { type: 'if', ip: 0x7f000001, port: 13337 },
     packet: Uint8Array.from([9]),
   });
 
   assert.equal(injected.effects.pushes, 1);
   assert.equal(injected.routes.sent, 1);
-  assert.deepEqual([...clientFactory.sent[0]], [7, 8]);
+  assert.deepEqual([...clientFactory.sent[0].packet], [7, 8]);
 });
 
 test('AmesWasmRuntimeService hosts %http-client requests through browser fetch', async () => {

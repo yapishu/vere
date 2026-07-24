@@ -44,12 +44,6 @@
         .natpmp = .{
             .path = "../../ext/natpmp",
         },
-        .ngtcp2 = .{
-            .path = "../../ext/ngtcp2",
-        },
-        .picotls = .{
-            .path = "../../ext/picotls",
-        },
         .openssl = .{
             .path = "../../ext/openssl",
         },

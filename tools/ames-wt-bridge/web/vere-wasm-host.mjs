@@ -283,30 +283,40 @@ export class IndexedDBVereWasmFileStore {
 
   async save(snapshot) {
     const { files, directories } = copyHostfsSnapshot(snapshot);
-    await this.clear();
-
     const db = await this.open();
     await new Promise((resolve, reject) => {
       const transaction = db.transaction(this.storeName, 'readwrite');
       const store = transaction.objectStore(this.storeName);
+      const request = store.openCursor();
 
-      for (const path of directories) {
-        store.put({
-          key: this.recordKey(path),
-          scope: this.scope,
-          path,
-          type: 'dir',
-        });
-      }
-      for (const [path, bytes] of files) {
-        store.put({
-          key: this.recordKey(path),
-          scope: this.scope,
-          path,
-          type: 'file',
-          bytes: arrayBufferFromBytes(bytes),
-        });
-      }
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          if (cursor.value.scope === this.scope) {
+            cursor.delete();
+          }
+          cursor.continue();
+          return;
+        }
+
+        for (const path of directories) {
+          store.put({
+            key: this.recordKey(path),
+            scope: this.scope,
+            path,
+            type: 'dir',
+          });
+        }
+        for (const [path, bytes] of files) {
+          store.put({
+            key: this.recordKey(path),
+            scope: this.scope,
+            path,
+            type: 'file',
+            bytes: arrayBufferFromBytes(bytes),
+          });
+        }
+      };
 
       transaction.oncomplete = resolve;
       transaction.onerror = () => reject(transaction.error);
@@ -913,10 +923,16 @@ export async function instantiateVereDiskWasmRuntime(
     init({
       loomExponent = plan.loomExponent,
       ship = 0n,
+      fake = true,
     } = {}) {
       const [shipLo, shipHi] = splitShipChubs(ship);
       checkReturn(
-        initExport(toSize(loomExponent, 'loom exponent'), shipLo, shipHi),
+        initExport(
+          toSize(loomExponent, 'loom exponent'),
+          shipLo,
+          shipHi,
+          fake ? 1 : 0,
+        ),
         'u3_disk_wasm_init',
       );
     },
