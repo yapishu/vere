@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  atomBytesLE,
   atomFromBytesLE,
   bytesFromAtomLE,
   cell,
   cue,
+  cueBytes,
   jam,
   jamBytes,
   termAtom,
@@ -76,6 +78,19 @@ test('atom byte helpers are little-endian', () => {
   assert.equal(atomFromBytesLE(Uint8Array.of(0x62, 0xd7, 0x5a)), 0x5ad762n);
   assert.deepEqual(Array.from(bytesFromAtomLE(0x5ad762n, 3)), [0x62, 0xd7, 0x5a]);
   assert.equal(bytesToHex(jamBytes(42n)), '5015');
+  assert.deepEqual(
+    Array.from(jamBytes(atomBytesLE(Uint8Array.of(0x62, 0xd7, 0x5a)))),
+    Array.from(jamBytes(0x5ad762n)),
+  );
   assert.throws(() => bytesFromAtomLE(-1n, 1), /non-negative/);
   assert.throws(() => bytesFromAtomLE(0x100n, 1), /does not fit/);
+});
+
+test('cueBytes can preserve large atoms as byte-backed atoms', () => {
+  const bytes = Uint8Array.from({ length: 1024 }, (_, i) => i & 0xff);
+  const noun = cueBytes(jamBytes(atomBytesLE(bytes)), {
+    byteAtomBitThreshold: 1,
+  });
+
+  assert.deepEqual([...bytesFromAtomLE(noun, bytes.length)], [...bytes]);
 });

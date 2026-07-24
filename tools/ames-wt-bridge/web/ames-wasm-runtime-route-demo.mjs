@@ -186,6 +186,10 @@ export function createRuntimeWorkerCommandClient(worker, {
       emit(message);
       return;
     }
+    if (message.type === 'http-stream') {
+      emit(message);
+      return;
+    }
 
     const id = message.id;
     const entry = pending.get(id);

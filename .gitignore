@@ -13,6 +13,8 @@ MODULE.bazel.lock
 **/.zig-cache
 **/zig-out
 /tools/ames-wt-bridge/dist
+/tools/ames-wt-bridge/cache
+/tools/ames-wt-bridge/web/assets
 
 # clangd
 **/.cache

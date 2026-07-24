@@ -15,16 +15,21 @@ export const DEFAULT_TERMINAL_ID = '1';
 
 const TERMS = Object.freeze({
   bel: termAtom('bel'),
+  aro: termAtom('aro'),
+  bac: termAtom('bac'),
   belt: termAtom('belt'),
   blew: termAtom('blew'),
   blit: termAtom('blit'),
   born: termAtom('born'),
   clr: termAtom('clr'),
+  ctl: termAtom('ctl'),
+  del: termAtom('del'),
   give: termAtom('give'),
   hail: termAtom('hail'),
   hop: termAtom('hop'),
   klr: termAtom('klr'),
   logo: termAtom('logo'),
+  mod: termAtom('mod'),
   mor: termAtom('mor'),
   nel: termAtom('nel'),
   put: termAtom('put'),
@@ -114,6 +119,13 @@ function runtimeOvum({ card, id = DEFAULT_TERMINAL_ID }) {
     cell(termAtom('d'), termWire(id)),
     card,
   );
+}
+
+function beltOvumJam({ id = DEFAULT_TERMINAL_ID, belt }) {
+  return jamBytes(runtimeOvum({
+    id,
+    card: cell(TERMS.belt, belt),
+  }));
 }
 
 function unitList(noun) {
@@ -224,17 +236,115 @@ export function terminalTextOvumJam({
   id = DEFAULT_TERMINAL_ID,
   text,
 } = {}) {
-  return jamBytes(runtimeOvum({
-    id,
-    card: cell(TERMS.belt, cell(TERMS.txt, charList(text))),
-  }));
+  return beltOvumJam({ id, belt: cell(TERMS.txt, charList(text)) });
 }
 
 export function terminalRetOvumJam({ id = DEFAULT_TERMINAL_ID } = {}) {
-  return jamBytes(runtimeOvum({
+  return beltOvumJam({ id, belt: cell(TERMS.ret, 0n) });
+}
+
+export function terminalBackspaceOvumJam({ id = DEFAULT_TERMINAL_ID } = {}) {
+  return beltOvumJam({ id, belt: cell(TERMS.bac, 0n) });
+}
+
+export function terminalDeleteOvumJam({ id = DEFAULT_TERMINAL_ID } = {}) {
+  return beltOvumJam({ id, belt: cell(TERMS.del, 0n) });
+}
+
+export function terminalArrowOvumJam({
+  id = DEFAULT_TERMINAL_ID,
+  direction,
+} = {}) {
+  if (!['u', 'd', 'l', 'r'].includes(direction)) {
+    throw new Error(`unknown terminal arrow direction: ${direction}`);
+  }
+  return beltOvumJam({
     id,
-    card: cell(TERMS.belt, cell(TERMS.ret, 0n)),
-  }));
+    belt: tuple(TERMS.aro, termAtom(direction)),
+  });
+}
+
+export function terminalControlOvumJam({
+  id = DEFAULT_TERMINAL_ID,
+  key,
+} = {}) {
+  const text = String(key || '').toLowerCase();
+  if (!/^[a-z]$/.test(text)) {
+    throw new Error(`unknown terminal control key: ${key}`);
+  }
+  return beltOvumJam({
+    id,
+    belt: tuple(TERMS.mod, TERMS.ctl, BigInt(text.codePointAt(0))),
+  });
+}
+
+export function terminalDataOvumJams({
+  id = DEFAULT_TERMINAL_ID,
+  data = '',
+} = {}) {
+  const out = [];
+  let text = '';
+
+  const flushText = () => {
+    if (text.length > 0) {
+      out.push(terminalTextOvumJam({ id, text }));
+      text = '';
+    }
+  };
+  const push = ovum => {
+    flushText();
+    out.push(ovum);
+  };
+
+  for (let i = 0; i < data.length;) {
+    if (data.startsWith('\x1b[A', i)) {
+      push(terminalArrowOvumJam({ id, direction: 'u' }));
+      i += 3;
+    }
+    else if (data.startsWith('\x1b[B', i)) {
+      push(terminalArrowOvumJam({ id, direction: 'd' }));
+      i += 3;
+    }
+    else if (data.startsWith('\x1b[C', i)) {
+      push(terminalArrowOvumJam({ id, direction: 'r' }));
+      i += 3;
+    }
+    else if (data.startsWith('\x1b[D', i)) {
+      push(terminalArrowOvumJam({ id, direction: 'l' }));
+      i += 3;
+    }
+    else if (data.startsWith('\x1b[3~', i)) {
+      push(terminalDeleteOvumJam({ id }));
+      i += 4;
+    }
+    else {
+      const char = data[i];
+      const code = char.codePointAt(0);
+      if (char === '\r' || char === '\n') {
+        push(terminalRetOvumJam({ id }));
+      }
+      else if (char === '\x7f' || char === '\b') {
+        push(terminalBackspaceOvumJam({ id }));
+      }
+      else if (code >= 1 && code <= 26) {
+        push(terminalControlOvumJam({
+          id,
+          key: String.fromCodePoint(96 + code),
+        }));
+      }
+      else if (char === '\x1b') {
+        // Ignore unhandled escape sequences; xterm sends these for keys that
+        // Dill does not need for the basic Dojo demo path.
+      }
+      else {
+        text += char;
+      }
+      i++;
+    }
+  }
+
+  flushText();
+  return out;
 }
 
 export function extractTerminalEffects(input) {
@@ -334,6 +444,10 @@ export class BrowserTerminalHost {
 
   retOvumJam() {
     return terminalRetOvumJam({ id: this.id });
+  }
+
+  dataOvumJams({ data }) {
+    return terminalDataOvumJams({ id: this.id, data });
   }
 
   routeEffects(input) {

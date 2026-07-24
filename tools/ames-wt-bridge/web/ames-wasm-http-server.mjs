@@ -1,8 +1,10 @@
 import {
   atomFromBytesLE,
+  atomBytesLE,
   bytesFromAtomLE,
   cell,
   cue,
+  cueBytes,
   jamBytes,
   list,
   termAtom,
@@ -38,15 +40,16 @@ function isCell(noun) {
 
 function decodeEffectsInput(input) {
   if (input instanceof Uint8Array) {
-    return cue(atomFromBytesLE(input));
+    return cueBytes(input, { byteAtomBitThreshold: 64 * 1024 });
   }
   if (input instanceof ArrayBuffer) {
-    return cue(atomFromBytesLE(new Uint8Array(input)));
+    return cueBytes(new Uint8Array(input), { byteAtomBitThreshold: 64 * 1024 });
   }
   if (ArrayBuffer.isView(input)) {
-    return cue(atomFromBytesLE(
+    return cueBytes(
       new Uint8Array(input.buffer, input.byteOffset, input.byteLength),
-    ));
+      { byteAtomBitThreshold: 64 * 1024 },
+    );
   }
   return input;
 }
@@ -111,7 +114,7 @@ function bytesFromOcts(noun, name) {
 
 function bytesToOcts(bytes) {
   const value = bytes == null ? new Uint8Array() : Uint8Array.from(bytes);
-  return cell(BigInt(value.length), atomFromBytesLE(value));
+  return cell(BigInt(value.length), atomBytesLE(value));
 }
 
 function unitBytes(bytes) {
@@ -319,7 +322,7 @@ export function httpServerRequestOvumJam({
   connectionId,
   requestId,
   secure = false,
-  local = true,
+  local = false,
   address = LOOPBACK_IPV4_ATOM,
   method = 'GET',
   url = '/',
@@ -435,12 +438,23 @@ function headersObject(headers) {
 }
 
 class PendingHttpResponse {
-  constructor({ wire, timeoutMs, onTimeout }) {
+  constructor({
+    wire,
+    timeoutMs,
+    stream = false,
+    onStream = () => {},
+    onFinish = () => {},
+    onTimeout,
+  }) {
     this.wire = wire;
     this.status = null;
     this.headers = [];
     this.chunks = [];
+    this.stream = Boolean(stream);
+    this.onStream = onStream;
+    this.onFinish = onFinish;
     this.started = false;
+    this.settled = false;
     this.finished = false;
     this.promise = new Promise((resolve, reject) => {
       this.resolve = resolve;
@@ -460,9 +474,12 @@ class PendingHttpResponse {
     }
 
     if (response.type === 'cancel') {
-      this.#finish(() => {
-        this.reject(new Error(`http-server request canceled: ${requestKey(this.wire)}`));
-      });
+      if (this.stream) {
+        this.#emitStream(response);
+      }
+      this.#finish(() => this.#reject(
+        new Error(`http-server request canceled: ${requestKey(this.wire)}`),
+      ));
       return;
     }
 
@@ -470,11 +487,19 @@ class PendingHttpResponse {
       this.started = true;
       this.status = response.status;
       this.headers = response.headers;
-      if (response.body) {
+      if (!this.stream && response.body) {
         this.chunks.push(response.body);
       }
+      if (this.stream) {
+        this.#emitStream(response);
+        this.#resolve(this.#streamResponse(response.body, response.complete));
+        if (response.complete) {
+          this.#finish(() => {});
+        }
+        return;
+      }
       if (response.complete) {
-        this.#resolve();
+        this.#resolveComplete();
       }
       return;
     }
@@ -484,11 +509,19 @@ class PendingHttpResponse {
         this.started = true;
         this.status = 200;
       }
-      if (response.body) {
+      if (!this.stream && response.body) {
         this.chunks.push(response.body);
       }
+      if (this.stream) {
+        this.#emitStream(response);
+        this.#resolve(this.#streamResponse(response.body, response.complete));
+        if (response.complete) {
+          this.#finish(() => {});
+        }
+        return;
+      }
       if (response.complete) {
-        this.#resolve();
+        this.#resolveComplete();
       }
     }
   }
@@ -497,12 +530,15 @@ class PendingHttpResponse {
     if (this.finished) {
       return;
     }
-    this.#finish(() => {
-      this.reject(reason instanceof Error ? reason : new Error(String(reason)));
-    });
+    if (this.stream) {
+      this.#emitStream({ type: 'cancel' });
+    }
+    this.#finish(() => this.#reject(
+      reason instanceof Error ? reason : new Error(String(reason)),
+    ));
   }
 
-  #resolve() {
+  #resolveComplete() {
     this.#finish(() => {
       const body = new Uint8Array(this.chunks.reduce((sum, chunk) => sum + chunk.length, 0));
       let offset = 0;
@@ -518,6 +554,42 @@ class PendingHttpResponse {
     });
   }
 
+  #streamResponse(body = null, complete = false) {
+    return {
+      status: this.status ?? 200,
+      headers: this.headers,
+      body: body ?? new Uint8Array(),
+      complete: Boolean(complete),
+      wire: this.wire,
+      key: requestKey(this.wire),
+      stream: true,
+    };
+  }
+
+  #emitStream(response) {
+    this.onStream({
+      wire: this.wire,
+      key: requestKey(this.wire),
+      response,
+    });
+  }
+
+  #resolve(value) {
+    if (this.settled) {
+      return;
+    }
+    this.settled = true;
+    this.resolve(value);
+  }
+
+  #reject(error) {
+    if (this.settled) {
+      return;
+    }
+    this.settled = true;
+    this.reject(error);
+  }
+
   #finish(callback) {
     this.finished = true;
     if (this.timer) {
@@ -525,6 +597,7 @@ class PendingHttpResponse {
       this.timer = null;
     }
     callback();
+    this.onFinish(this);
   }
 }
 
@@ -533,10 +606,11 @@ export class BrowserHttpServerHost {
     service = DEFAULT_HTTP_SERVER_SERVICE,
     insecurePort = 8080,
     securePort = null,
-    local = true,
+    local = false,
     address = LOOPBACK_IPV4_ATOM,
     requestTimeoutMs = 600_000,
     onLog = () => {},
+    onStream = () => {},
   } = {}) {
     this.service = service;
     this.insecurePort = insecurePort;
@@ -545,6 +619,7 @@ export class BrowserHttpServerHost {
     this.address = address;
     this.requestTimeoutMs = requestTimeoutMs;
     this.onLog = onLog;
+    this.onStream = onStream;
     this.nextConnectionId = 1n;
     this.nextRequestId = 1n;
     this.pending = new Map();
@@ -585,6 +660,9 @@ export class BrowserHttpServerHost {
     address = this.address,
     timeoutMs = this.requestTimeoutMs,
     signal = null,
+    stream = false,
+    streamId = null,
+    onStream = this.onStream,
   } = {}, {
     injectOvum,
   } = {}) {
@@ -600,7 +678,13 @@ export class BrowserHttpServerHost {
     const key = requestKey(wire);
     const pending = new PendingHttpResponse({
       wire,
-      timeoutMs,
+      timeoutMs: stream ? null : timeoutMs,
+      stream,
+      onStream: event => onStream({
+        ...event,
+        streamId,
+      }),
+      onFinish: () => this.pending.delete(key),
       onTimeout: () => this.pending.delete(key),
     });
     this.pending.set(key, pending);
@@ -645,15 +729,46 @@ export class BrowserHttpServerHost {
       });
       const response = await pending.promise;
       this.onLog({
-        message: `http-server response ${key} status=${response.status}`,
+        message: stream
+          ? `http-server stream ${key} status=${response.status}`
+          : `http-server response ${key} status=${response.status}`,
         className: 'rx',
       });
       return response;
     }
     finally {
       signal?.removeEventListener?.('abort', abort);
-      this.pending.delete(key);
+      if (!stream || pending.finished) {
+        this.pending.delete(key);
+      }
     }
+  }
+
+  async cancelRequest(wire, {
+    injectOvum,
+  } = {}) {
+    if (typeof injectOvum !== 'function') {
+      throw new Error('injectOvum callback is required');
+    }
+    const key = requestKey(wire);
+    const pending = this.pending.get(key);
+    if (!pending) {
+      return {
+        canceled: false,
+      };
+    }
+
+    pending.cancel(new Error(`http-server request canceled by host: ${key}`));
+    await injectOvum({
+      label: `http-server-cancel-${wire.connectionId}-${wire.requestId}`,
+      ovumBytes: httpServerCancelRequestOvumJam(wire),
+    });
+    this.pending.delete(key);
+
+    return {
+      canceled: true,
+      key,
+    };
   }
 
   async handleFetch(request, options = {}) {

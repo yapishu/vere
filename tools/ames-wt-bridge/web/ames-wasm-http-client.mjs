@@ -1,5 +1,6 @@
 import {
   atomFromBytesLE,
+  atomBytesLE,
   bytesFromAtomLE,
   cell,
   cue,
@@ -112,7 +113,7 @@ function bytesFromOcts(noun, name) {
 
 function bytesToOcts(bytes) {
   const value = bytes == null ? new Uint8Array() : Uint8Array.from(bytes);
-  return cell(BigInt(value.length), atomFromBytesLE(value));
+  return cell(BigInt(value.length), atomBytesLE(value));
 }
 
 function unitBytes(bytes) {
@@ -387,6 +388,22 @@ function headersObject(headers) {
   return out;
 }
 
+function headerEntries(headers) {
+  if (!headers) {
+    return [];
+  }
+  if (typeof Headers === 'function' && headers instanceof Headers) {
+    return [...headers].map(([key, value]) => [String(key), String(value)]);
+  }
+  if (Array.isArray(headers)) {
+    return headers.map(([key, value]) => [String(key), String(value)]);
+  }
+  if (typeof headers[Symbol.iterator] === 'function') {
+    return [...headers].map(([key, value]) => [String(key), String(value)]);
+  }
+  return Object.entries(headers).map(([key, value]) => [String(key), String(value)]);
+}
+
 function responseHeaders(response) {
   const headers = [];
   if (response.headers && typeof response.headers[Symbol.iterator] === 'function') {
@@ -401,11 +418,91 @@ function requestKey(id) {
   return BigInt(id).toString();
 }
 
+async function bytesFromFetchBody(body) {
+  if (body == null) {
+    return null;
+  }
+  if (body instanceof Uint8Array) {
+    return body;
+  }
+  if (ArrayBuffer.isView(body)) {
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  }
+  if (body instanceof ArrayBuffer) {
+    return new Uint8Array(body);
+  }
+  if (typeof body === 'string') {
+    return textEncoder.encode(body);
+  }
+  if (typeof Blob === 'function' && body instanceof Blob) {
+    return new Uint8Array(await body.arrayBuffer());
+  }
+  throw new Error('http-client proxy cannot encode this request body type');
+}
+
+function base64FromBytes(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  if (typeof btoa === 'function') {
+    return btoa(binary);
+  }
+  return Buffer.from(bytes).toString('base64');
+}
+
+function yieldToEventLoop() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+export function createHttpClientProxyFetch({
+  fetchFn = globalThis.fetch,
+  proxyUrl = null,
+  onLog = () => {},
+} = {}) {
+  if (!proxyUrl) {
+    return fetchFn;
+  }
+
+  return async (resource, init = {}) => {
+    const url = String(resource?.url ?? resource);
+    const method = String(init.method ?? resource?.method ?? 'GET');
+    const bodyBytes = await bytesFromFetchBody(init.body);
+    const payload = {
+      url,
+      method,
+      headers: headerEntries(init.headers ?? resource?.headers),
+    };
+    if (bodyBytes?.length) {
+      payload.bodyBase64 = base64FromBytes(bodyBytes);
+    }
+
+    onLog({
+      message: `http-client proxy ${method} ${url}`,
+      className: 'tx',
+    });
+
+    return fetchFn(proxyUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: init.signal,
+    });
+  };
+}
+
 export class BrowserHttpClientHost {
   constructor({
     fetchFn = globalThis.fetch,
     onLog = () => {},
-    maxResponseBytes = 16 * 1024 * 1024,
+    maxResponseBytes = 256 * 1024 * 1024,
+    //  stream by default: buffered mode delivers the whole body as one
+    //  %receive ovum, i.e. one synchronous wasm event — a multi-megabyte
+    //  glob body wedges the runtime loop for its whole (possibly
+    //  unbounded) processing time. chunked %continue events with yields
+    //  between them keep the dojo alive.
     streamResponses = true,
   } = {}) {
     this.fetchFn = fetchFn;
@@ -572,6 +669,7 @@ export class BrowserHttpClientHost {
                 complete: true,
               }),
             });
+            await yieldToEventLoop();
           }
           else {
             await injectOvum({
@@ -583,6 +681,7 @@ export class BrowserHttpClientHost {
                 complete: true,
               }),
             });
+            await yieldToEventLoop();
           }
           return { canceled: false };
         }
@@ -606,6 +705,7 @@ export class BrowserHttpClientHost {
               complete: false,
             }),
           });
+          await yieldToEventLoop();
         }
         else {
           await injectOvum({
@@ -617,6 +717,7 @@ export class BrowserHttpClientHost {
               complete: false,
             }),
           });
+          await yieldToEventLoop();
         }
       }
     }

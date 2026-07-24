@@ -1,0 +1,16 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+
+SCRIPT_DIR="${0:A:h}"
+
+"$SCRIPT_DIR/package-wasm-dojo-demo.sh"
+
+cd "$SCRIPT_DIR/dist/wasm-dojo-demo"
+docker build -t vere-wasm-dojo-demo .
+
+container_ids=("${(@f)$(docker ps -q --filter publish=8094)}")
+if (( ${#container_ids[@]} )); then
+  docker stop "${container_ids[@]}"
+fi
+
+docker run --rm -d -p 0.0.0.0:8094:8080 vere-wasm-dojo-demo:latest

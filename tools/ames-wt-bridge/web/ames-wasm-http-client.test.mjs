@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   BrowserHttpClientHost,
+  createHttpClientProxyFetch,
   extractHttpClientEffects,
   httpClientBornOvumJam,
   httpClientReceiveOvumJam,
@@ -134,6 +135,46 @@ test('httpClientBornOvumJam builds the hosted %http-client born ovum', () => {
   assert.equal(data, 0n);
 });
 
+test('createHttpClientProxyFetch posts original requests to the host proxy', async () => {
+  const calls = [];
+  const proxied = createHttpClientProxyFetch({
+    proxyUrl: 'https://demo.invalid/_vere/http-client',
+    fetchFn: async (url, init) => {
+      calls.push({ url, init });
+      return {
+        status: 204,
+        headers: new Map(),
+        async arrayBuffer() {
+          return new ArrayBuffer(0);
+        },
+      };
+    },
+  });
+
+  const response = await proxied('https://example.invalid/upload', {
+    method: 'POST',
+    headers: {
+      accept: 'application/octet-stream',
+      'content-type': 'application/octet-stream',
+    },
+    body: Uint8Array.from([1, 2, 3]),
+  });
+
+  assert.equal(response.status, 204);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://demo.invalid/_vere/http-client');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    url: 'https://example.invalid/upload',
+    method: 'POST',
+    headers: [
+      ['accept', 'application/octet-stream'],
+      ['content-type', 'application/octet-stream'],
+    ],
+    bodyBase64: 'AQID',
+  });
+});
+
 test('BrowserHttpClientHost fetches requests and injects receive ova', async () => {
   const injected = [];
   const logs = [];
@@ -193,9 +234,50 @@ test('BrowserHttpClientHost injects a 504 response when fetch fails', async () =
   assert.equal(status, 504n);
 });
 
-test('BrowserHttpClientHost streams response chunks as start and continue ova', async () => {
+test('BrowserHttpClientHost streams responses by default like native cttp', async () => {
+  //  native cttp forwards %continue chunks as they arrive from the wire;
+  //  buffered whole-body delivery makes one giant synchronous wasm event
+  //  (a multi-megabyte glob wedges the runtime loop), so streaming is the
+  //  default and buffering is opt-in via streamResponses: false.
   const injected = [];
   const host = new BrowserHttpClientHost({
+    fetchFn: async () => ({
+      status: 200,
+      headers: new Map([['content-type', 'text/plain']]),
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('hel'));
+          controller.enqueue(new TextEncoder().encode('lo'));
+          controller.close();
+        },
+      }),
+      async arrayBuffer() {
+        return new TextEncoder().encode('hello').buffer;
+      },
+    }),
+  });
+
+  await host.routeEffects(jamBytes(list(requestEffect())), {
+    injectOvum: async ovum => injected.push(ovum),
+  });
+  await host.waitAll();
+
+  assert.equal(injected.length, 3);
+  const start = cue(atomFromBytesLE(injected[0].ovumBytes));
+  const [, startCard] = start;
+  const [, , startEvent] = tupleItems(startCard, 3);
+  const [startTag, responseHeader, startBody, startComplete] = tupleItems(startEvent, 4);
+  const [status] = tupleItems(responseHeader, 2);
+  assert.equal(startTag, termAtom('start'));
+  assert.equal(status, 200n);
+  assert.equal(textFromAtom(startBody[1][1]), 'hel');
+  assert.equal(startComplete, 1n);
+});
+
+test('BrowserHttpClientHost streams response chunks when enabled', async () => {
+  const injected = [];
+  const host = new BrowserHttpClientHost({
+    streamResponses: true,
     fetchFn: async () => ({
       status: 200,
       headers: new Map([['content-type', 'text/plain']]),
@@ -278,6 +360,7 @@ test('BrowserHttpClientHost aborts pending fetches on cancel-request', async () 
 test('BrowserHttpClientHost emits %cancel if a stream fails after %start', async () => {
   const injected = [];
   const host = new BrowserHttpClientHost({
+    streamResponses: true,
     fetchFn: async () => ({
       status: 200,
       headers: new Map(),

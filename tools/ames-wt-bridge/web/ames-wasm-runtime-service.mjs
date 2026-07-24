@@ -6,7 +6,10 @@ import {
   mesaHeerOvumJam,
   mesaSessionLane,
 } from './ames-wasm-events.mjs';
-import { extractMesaEffects } from './ames-wasm-effects.mjs';
+import {
+  decodeEffectList,
+  extractMesaEffects,
+} from './ames-wasm-effects.mjs';
 import {
   MesaSessionRouteTable,
   routeMesaEffects,
@@ -19,6 +22,10 @@ import {
   BrowserHttpClientHost,
   httpClientBornOvumJam,
 } from './ames-wasm-http-client.mjs';
+import {
+  BrowserBehnTimerHost,
+  behnBornOvumJam,
+} from './ames-wasm-behn.mjs';
 import {
   BrowserHttpServerHost,
 } from './ames-wasm-http-server.mjs';
@@ -36,6 +43,8 @@ const DEFAULT_MEMORY_OPTIONS = Object.freeze({
   maximumBytes: 1536 * 1024 * 1024,
 });
 
+const DEFAULT_LARGE_HTTP_SERVER_EFFECT_BYTES = 256 * 1024;
+
 function packetCopy(packet) {
   return packet instanceof Uint8Array ? Uint8Array.from(packet) : Uint8Array.from(packet);
 }
@@ -48,8 +57,29 @@ function log(onLog, message, className = '') {
   onLog({ message, className });
 }
 
-function effectSummary(bytes) {
-  if (!bytes) {
+function isRoutineHostLabel(label) {
+  return /^(?:terminal-data-\d+|behn-wake|http-(?:receive|continue|cancel)-\d+)(?:-effects)?$/.test(label);
+}
+
+function isLargeHttpServerEffectsLabel(label, effectsBytes, threshold) {
+  return (
+    effectsBytes?.length >= threshold &&
+    /^http-server-request-\d+-\d+-effects$/.test(label)
+  );
+}
+
+function commitPriority(label) {
+  if (/^terminal-(?:data|born|blew|hail|text|ret)(?:-\d+)?$/.test(label)) {
+    return 0;
+  }
+  if (/^(?:http-(?:receive|continue|cancel)-\d+|behn-wake)$/.test(label)) {
+    return 2;
+  }
+  return 1;
+}
+
+function effectSummary(effects) {
+  if (!effects) {
     return {
       bytes: 0,
       sends: 0,
@@ -59,24 +89,73 @@ function effectSummary(bytes) {
     };
   }
 
-  const effects = extractMesaEffects(bytes);
+  const mesa = extractMesaEffects(effects.noun ?? effects);
   return {
-    bytes: bytes.length,
-    sends: effects.sends.length,
-    pushes: effects.pushes.length,
-    binds: effects.binds.length,
-    unknown: effects.unknown.length,
+    bytes: effects.bytes ?? effects.length ?? 0,
+    sends: mesa.sends.length,
+    pushes: mesa.pushes.length,
+    binds: mesa.binds.length,
+    unknown: mesa.unknown.length,
   };
 }
 
 function logEffectSummary(onLog, label, bytes) {
   const summary = effectSummary(bytes);
-  log(
-    onLog,
-    `${label}=bytes=${summary.bytes} sends=${summary.sends} ` +
-      `pushes=${summary.pushes} binds=${summary.binds} unknown=${summary.unknown}`,
-  );
+  if (!isRoutineHostLabel(label)) {
+    log(
+      onLog,
+      `${label}=bytes=${summary.bytes} sends=${summary.sends} ` +
+        `pushes=${summary.pushes} binds=${summary.binds} unknown=${summary.unknown}`,
+    );
+  }
   return summary;
+}
+
+function emptyMesaRoutes() {
+  return {
+    sent: [],
+    dropped: [],
+    bound: [],
+    droppedBinds: [],
+  };
+}
+
+function emptyHttpClientRoute() {
+  return {
+    requests: 0,
+    cancels: 0,
+    unknown: 0,
+    pending: 0,
+  };
+}
+
+function emptyBehnRoute() {
+  return {
+    dozes: 0,
+    unknown: 0,
+    active: false,
+  };
+}
+
+function emptyHttpServerRoute() {
+  return {
+    responses: 0,
+    configs: 0,
+    sessions: 0,
+    grows: 0,
+    unknown: 0,
+    pending: 0,
+  };
+}
+
+function emptyTerminalRoute() {
+  return {
+    events: 0,
+    blits: 0,
+    logos: 0,
+    unknown: 0,
+    bufferChars: 0,
+  };
 }
 
 function defaultRuntimeFactory(wasmUrl, options) {
@@ -93,6 +172,10 @@ function defaultClientFactory(input) {
 
 function defaultHttpClientHostFactory(input) {
   return new BrowserHttpClientHost(input);
+}
+
+function defaultBehnHostFactory(input) {
+  return new BrowserBehnTimerHost(input);
 }
 
 function defaultHttpServerHostFactory(input) {
@@ -119,6 +202,11 @@ function publicRouteCount(routes) {
       unknown: 0,
       pending: 0,
     },
+    behn: routes?.behn ?? {
+      dozes: 0,
+      unknown: 0,
+      active: false,
+    },
     terminal: routes?.terminal ?? {
       events: 0,
       blits: 0,
@@ -139,6 +227,8 @@ export function publicRuntimeSnapshot(snapshot) {
     inputLoopActive: Boolean(snapshot.inputLoopActive),
     queue: snapshot.queue,
     hostedHttp: snapshot.hostedHttp ?? null,
+    hostedHttpStarted: Boolean(snapshot.hostedHttpStarted),
+    hostedBehn: snapshot.hostedBehn ?? null,
     hostedHttpServer: snapshot.hostedHttpServer ?? null,
     hostedTerminal: snapshot.hostedTerminal ?? null,
     totals: snapshot.totals,
@@ -161,6 +251,9 @@ export class AmesWasmRuntimeService {
     clientFactory = defaultClientFactory,
     httpClientHost = null,
     httpClientHostFactory = defaultHttpClientHostFactory,
+    autoStartHttpClient = true,
+    behnHost = null,
+    behnHostFactory = defaultBehnHostFactory,
     httpServerHost = null,
     httpServerHostFactory = defaultHttpServerHostFactory,
     terminalHost = null,
@@ -169,7 +262,9 @@ export class AmesWasmRuntimeService {
     onStdout = () => {},
     onStderr = () => {},
     onPacket = () => {},
+    onHttpServer = () => {},
     onTerminal = () => {},
+    largeHttpServerEffectBytes = DEFAULT_LARGE_HTTP_SERVER_EFFECT_BYTES,
   } = {}) {
     if (!wasmUrl) {
       throw new Error('wasmUrl is required');
@@ -192,13 +287,24 @@ export class AmesWasmRuntimeService {
     this.runtimeFactory = runtimeFactory;
     this.replayProbe = replayProbe;
     this.clientFactory = clientFactory;
+    this.autoStartHttpClient = Boolean(autoStartHttpClient);
     this.onLog = onLog;
     this.onStdout = onStdout;
     this.onStderr = onStderr;
     this.onPacket = onPacket;
+    this.onHttpServer = onHttpServer;
     this.onTerminal = onTerminal;
+    this.largeHttpServerEffectBytes = largeHttpServerEffectBytes;
     this.httpClientHost = httpClientHost ?? httpClientHostFactory({
       onLog: event => log(this.onLog, event.message, event.className),
+    });
+    this.behnHost = behnHost ?? behnHostFactory({
+      onLog: event => {
+        if (/^behn timer (?:scheduled|cleared)/.test(event.message)) {
+          return;
+        }
+        log(this.onLog, event.message, event.className);
+      },
     });
     this.httpServerHost = httpServerHost ?? httpServerHostFactory({
       onLog: event => log(this.onLog, event.message, event.className),
@@ -210,9 +316,13 @@ export class AmesWasmRuntimeService {
     this.runtime = null;
     this.client = null;
     this.started = false;
+    this.httpClientStarted = false;
     this.closed = false;
     this.inputLoopAbortController = null;
     this.inputLoopPromise = null;
+    this.runtimeCommitBusy = false;
+    this.runtimeCommitWaiters = [];
+    this.runtimeCommitWaiterOrder = 0;
     this.nextFileId = 0;
     this.nextPacketId = 0;
     this.sessionRoutes = new MesaSessionRouteTable();
@@ -247,6 +357,8 @@ export class AmesWasmRuntimeService {
       inputLoopActive: Boolean(this.inputLoopPromise),
       queue: this.inboundPackets.stats(),
       hostedHttp: this.httpClientHost?.snapshot?.() ?? null,
+      hostedHttpStarted: this.httpClientStarted,
+      hostedBehn: this.behnHost?.snapshot?.() ?? null,
       hostedHttpServer: this.httpServerHost?.snapshot?.() ?? null,
       hostedTerminal: this.terminalHost?.snapshot?.() ?? null,
       totals: { ...this.totals },
@@ -287,11 +399,14 @@ export class AmesWasmRuntimeService {
       'load-effects',
       this.runtime.host.files.get(loadPath),
     );
-    const httpBorn = this.httpClientHost
+    const behnBorn = this.behnHost
       ? await this.#pokeOvum({
-        label: 'http-client-born',
-        ovumBytes: httpClientBornOvumJam(),
+        label: 'behn-born',
+        ovumBytes: behnBornOvumJam(),
       })
+      : null;
+    const httpBorn = this.autoStartHttpClient
+      ? await this.httpClientStart()
       : null;
     const httpServerBorn = this.httpServerHost
       ? await this.#pokeOvum({
@@ -312,6 +427,7 @@ export class AmesWasmRuntimeService {
 
     return {
       load,
+      behnBorn,
       httpBorn,
       httpServerBorn,
       httpServerLive,
@@ -435,8 +551,10 @@ export class AmesWasmRuntimeService {
     headers = [],
     body = null,
     secure = false,
-    local = true,
+    local = false,
     timeoutMs = undefined,
+    stream = false,
+    streamId = null,
   } = {}) {
     this.#ensureStarted();
     if (!this.httpServerHost) {
@@ -452,6 +570,34 @@ export class AmesWasmRuntimeService {
       secure,
       local,
       timeoutMs,
+      stream,
+      streamId,
+      onStream: event => this.onHttpServer(event),
+    }, {
+      injectOvum: ({ label, ovumBytes }) => this.#pokeOvum({ label, ovumBytes }),
+    });
+  }
+
+  async httpRequestCancel({
+    service,
+    connectionId,
+    requestId,
+  } = {}) {
+    this.#ensureStarted();
+    if (!this.httpServerHost) {
+      throw new Error('http-server host is not enabled');
+    }
+    if (connectionId == null) {
+      throw new Error('connectionId is required');
+    }
+    if (requestId == null) {
+      throw new Error('requestId is required');
+    }
+
+    return this.httpServerHost.cancelRequest({
+      service: service ?? this.httpServerHost.service,
+      connectionId: BigInt(connectionId),
+      requestId: BigInt(requestId),
     }, {
       injectOvum: ({ label, ovumBytes }) => this.#pokeOvum({ label, ovumBytes }),
     });
@@ -484,6 +630,30 @@ export class AmesWasmRuntimeService {
       born,
       blew,
       hail,
+      snapshot: this.snapshot(),
+    };
+  }
+
+  async httpClientStart() {
+    this.#ensureStarted();
+    if (!this.httpClientHost) {
+      throw new Error('http-client host is not enabled');
+    }
+    if (this.httpClientStarted) {
+      return {
+        alreadyStarted: true,
+        snapshot: this.snapshot(),
+      };
+    }
+
+    const httpBorn = await this.#pokeOvum({
+      label: 'http-client-born',
+      ovumBytes: httpClientBornOvumJam(),
+    });
+    this.httpClientStarted = true;
+
+    return {
+      ...httpBorn,
       snapshot: this.snapshot(),
     };
   }
@@ -541,6 +711,29 @@ export class AmesWasmRuntimeService {
       events.push(await this.#pokeOvum({
         label: 'terminal-ret',
         ovumBytes: this.terminalHost.retOvumJam(),
+      }));
+    }
+
+    return {
+      events,
+      snapshot: this.snapshot(),
+    };
+  }
+
+  async terminalData({
+    data = '',
+  } = {}) {
+    this.#ensureStarted();
+    if (!this.terminalHost) {
+      throw new Error('terminal host is not enabled');
+    }
+
+    const events = [];
+    let index = 0;
+    for (const ovumBytes of this.terminalHost.dataOvumJams({ data })) {
+      events.push(await this.#pokeOvum({
+        label: `terminal-data-${index++}`,
+        ovumBytes,
       }));
     }
 
@@ -748,6 +941,7 @@ export class AmesWasmRuntimeService {
         catch (_) {}
       }
       this.httpClientHost?.abortAll?.();
+      this.behnHost?.abortAll?.();
       this.httpServerHost?.cancelAll?.();
       await this.client?.close?.({ reason: 'browser runtime service shutdown' });
     }
@@ -771,13 +965,51 @@ export class AmesWasmRuntimeService {
     return {
       label,
       event: this.runtime.event(),
-      effects: result.summary,
+      effects: routes.summary,
       routes: publicRouteCount(routes),
       snapshot: this.snapshot(),
     };
   }
 
   async #commitOvum({ label, ovumBytes }) {
+    return this.#withRuntimeCommitLock(
+      () => this.#commitOvumUnlocked({ label, ovumBytes }),
+      commitPriority(label),
+    );
+  }
+
+  async #withRuntimeCommitLock(fn, priority = 1) {
+    if (this.runtimeCommitBusy) {
+      await new Promise(resolve => {
+        this.runtimeCommitWaiters.push({
+          resolve,
+          priority,
+          order: this.runtimeCommitWaiterOrder++,
+        });
+      });
+    }
+    else {
+      this.runtimeCommitBusy = true;
+    }
+
+    try {
+      return await fn();
+    }
+    finally {
+      this.runtimeCommitWaiters.sort((a, b) => (
+        (a.priority - b.priority) || (a.order - b.order)
+      ));
+      const next = this.runtimeCommitWaiters.shift();
+      if (next) {
+        next.resolve();
+      }
+      else {
+        this.runtimeCommitBusy = false;
+      }
+    }
+  }
+
+  async #commitOvumUnlocked({ label, ovumBytes }) {
     this.#ensureStarted();
 
     const safe = sanitizeLabel(label);
@@ -785,30 +1017,55 @@ export class AmesWasmRuntimeService {
     const effectsPath = this.#effectsPath(safe);
 
     this.runtime.host.files.set(ovumPath, ovumBytes);
+    //  witness large commits even for routine labels: a multi-megabyte
+    //  ovum (e.g. a buffered glob body) runs as one synchronous wasm
+    //  event, and if it wedges, this is the last line you will see
+    if (ovumBytes.length >= 256 * 1024) {
+      log(
+        this.onLog,
+        `committing %${label} ${ovumBytes.length}B (large single event)`,
+        'tx',
+      );
+    }
     this.runtime.pokeOvum({ ovumPath, effectsPath });
-    log(this.onLog, `injected %${label} event=${this.runtime.event()}`, 'rx');
+    if (!isRoutineHostLabel(label)) {
+      log(this.onLog, `injected %${label} event=${this.runtime.event()}`, 'rx');
+    }
 
     const effectsBytes = this.runtime.host.files.get(effectsPath);
     return {
       effectsLabel: `${label}-effects`,
       effectsBytes,
-      summary: effectSummary(effectsBytes),
     };
   }
 
   async #routeEffects(label, effectsBytes) {
-    const summary = logEffectSummary(this.onLog, label, effectsBytes);
+    if (isLargeHttpServerEffectsLabel(label, effectsBytes, this.largeHttpServerEffectBytes)) {
+      return this.#routeLargeHttpServerEffects(label, effectsBytes);
+    }
+
+    const effectsNoun = effectsBytes ? decodeEffectList(effectsBytes) : null;
+    const effects = effectsNoun
+      ? {
+        noun: effectsNoun,
+        bytes: effectsBytes.length,
+      }
+      : null;
+    const summary = logEffectSummary(this.onLog, label, effects);
     if (!effectsBytes) {
       return { sent: [], dropped: [], bound: [], droppedBinds: [] };
     }
+    const routine = isRoutineHostLabel(label);
 
-    const routes = await routeMesaEffects(effectsBytes, {
+    const routes = await routeMesaEffects(effectsNoun, {
       sessionRoutes: this.sessionRoutes,
       sendGalaxy: async (ship, packet) => {
         if (!this.client) {
           throw new Error('WebTransport client is not connected');
         }
-        log(this.onLog, `${label}: route galaxy ${ship.toString()} ${packet.length}B`);
+        if (!routine) {
+          log(this.onLog, `${label}: route galaxy ${ship.toString()} ${packet.length}B`);
+        }
         return this.client.send(packet);
       },
       onBind: binding => {
@@ -823,7 +1080,9 @@ export class AmesWasmRuntimeService {
         log(this.onLog, `${label}: drop bind ${bind.ship.toString()} reason=${reason}`, 'err');
       },
       onRoute: routed => {
-        log(this.onLog, `${label}: tx ${routed.mode} ${routed.push.packet.length}B`, 'tx');
+        if (!routine) {
+          log(this.onLog, `${label}: tx ${routed.mode} ${routed.push.packet.length}B`, 'tx');
+        }
       },
       onDrop: ({ lane, push }) => {
         log(
@@ -842,42 +1101,33 @@ export class AmesWasmRuntimeService {
     this.totals.droppedBinds += routeCount(routes.droppedBinds);
 
     const http = this.httpClientHost
-      ? await this.httpClientHost.routeEffects(effectsBytes, {
+      ? await this.httpClientHost.routeEffects(effectsNoun, {
         injectOvum: ({ label: ovumLabel, ovumBytes }) => this.#pokeOvum({
           label: ovumLabel,
           ovumBytes,
         }),
       })
-      : {
-        requests: 0,
-        cancels: 0,
-        unknown: 0,
-        pending: 0,
-      };
+      : emptyHttpClientRoute();
     this.totals.httpRequests += http.requests;
     this.totals.httpCancels += http.cancels;
 
+    const behn = this.behnHost
+      ? this.behnHost.routeEffects(effectsNoun, {
+        injectOvum: ({ label: ovumLabel, ovumBytes }) => this.#pokeOvum({
+          label: ovumLabel,
+          ovumBytes,
+        }),
+      })
+      : emptyBehnRoute();
+
     const httpServer = this.httpServerHost
-      ? this.httpServerHost.routeEffects(effectsBytes)
-      : {
-        responses: 0,
-        configs: 0,
-        sessions: 0,
-        grows: 0,
-        unknown: 0,
-        pending: 0,
-      };
+      ? this.httpServerHost.routeEffects(effectsNoun)
+      : emptyHttpServerRoute();
     this.totals.httpServerResponses += httpServer.responses;
 
     const terminal = this.terminalHost
-      ? this.terminalHost.routeEffects(effectsBytes)
-      : {
-        events: 0,
-        blits: 0,
-        logos: 0,
-        unknown: 0,
-        bufferChars: 0,
-      };
+      ? this.terminalHost.routeEffects(effectsNoun)
+      : emptyTerminalRoute();
     this.totals.terminalEvents += terminal.events;
     this.totals.terminalBlits += terminal.blits;
 
@@ -885,8 +1135,44 @@ export class AmesWasmRuntimeService {
       ...routes,
       summary,
       http,
+      behn,
       httpServer,
       terminal,
+    };
+  }
+
+  #routeLargeHttpServerEffects(label, effectsBytes) {
+    log(
+      this.onLog,
+      `${label}=bytes=${effectsBytes.length} routing=http-server-only`,
+      'tx',
+    );
+
+    const httpServer = this.httpServerHost
+      ? this.httpServerHost.routeEffects(effectsBytes)
+      : emptyHttpServerRoute();
+    this.totals.httpServerResponses += httpServer.responses;
+
+    log(
+      this.onLog,
+      `${label}=bytes=${effectsBytes.length} http-server ` +
+        `responses=${httpServer.responses} unknown=${httpServer.unknown}`,
+      'rx',
+    );
+
+    return {
+      ...emptyMesaRoutes(),
+      summary: {
+        bytes: effectsBytes.length,
+        sends: 0,
+        pushes: 0,
+        binds: 0,
+        unknown: 0,
+      },
+      http: emptyHttpClientRoute(),
+      behn: emptyBehnRoute(),
+      httpServer,
+      terminal: emptyTerminalRoute(),
     };
   }
 

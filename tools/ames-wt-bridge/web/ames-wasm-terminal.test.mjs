@@ -7,6 +7,7 @@ import {
   termWire,
   terminalBlewOvumJam,
   terminalBornOvumJam,
+  terminalDataOvumJams,
   terminalHailOvumJam,
   terminalRetOvumJam,
   terminalTextOvumJam,
@@ -58,6 +59,24 @@ test('terminal ova build cueable native %d /term/1 events', () => {
   ]) {
     assert.ok(cue(atomFromBytesLE(ovum)));
   }
+});
+
+test('terminal data maps common tty input to Dill belts', () => {
+  const ovums = terminalDataOvumJams({
+    data: 'ab\r\x7f\x1b[A\x1b[3~\x03',
+  });
+  const belts = ovums.map(ovum => cue(atomFromBytesLE(ovum))[1][1]);
+
+  assert.deepEqual(belts.map(belt => belt[0]), [
+    termAtom('txt'),
+    termAtom('ret'),
+    termAtom('bac'),
+    termAtom('aro'),
+    termAtom('del'),
+    termAtom('mod'),
+  ]);
+  assert.equal(belts[3][1], termAtom('u'));
+  assert.deepEqual(belts[5], tuple(termAtom('mod'), termAtom('ctl'), BigInt('c'.codePointAt(0))));
 });
 
 test('extractTerminalEffects decodes terminal blits into render events', () => {

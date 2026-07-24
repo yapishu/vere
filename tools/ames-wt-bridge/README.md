@@ -178,13 +178,12 @@ http://localhost:8093/vere/tools/ames-wt-bridge/web/wasm-webterm.html
 ```
 
 For the local terminal/HTTP page, build `vere-disk-wasm`, serve the parent
-workspace as above, open `wasm-webterm.html`, leave the memory fields at
-`loom=29`, `overhead MiB=512`, `maximum MiB=1536`, then click
-`Start Terminal`. That boots the browser `vere-disk-wasm` runtime from the
-brass pill, starts Dill `/term/1`, and exposes the Eyre request panel. The
-bridge is not required for local terminal or Eyre HTTP requests. Run the bridge,
-paste its dev certificate hash, and click `Connect Ames` only when testing
-WebTransport packet routing.
+workspace as above, open `wasm-webterm.html`, choose a pill and memory preset
+from Options if needed, then click `Boot`. That boots the browser
+`vere-disk-wasm` runtime from the brass pill, starts Dill `/term/1`, and hosts
+Eyre requests in the Web tab. The bridge is not required for local terminal,
+Iris HTTP, or Eyre HTTP requests; use the low-level `web/index.html` workbench
+when testing WebTransport packet routing.
 
 Auto-running browser route smoke page:
 
@@ -210,23 +209,56 @@ ova:
 - `%d /term/1 %hail`
 - `%d /term/1 %belt [%txt ...]` and `%ret`
 
-Terminal output is decoded from `%blit` gifts and rendered in an xterm-style
-browser pane. The first renderer is intentionally small: text, clears,
-newlines, line clears, bells, URLs, and nested `%mor` blits are handled; `%klr`
-styled text is flattened to text.
+Terminal output is decoded from `%blit` gifts and rendered in an embedded
+xterm.js terminal. Direct keyboard input in the Dojo pane is translated back
+into Dill `%belt` tasks for text, return, backspace, delete, arrows, and
+Ctrl-letter input. `%klr` styled text is flattened to text before it reaches
+xterm.
 
 The browser WASM runtime has outbound HTTP support through a hosted
 `%http-client` adapter. The JS host commits `%http-client %born`, decodes
-`%request` and `%cancel-request` effects, performs browser `fetch()`, and
-injects `%receive` ova back into the resident runtime.
+`%request` and `%cancel-request` effects, and injects `%receive` ova back into
+the resident runtime. Browser JavaScript cannot read arbitrary cross-origin
+response bodies, so the browser page routes hosted HTTP through
+`POST /_vere/http-client`. The worker posts the original method, URL, headers,
+and body to that same-origin endpoint; the endpoint performs the outbound
+HTTP/HTTPS request outside the browser CORS sandbox and streams the upstream
+response back to the worker. Docket-owned glob retrieval stays inside Urbit:
+Docket starts the fetch through Iris, Iris emits a normal `%http-client`
+request, and the host services that request generically. It does not rewrite
+glob URLs, raw-poke `%glob`, or start a Docket-specific file path.
+
+Native Vere announces `%http-client` from the Cttp driver after Arvo boot.
+Some pills do not replay bootstrap-era Iris requests on `%http-client %born`;
+those still recover through Docket's normal Behn timer retries. The browser
+host therefore also starts the Behn timer driver (`%b %born`) and services
+`%doze`/`%wake` effects. A stale or missing Behn host shows up as Eyre binding
+`%docket` at `/` and `/apps` while app paths such as `/apps/landscape` continue
+to 404 because the glob retry never reaches Iris/Cttp.
+
+Use the included host server when testing browser WASM Eyre or Iris behavior:
+
+```sh
+node tools/ames-wt-bridge/serve-wasm-demo.mjs --host 0.0.0.0 --port 8093
+```
+
+From this repo checkout, that serves the same source URL as the earlier static
+server plus the hosted HTTP endpoint:
+
+```text
+http://localhost:8093/vere/tools/ames-wt-bridge/web/wasm-webterm.html
+```
 
 The browser WASM runtime also hosts inbound Eyre/http-server requests through
 JS. A browser tab cannot bind a real TCP port, so this is exposed as worker
 commands and page controls instead of `localhost:8080`: the JS host commits
-`%http-server %born`, `%live`, `%request-local`/`%request`, and
-`%cancel-request` ova, then resolves JS `Response`-shaped objects from Eyre
-`%response` gifts. `wasm-webterm.html` includes a small Eyre HTTP request
-panel for paths such as `/~/name`.
+`%http-server %born`, `%live`, `%request`, and `%cancel-request` ova, then
+resolves JS `Response`-shaped objects from Eyre `%response` gifts.
+`%request-local` is reserved for Lens/local-control traffic; normal browser
+page loads must use `%request` so `/~/login`, app bindings, authentication,
+and cookies go through Eyre's regular inbound HTTP path. `wasm-webterm.html`
+includes a small Eyre frame with parent-mediated links, form submits, redirects,
+and cookie handling for paths such as `/` and `/~/login?redirect=/`.
 
 The browser runtime uses Vere's normal loom exponent semantics. The page
 defaults to `--loom 29`, which reserves a 512MiB loom; the runtime avoids

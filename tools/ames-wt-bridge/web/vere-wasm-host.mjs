@@ -32,6 +32,20 @@ function toSize(value, name) {
   return num;
 }
 
+function toAddress(value, name) {
+  const num = typeof value === 'bigint' ? Number(value) : value;
+  if (!Number.isSafeInteger(num)) {
+    throw new Error(`${name} must be a safe integer address`);
+  }
+  if (num < 0) {
+    if (num < -0x80000000) {
+      throw new Error(`${name} must be a wasm32 address`);
+    }
+    return num + 0x100000000;
+  }
+  return num;
+}
+
 function asBytes(value) {
   if (value instanceof Uint8Array) {
     return new Uint8Array(value);
@@ -98,7 +112,7 @@ function bytesFromWasmSource(source) {
 
 function readCString(memory, ptr) {
   const mem = new Uint8Array(memory.buffer);
-  const start = toSize(ptr, 'string pointer');
+  const start = toAddress(ptr, 'string pointer');
   let end = start;
   while (end < mem.length && mem[end] !== 0) {
     end++;
@@ -111,7 +125,7 @@ function readCString(memory, ptr) {
 
 function copyOut(memory, ptr, bytes) {
   const mem = new Uint8Array(memory.buffer);
-  const start = toSize(ptr, 'buffer pointer');
+  const start = toAddress(ptr, 'buffer pointer');
   const end = start + bytes.length;
   if (end > mem.length) {
     throw new Error('wasm write exceeds memory');
@@ -121,7 +135,7 @@ function copyOut(memory, ptr, bytes) {
 
 function copyIn(memory, ptr, len) {
   const mem = new Uint8Array(memory.buffer);
-  const start = toSize(ptr, 'buffer pointer');
+  const start = toAddress(ptr, 'buffer pointer');
   const end = start + toSize(len, 'buffer length');
   if (end > mem.length) {
     throw new Error('wasm read exceeds memory');
@@ -131,7 +145,7 @@ function copyIn(memory, ptr, len) {
 
 function copyCString(memory, ptr, maxBytes, value) {
   const bytes = textEncoder.encode(String(value ?? ''));
-  const start = toSize(ptr, 'string pointer');
+  const start = toAddress(ptr, 'string pointer');
   const cap = toSize(maxBytes, 'string capacity');
   if (bytes.length + 1 > cap) {
     throw new Error(`wasm string exceeds ${cap} byte buffer`);
@@ -151,20 +165,21 @@ function dataView(memory) {
 }
 
 function writeU32(memory, ptr, value) {
-  dataView(memory).setUint32(toSize(ptr, 'u32 pointer'), value >>> 0, true);
+  dataView(memory).setUint32(toAddress(ptr, 'u32 pointer'), value >>> 0, true);
 }
 
 function writeU64(memory, ptr, value) {
   dataView(memory).setBigUint64(
-    toSize(ptr, 'u64 pointer'),
+    toAddress(ptr, 'u64 pointer'),
     BigInt(value),
     true,
   );
 }
 
 function zeroMemory(memory, ptr, len) {
-  const start = toSize(ptr, 'zero pointer');
-  new Uint8Array(memory.buffer).fill(0, start, start + len);
+  const start = toAddress(ptr, 'zero pointer');
+  const length = toSize(len, 'zero length');
+  new Uint8Array(memory.buffer).fill(0, start, start + length);
 }
 
 export class VereWasmExit extends Error {
@@ -352,11 +367,12 @@ export function createWasiPreview1Host({
 
   function writeBytesList(iovsPtr, iovsLen, nwrittenPtr, emit) {
     const view = dataView(memory);
+    const iovs = toAddress(iovsPtr, 'iovs pointer');
     let written = 0;
     const chunks = [];
     for (let i = 0; i < iovsLen; i++) {
-      const ptr = view.getUint32(iovsPtr + (i * 8), true);
-      const len = view.getUint32(iovsPtr + (i * 8) + 4, true);
+      const ptr = view.getUint32(iovs + (i * 8), true);
+      const len = view.getUint32(iovs + (i * 8) + 4, true);
       const bytes = copyIn(memory, ptr, len);
       chunks.push(bytes);
       written += bytes.length;
@@ -377,20 +393,22 @@ export function createWasiPreview1Host({
   function writeFdstat(fd, ptr) {
     zeroMemory(memory, ptr, 24);
     const view = dataView(memory);
+    const stat = toAddress(ptr, 'fdstat pointer');
     const filetype = preopenByFd.has(fd)
       ? WASI_FILETYPE_DIRECTORY
       : WASI_FILETYPE_CHARACTER_DEVICE;
-    view.setUint8(ptr, filetype);
-    writeU64(memory, ptr + 8, 0n);
-    writeU64(memory, ptr + 16, 0n);
+    view.setUint8(stat, filetype);
+    writeU64(memory, stat + 8, 0n);
+    writeU64(memory, stat + 16, 0n);
   }
 
   function writeFilestat(fd, ptr) {
     zeroMemory(memory, ptr, 64);
+    const stat = toAddress(ptr, 'filestat pointer');
     const filetype = preopenByFd.has(fd)
       ? WASI_FILETYPE_DIRECTORY
       : WASI_FILETYPE_CHARACTER_DEVICE;
-    dataView(memory).setUint8(ptr + 16, filetype);
+    dataView(memory).setUint8(stat + 16, filetype);
   }
 
   const imports = {
@@ -407,10 +425,11 @@ export function createWasiPreview1Host({
 
     args_get(argvPtr, argvBufPtr) {
       const view = dataView(memory);
-      let off = argvBufPtr;
+      const argv = toAddress(argvPtr, 'argv pointer');
+      let off = toAddress(argvBufPtr, 'argv buffer pointer');
       args.map(String).forEach((arg, index) => {
         const bytes = textEncoder.encode(`${arg}\0`);
-        view.setUint32(argvPtr + (index * 4), off, true);
+        view.setUint32(argv + (index * 4), off, true);
         copyOut(memory, off, bytes);
         off += bytes.length;
       });
@@ -430,10 +449,11 @@ export function createWasiPreview1Host({
 
     environ_get(environPtr, environBufPtr) {
       const view = dataView(memory);
-      let off = environBufPtr;
+      const environ = toAddress(environPtr, 'environ pointer');
+      let off = toAddress(environBufPtr, 'environ buffer pointer');
       Object.entries(env).forEach(([key, value], index) => {
         const bytes = textEncoder.encode(`${key}=${value}\0`);
-        view.setUint32(environPtr + (index * 4), off, true);
+        view.setUint32(environ + (index * 4), off, true);
         copyOut(memory, off, bytes);
         off += bytes.length;
       });
@@ -481,8 +501,9 @@ export function createWasiPreview1Host({
         return WASI_EBADF;
       }
       zeroMemory(memory, prestatPtr, 8);
-      dataView(memory).setUint8(prestatPtr, WASI_PREOPENTYPE_DIR);
-      writeU32(memory, prestatPtr + 4, textEncoder.encode(path).length);
+      const prestat = toAddress(prestatPtr, 'prestat pointer');
+      dataView(memory).setUint8(prestat, WASI_PREOPENTYPE_DIR);
+      writeU32(memory, prestat + 4, textEncoder.encode(path).length);
       return WASI_ESUCCESS;
     },
 
@@ -536,7 +557,7 @@ export function createWasiPreview1Host({
     random_get(bufPtr, len) {
       randomBytes(new Uint8Array(
         memory.buffer,
-        toSize(bufPtr, 'random buffer'),
+        toAddress(bufPtr, 'random buffer'),
         toSize(len, 'random length'),
       ));
       return WASI_ESUCCESS;

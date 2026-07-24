@@ -11,6 +11,7 @@ import {
 } from './ames-wasm-http-server.mjs';
 import {
   atomFromBytesLE,
+  cue,
   jamBytes,
   list,
   termAtom,
@@ -30,6 +31,15 @@ function unitBytes(text) {
 
 function headersList(headers = []) {
   return list(...headers.map(([key, value]) => [textAtom(key), textAtom(value)]));
+}
+
+function requestOvumTag(options = {}) {
+  const ovum = cue(atomFromBytesLE(httpServerRequestOvumJam({
+    connectionId: 1n,
+    requestId: 1n,
+    ...options,
+  })));
+  return ovum[1][0];
 }
 
 function responseEffects({
@@ -57,6 +67,28 @@ function responseEffects({
   ));
 }
 
+function continueEffects({
+  service = '0v1n.2m9vh',
+  connectionId = 1n,
+  requestId = 1n,
+  body = 'ok',
+  complete = true,
+} = {}) {
+  return jamBytes(list(
+    tuple(
+      httpServerWire({ service, connectionId, requestId }),
+      tuple(
+        termAtom('response'),
+        tuple(
+          termAtom('continue'),
+          unitBytes(body),
+          complete ? 0n : 1n,
+        ),
+      ),
+    ),
+  ));
+}
+
 test('http-server born/live/request ova build cueable runtime events', () => {
   assert.ok(httpServerBornOvumJam().length > 0);
   assert.ok(httpServerLiveOvumJam({ insecurePort: 8080 }).length > 0);
@@ -66,6 +98,11 @@ test('http-server born/live/request ova build cueable runtime events', () => {
     method: 'GET',
     url: '/~/name',
   }).length > 0);
+});
+
+test('http-server request ova default to normal Eyre requests', () => {
+  assert.equal(requestOvumTag(), termAtom('request'));
+  assert.equal(requestOvumTag({ local: true }), termAtom('request-local'));
 });
 
 test('extractHttpServerEffects decodes %response start cards', () => {
@@ -106,6 +143,49 @@ test('BrowserHttpServerHost resolves pending requests from response effects', as
   assert.equal(routed.responses, 1);
   assert.equal(response.status, 200);
   assert.deepEqual([...response.body], [...encoder.encode('ok')]);
+  assert.equal(host.snapshot().pending, 0);
+});
+
+test('BrowserHttpServerHost streams incomplete responses until complete', async () => {
+  const streamed = [];
+  const host = new BrowserHttpServerHost({ requestTimeoutMs: null });
+  const promise = host.handleRequest({
+    method: 'GET',
+    url: '/~/channel/test',
+    stream: true,
+    streamId: 'sse-1',
+    onStream: event => streamed.push(event),
+  }, {
+    injectOvum: async () => {},
+  });
+
+  host.routeEffects(responseEffects({
+    status: 200n,
+    headers: [['content-type', 'text/event-stream']],
+    body: 'event: open\n\n',
+    complete: false,
+  }));
+  const opened = await promise;
+
+  assert.equal(opened.stream, true);
+  assert.equal(opened.status, 200);
+  assert.equal(opened.complete, false);
+  assert.equal(opened.key, '0v1n.2m9vh/1/1');
+  assert.deepEqual([...opened.body], [...encoder.encode('event: open\n\n')]);
+  assert.equal(host.snapshot().pending, 1);
+  assert.equal(streamed.length, 1);
+  assert.equal(streamed[0].streamId, 'sse-1');
+  assert.equal(streamed[0].response.type, 'start');
+
+  host.routeEffects(continueEffects({
+    body: 'data: hi\n\n',
+    complete: true,
+  }));
+
+  assert.equal(streamed.length, 2);
+  assert.equal(streamed[1].response.type, 'continue');
+  assert.equal(streamed[1].response.complete, true);
+  assert.deepEqual([...streamed[1].response.body], [...encoder.encode('data: hi\n\n')]);
   assert.equal(host.snapshot().pending, 0);
 });
 

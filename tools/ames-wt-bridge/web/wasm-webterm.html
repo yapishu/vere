@@ -1,6 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Vere WASM Dojo</title>
+<title>Vere WASM</title>
+<link rel="stylesheet" href="./vendor/xterm/xterm.css">
 <style>
   :root {
     color-scheme: dark;
@@ -59,6 +60,11 @@
   button.secondary {
     border-color: #365579;
     color: #dbe8ff;
+  }
+
+  button.secondary[aria-selected="true"] {
+    background: #263241;
+    color: var(--ink);
   }
 
   button:disabled {
@@ -147,30 +153,14 @@
 
   .dojo-bar {
     display: grid;
-    grid-template-columns: auto minmax(12rem, 1fr) auto auto auto;
+    grid-template-columns: auto minmax(8rem, 1fr) auto auto auto;
     gap: 0.55rem;
     align-items: center;
     padding: 0.65rem;
   }
 
-  .dojo-input {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.45rem;
+  .toolbar-spacer {
     min-width: 0;
-  }
-
-  .quick {
-    display: flex;
-    gap: 0.4rem;
-    min-width: 0;
-    overflow: hidden;
-  }
-
-  .quick button {
-    padding: 0.36rem 0.55rem;
-    font-size: 0.82rem;
-    white-space: nowrap;
   }
 
   .tabs {
@@ -209,6 +199,10 @@
     min-height: 0;
   }
 
+  .dojo-panel {
+    grid-template-rows: auto minmax(5.5rem, 8.5rem) minmax(0, 1fr);
+  }
+
   .tab-panel[hidden] {
     display: none;
   }
@@ -228,34 +222,41 @@
 
   .terminal-scroll {
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     background: var(--term);
   }
 
   #terminal {
-    min-height: 100%;
-    margin: 0;
-    padding: 0.9rem;
-    color: #d9f8e1;
-    font: 0.92rem/1.42 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    height: 100%;
+    min-height: 0;
+    padding: 0.65rem;
   }
 
-  #log {
+  #terminal .xterm {
+    height: 100%;
+  }
+
+  #terminal .xterm-viewport {
+    background: transparent;
+  }
+
+  #log-tail {
     min-height: 0;
     height: 100%;
     margin: 0;
     overflow: auto;
-    padding: 0.7rem;
+    padding: 0.55rem 0.7rem;
+    border-bottom: 1px solid var(--line);
     color: #d8e8df;
     background: #0a0d10;
-    font: 0.78rem/1.38 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font: 0.76rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    cursor: text;
+    user-select: text;
   }
 
-  #log span {
+  #log-tail span {
     display: block;
   }
 
@@ -332,10 +333,6 @@
       grid-template-columns: 1fr;
     }
 
-    .quick {
-      flex-wrap: wrap;
-    }
-
     .web-controls,
     .grid2 {
       grid-template-columns: 1fr;
@@ -345,41 +342,32 @@
 
 <div class="app">
   <header>
-    <h1>Vere WASM Dojo</h1>
+    <h1>wasm vere</h1>
     <div id="status" class="status">idle</div>
   </header>
 
   <section class="dojo-bar">
     <button id="start" class="primary">Boot</button>
-    <div class="dojo-input">
-      <input id="command" autocomplete="off" spellcheck="false" placeholder="dojo command">
-      <button id="send" class="primary">Send</button>
-    </div>
-    <div class="quick">
-      <button data-command="+trouble">+trouble</button>
-      <button data-command="+vats">+vats</button>
-      <button data-command="|mass">|mass</button>
-      <button data-command="-home!make">-home!make</button>
-    </div>
+    <div class="toolbar-spacer"></div>
     <button id="refresh" class="secondary">Refresh</button>
+    <button class="secondary" data-tab-target="options" aria-selected="false">Options</button>
     <button id="shutdown" class="secondary">Shutdown</button>
   </section>
 
   <nav class="tabs" aria-label="Demo views">
-    <button class="tab" data-tab-target="dojo" aria-selected="false">Dojo</button>
+    <button class="tab" data-tab-target="dojo" aria-selected="true">Dojo</button>
     <button class="tab" data-tab-target="web" aria-selected="false">Web</button>
-    <button class="tab" data-tab-target="logs" aria-selected="true">Logs</button>
-    <button class="tab" data-tab-target="options" aria-selected="false">Options</button>
   </nav>
 
   <main class="stage">
-    <section id="tab-dojo" class="tab-panel" hidden>
+    <section id="tab-dojo" class="tab-panel dojo-panel">
       <div class="pane-head">
         <span>Dojo</span>
         <span id="terminal-meta">not booted</span>
       </div>
+      <pre id="log-tail"></pre>
       <div id="terminal-scroll" class="terminal-scroll">
-        <pre id="terminal"></pre>
+        <div id="terminal"></div>
       </div>
     </section>
 
@@ -392,86 +380,76 @@
             <option>POST</option>
           </select>
         </label>
-        <label>Eyre path
-          <input id="http-path" value="/">
+        <label>view
+          <input id="http-path" list="http-path-options" value="/~debug" spellcheck="false">
+          <datalist id="http-path-options">
+            <option value="/~debug">Debug console</option>
+            <option value="/apps">Docket apps</option>
+            <option value="/">Root app</option>
+            <option value="/~/login?redirect=/">Login</option>
+            <option value="/apps/landscape/">Landscape</option>
+          </datalist>
         </label>
         <button id="http-send">Open Web UI</button>
       </div>
       <div class="web-frame-wrap">
-        <iframe id="web-frame" title="Eyre preview" sandbox="allow-forms allow-scripts"></iframe>
+        <iframe id="web-frame" title="Eyre preview" sandbox="allow-forms allow-same-origin allow-scripts"></iframe>
       </div>
-    </section>
-
-    <section id="tab-logs" class="tab-panel">
-      <div class="pane-head">
-        <span>Runtime Logs</span>
-        <span id="log-meta">0 lines</span>
-      </div>
-      <pre id="log"></pre>
     </section>
 
     <section id="tab-options" class="tab-panel options-panel" hidden>
       <div class="options-form">
-        <label>vere disk WASM URL
-          <input id="wasm-url" value="../../../zig-out/bin/vere-disk-wasm.wasm" data-bundle="./assets/vere-disk-wasm.wasm">
+        <input id="wasm-url" type="hidden" value="./assets/vere-disk-wasm.wasm">
+        <label>boot pill
+          <select id="pill-preset">
+            <option value="repo-current" data-url="../../../../urbit/bin/brass.pill" data-memory-preset="loom29">Repo brass pill</option>
+            <option value="tlon-4-6" data-url="./assets/brass-4.6.pill" data-memory-preset="loom31">Tlon props 4.6 brass</option>
+            <option value="bundle-current" data-url="./assets/brass.pill" data-memory-preset="loom29">Packaged demo brass</option>
+          </select>
         </label>
-        <label>brass pill URL
-          <input id="pill-url" value="../../../../urbit/bin/brass.pill" data-bundle="./assets/brass.pill">
-        </label>
+        <input id="pill-url" type="hidden" value="../../../../urbit/bin/brass.pill">
         <div class="grid2">
           <label>fake ship
-            <input id="fake-ship" value="0x100">
+            <select id="fake-ship">
+              <option value="0x100">Demo ship 0x100</option>
+              <option value="0">Fake galaxy ~zod</option>
+              <option value="0x101">Demo peer 0x101</option>
+            </select>
           </label>
-          <label>scope
-            <input id="scope" value="wasm-dojo-demo">
-          </label>
-        </div>
-        <div class="grid2">
-          <label>cols
-            <input id="cols" value="110">
-          </label>
-          <label>rows
-            <input id="rows" value="34">
-          </label>
-        </div>
-        <div class="grid2">
-          <label>loom
-            <input id="loom" value="29">
-          </label>
-          <label>session id
-            <input id="session-id" value="1">
+          <label>state slot
+            <select id="scope">
+              <option value="wasm-dojo-demo">Demo fresh boot</option>
+              <option value="wasm-dojo-demo-4-6">4.6 test boot</option>
+              <option value="wasm-dojo-demo-alt">Alternate demo boot</option>
+            </select>
           </label>
         </div>
-        <div class="grid2">
-          <label>overhead MiB
-            <input id="overhead-mib" value="512">
-          </label>
-          <label>maximum MiB
-            <input id="maximum-mib" value="1536">
-          </label>
-        </div>
-        <label>HTTP headers
-          <textarea id="headers">accept: text/html,text/plain,application/json,*/*
-user-agent: vere-wasm-dojo-demo</textarea>
+        <input id="session-id" type="hidden" value="1">
+        <input id="cols" type="hidden" value="110">
+        <input id="rows" type="hidden" value="34">
+        <label>memory
+          <select id="memory-preset">
+            <option value="loom29" data-loom="29" data-overhead-mib="512" data-maximum-mib="1536">Standard pill, loom 29</option>
+            <option value="loom30" data-loom="30" data-overhead-mib="512" data-maximum-mib="2048">Large pill, loom 30</option>
+            <option value="loom31" data-loom="31" data-overhead-mib="512" data-maximum-mib="3840">Very large pill, loom 31</option>
+          </select>
         </label>
-        <div class="grid2">
-          <label>bridge URL
-            <input id="bridge-url" value="https://127.0.0.1:8443/~_~/ames">
-          </label>
-          <label>bridge cert sha-256
-            <input id="hash" placeholder="unused for local demo">
-          </label>
-        </div>
-        <button id="connect">Connect Ames</button>
+        <input id="loom" type="hidden" value="29">
+        <input id="overhead-mib" type="hidden" value="512">
+        <input id="maximum-mib" type="hidden" value="1536">
+        <textarea id="headers" hidden>accept: text/html,text/plain,application/json,*/*
+user-agent: vere-wasm-dojo-demo</textarea>
       </div>
     </section>
   </main>
 </div>
 
+<script src="./vendor/xterm/xterm.js"></script>
 <script type="module">
 import {
   createRuntimeWorkerCommandClient,
 } from './ames-wasm-runtime-route-demo.mjs';
+import { patp } from './ames-ship.mjs';
 
 const $ = id => document.getElementById(id);
 const decoder = new TextDecoder();
@@ -480,23 +458,39 @@ let worker = null;
 let client = null;
 let started = false;
 let terminalStarted = false;
-let connected = false;
+let httpClientStarted = false;
 let webFrameLoaded = false;
+let activeWebPath = '/~debug';
+let terminal = null;
+let terminalChars = 0;
+let terminalInputChars = 0;
+let terminalInputQueue = Promise.resolve();
+let terminalInputBuffer = '';
+let terminalInputFlushTimer = null;
+let currentTab = 'dojo';
+let webBlobUrls = new Set();
+let nextEyreStreamId = 1;
 
-const terminalState = {
-  text: '',
-  pending: '',
-  timer: 0,
-  flushDelayMs: 28,
-  maxChars: 220_000,
-};
-
+const webCookieJar = new Map();
+const eyreStreams = new Map();
+const EYRE_FRAME_ORIGIN = 'https://eyre.local';
+const EYRE_COMPAT_ORIGINS = new Set([EYRE_FRAME_ORIGIN, 'http://eyre.local']);
+const EYRE_RESOURCE_WORKER_PATH = '/apps/__vere_wasm_sw.js?v=2026-07-22-resource-bridge';
+const EYRE_RESOURCE_WORKER_SCOPE = '/apps/';
+const DEMO_BUILD_ID = '2026-07-22-frame-path';
+const WASM_URL_CANDIDATES = [
+  './assets/vere-disk-wasm.wasm',
+  '../../../zig-out/bin/vere-disk-wasm.wasm',
+];
 const logState = {
   lines: 0,
-  maxLines: 1_500,
+  maxLines: 2_000,
 };
+let resourceWorkerLogged = false;
+let runtimeAssetPresetPromise = null;
 
 function setTab(name) {
+  currentTab = name;
   for (const button of document.querySelectorAll('[data-tab-target]')) {
     const selected = button.dataset.tabTarget === name;
     button.setAttribute('aria-selected', selected ? 'true' : 'false');
@@ -505,12 +499,64 @@ function setTab(name) {
     panel.hidden = panel.id !== `tab-${name}`;
   }
   if (name === 'dojo') {
-    $('command').focus();
+    requestAnimationFrame(() => terminal?.focus());
   }
 }
 
 function absoluteHref(value) {
   return new URL(String(value).trim(), import.meta.url).href;
+}
+
+function selectedOption(id) {
+  const select = $(id);
+  return select?.selectedOptions?.[0] ?? null;
+}
+
+function syncRuntimePresetFields({
+  applyPillMemory = false,
+} = {}) {
+  const pillOption = selectedOption('pill-preset');
+  if (pillOption?.dataset.url) {
+    $('pill-url').value = pillOption.dataset.url;
+  }
+  if (applyPillMemory && pillOption?.dataset.memoryPreset) {
+    $('memory-preset').value = pillOption.dataset.memoryPreset;
+  }
+
+  const memoryOption = selectedOption('memory-preset');
+  if (memoryOption) {
+    $('loom').value = memoryOption.dataset.loom || '29';
+    $('overhead-mib').value = memoryOption.dataset.overheadMib || '512';
+    $('maximum-mib').value = memoryOption.dataset.maximumMib || '1536';
+  }
+
+}
+
+function setPathValueOrRemember(value, label = value) {
+  const input = $('http-path');
+  if (!input) {
+    return;
+  }
+  const wanted = String(value);
+  input.value = wanted;
+
+  const list = $('http-path-options');
+  if (!list) {
+    return;
+  }
+  for (const option of list.options) {
+    if (option.value === wanted) {
+      return;
+    }
+  }
+
+  const prior = [...list.options].find(option => option.dataset.current === 'true');
+  prior?.remove();
+  const option = document.createElement('option');
+  option.value = wanted;
+  option.textContent = label;
+  option.dataset.current = 'true';
+  list.append(option);
 }
 
 async function assetExists(path) {
@@ -523,15 +569,61 @@ async function assetExists(path) {
   }
 }
 
+async function refreshUrlPresetSelect(selectId, {
+  preferredValue = null,
+} = {}) {
+  const select = $(selectId);
+  if (!select) {
+    return;
+  }
+  const options = [...select.options];
+  await Promise.all(options.map(async option => {
+    if (!option.dataset.url) {
+      return;
+    }
+    const exists = await assetExists(option.dataset.url);
+    option.disabled = !exists;
+    option.hidden = !exists;
+  }));
+
+  const enabled = options.filter(option => !option.disabled);
+  if (preferredValue) {
+    const preferred = enabled.find(option => option.value === preferredValue);
+    if (preferred) {
+      select.value = preferred.value;
+      return;
+    }
+  }
+  if (!select.selectedOptions[0] || select.selectedOptions[0].disabled) {
+    select.value = enabled[0]?.value || '';
+  }
+}
+
+async function preferAvailableWasmUrl() {
+  const input = $('wasm-url');
+  if (!input) {
+    return;
+  }
+
+  for (const candidate of WASM_URL_CANDIDATES) {
+    if (await assetExists(candidate)) {
+      input.value = candidate;
+      return;
+    }
+  }
+}
+
 async function preferBundledAssets() {
-  const wasm = $('wasm-url');
-  const pill = $('pill-url');
-  if (wasm?.dataset.bundle && await assetExists(wasm.dataset.bundle)) {
-    wasm.value = wasm.dataset.bundle;
+  await preferAvailableWasmUrl();
+  await refreshUrlPresetSelect('pill-preset', { preferredValue: 'bundle-current' });
+  syncRuntimePresetFields({ applyPillMemory: true });
+}
+
+function ensureRuntimeAssetPresets() {
+  if (!runtimeAssetPresetPromise) {
+    runtimeAssetPresetPromise = preferBundledAssets();
   }
-  if (pill?.dataset.bundle && await assetExists(pill.dataset.bundle)) {
-    pill.value = pill.dataset.bundle;
-  }
+  return runtimeAssetPresetPromise;
 }
 
 function setStatus(text, cls = '') {
@@ -540,77 +632,197 @@ function setStatus(text, cls = '') {
 }
 
 function appendLog(message, className = '') {
-  const line = document.createElement('span');
-  if (className) {
-    line.className = className;
+  for (const text of String(message).replace(/\r/g, '').split('\n')) {
+    const line = document.createElement('span');
+    if (className) {
+      line.className = className;
+    }
+    line.textContent = text;
+    $('log-tail').append(line);
+    logState.lines++;
   }
-  line.textContent = String(message);
-  $('log').append(line);
-  logState.lines++;
-  while ($('log').childNodes.length > logState.maxLines) {
-    $('log').firstChild.remove();
+  while ($('log-tail').childNodes.length > logState.maxLines) {
+    $('log-tail').firstChild.remove();
     logState.lines--;
   }
-  $('log-meta').textContent = `${logState.lines} lines`;
-  $('log').scrollTop = $('log').scrollHeight;
+  $('log-tail').scrollTop = $('log-tail').scrollHeight;
 }
 
-function normalizeTerminalText(text) {
-  return String(text).replace(/\r\n/g, '\n');
+function updateTerminalMeta() {
+  if (!terminal) {
+    $('terminal-meta').textContent = 'not booted';
+    return;
+  }
+  $('terminal-meta').textContent =
+    `${terminal.cols}x${terminal.rows} out=${terminalChars} in=${terminalInputChars}`;
 }
 
-function applyTerminalText(text) {
-  const parts = normalizeTerminalText(text).split('\r\x1b[K');
-  for (let i = 0; i < parts.length; i++) {
-    if (i > 0) {
-      terminalState.text = terminalState.text.slice(
-        0,
-        terminalState.text.lastIndexOf('\n') + 1,
-      );
+function sendTerminalData(data) {
+  if (!started || !data) {
+    return;
+  }
+  terminalInputChars += String(data).length;
+  updateTerminalMeta();
+  terminalInputBuffer += data;
+  if (!terminalStarted) {
+    return;
+  }
+  if (String(data).includes('\r') || String(data).includes('\n') || terminalInputBuffer.length >= 16) {
+    if (terminalInputFlushTimer !== null) {
+      clearTimeout(terminalInputFlushTimer);
+      terminalInputFlushTimer = null;
     }
-    terminalState.text += parts[i].replace(/\r/g, '');
+    flushTerminalData();
+    return;
   }
-  if (terminalState.text.length > terminalState.maxChars) {
-    terminalState.text = terminalState.text.slice(-terminalState.maxChars);
+  if (terminalInputFlushTimer !== null) {
+    return;
+  }
+  terminalInputFlushTimer = setTimeout(flushTerminalData, 12);
+}
+
+function isEditableTarget(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (target.closest('#terminal')) {
+    return false;
+  }
+  return Boolean(target.closest('input, select, textarea, button, [contenteditable=""], [contenteditable="true"]'));
+}
+
+function keyEventToTerminalData(event) {
+  if (event.ctrlKey && !event.altKey && !event.metaKey && /^[a-z]$/i.test(event.key)) {
+    return String.fromCodePoint(event.key.toLowerCase().codePointAt(0) - 96);
+  }
+  if (event.altKey || event.metaKey || event.ctrlKey) {
+    return '';
+  }
+  switch (event.key) {
+    case 'Enter': return '\r';
+    case 'Backspace': return '\x7f';
+    case 'Delete': return '\x1b[3~';
+    case 'ArrowUp': return '\x1b[A';
+    case 'ArrowDown': return '\x1b[B';
+    case 'ArrowRight': return '\x1b[C';
+    case 'ArrowLeft': return '\x1b[D';
+    default:
+      return event.key.length === 1 ? event.key : '';
   }
 }
 
-function renderTerminalNow() {
-  terminalState.timer = 0;
-  if (terminalState.pending) {
-    applyTerminalText(terminalState.pending);
-    terminalState.pending = '';
+function flushTerminalData() {
+  terminalInputFlushTimer = null;
+  const data = terminalInputBuffer;
+  terminalInputBuffer = '';
+  if (!started || !terminalStarted || !data) {
+    terminalInputBuffer = data + terminalInputBuffer;
+    return;
   }
-  $('terminal').textContent = terminalState.text;
-  $('terminal-meta').textContent = `${terminalState.text.length} chars`;
-  $('terminal-scroll').scrollTop = $('terminal-scroll').scrollHeight;
+  terminalInputQueue = terminalInputQueue
+    .then(() => ensureClient().command('terminal-data', { data }))
+    .catch(error => {
+      setStatus('error', 'err');
+      appendLog(String(error?.stack ?? error), 'err');
+      setTab('dojo');
+    });
 }
 
-function queueTerminalText(text) {
-  terminalState.pending += text;
-  if (!terminalState.timer) {
-    terminalState.timer = setTimeout(renderTerminalNow, terminalState.flushDelayMs);
+function ensureTerminal() {
+  if (terminal) {
+    return terminal;
   }
+  if (typeof globalThis.Terminal !== 'function') {
+    throw new Error('xterm.js did not load');
+  }
+
+  terminal = new globalThis.Terminal({
+    cols: parseNumberField('cols', 'cols'),
+    rows: parseNumberField('rows', 'rows'),
+    cursorBlink: true,
+    cursorStyle: 'block',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    fontSize: 14,
+    lineHeight: 1.18,
+    scrollback: 6_000,
+    convertEol: false,
+    theme: {
+      background: '#06080a',
+      foreground: '#d9f8e1',
+      cursor: '#43c6ac',
+      selectionBackground: '#365579',
+      black: '#0b0f12',
+      red: '#fb7185',
+      green: '#8bdc9f',
+      yellow: '#facc15',
+      blue: '#7dd3fc',
+      magenta: '#c084fc',
+      cyan: '#43c6ac',
+      white: '#edf1f6',
+      brightBlack: '#64748b',
+      brightRed: '#fda4af',
+      brightGreen: '#bbf7d0',
+      brightYellow: '#fde68a',
+      brightBlue: '#bae6fd',
+      brightMagenta: '#e9d5ff',
+      brightCyan: '#99f6e4',
+      brightWhite: '#ffffff',
+    },
+  });
+  terminal.open($('terminal'));
+  terminal.onData(sendTerminalData);
+  terminal.attachCustomKeyEventHandler?.(event => {
+    if (event.type !== 'keydown') {
+      return true;
+    }
+    return !handleTerminalKeydown(event, { insideTerminal: true });
+  });
+  terminal.onResize(({ cols, rows }) => {
+    $('cols').value = String(cols);
+    $('rows').value = String(rows);
+    updateTerminalMeta();
+  });
+  updateTerminalMeta();
+  return terminal;
+}
+
+function resizeTerminalFromControls() {
+  const term = ensureTerminal();
+  const cols = parseNumberField('cols', 'cols');
+  const rows = parseNumberField('rows', 'rows');
+  if (term.cols !== cols || term.rows !== rows) {
+    term.resize(cols, rows);
+  }
+  updateTerminalMeta();
 }
 
 function clearTerminal() {
-  terminalState.text = '';
-  terminalState.pending = '';
-  if (terminalState.timer) {
-    clearTimeout(terminalState.timer);
-    terminalState.timer = 0;
-  }
-  renderTerminalNow();
+  const term = ensureTerminal();
+  term.clear();
+  terminalChars = 0;
+  updateTerminalMeta();
 }
 
 function renderTerminalEvent(event) {
+  const term = ensureTerminal();
   if (event.type === 'clear') {
     clearTerminal();
   }
   else if (event.type === 'write') {
-    queueTerminalText(event.text);
+    term.write(event.text);
+    terminalChars += String(event.text).length;
+    updateTerminalMeta();
+  }
+  else if (event.type === 'cursor') {
+    if (event.row == null) {
+      term.write(`\x1b[${Number(event.col) + 1}G`);
+    }
+    else {
+      term.write(`\x1b[${Number(event.row) + 1};${Number(event.col) + 1}H`);
+    }
   }
   else if (event.type === 'bell') {
+    term.write('\x07');
     $('terminal-scroll').animate(
       [{ backgroundColor: '#241116' }, { backgroundColor: '#06080a' }],
       { duration: 140 },
@@ -622,6 +834,27 @@ function renderTerminalEvent(event) {
   else if (event.type === 'logo' || event.type === 'quit') {
     appendLog(`terminal ${event.type}`, 'err');
   }
+}
+
+function handleTerminalKeydown(event, {
+  insideTerminal = false,
+} = {}) {
+  if (currentTab !== 'dojo' || !started || event.isComposing) {
+    return false;
+  }
+  if (!insideTerminal && isEditableTarget(event.target)) {
+    return false;
+  }
+
+  const data = keyEventToTerminalData(event);
+  if (!data) {
+    return false;
+  }
+
+  event.preventDefault();
+  sendTerminalData(data);
+  requestAnimationFrame(() => terminal?.focus());
+  return true;
 }
 
 function parseBigIntField(id, name) {
@@ -638,6 +871,38 @@ function parseNumberField(id, name) {
     throw new Error(`${name} must be a non-negative integer`);
   }
   return value;
+}
+
+function runtimeMemoryFields() {
+  const loomExponent = parseNumberField('loom', 'loom');
+  const overheadMiB = parseNumberField('overhead-mib', 'overhead MiB');
+  const maximumMiB = parseNumberField('maximum-mib', 'maximum MiB');
+  if (loomExponent < 20 || loomExponent > 31) {
+    throw new Error('loom must be between 20 and 31');
+  }
+
+  const requiredMiB = (2 ** (loomExponent - 20)) + overheadMiB;
+  const recommendedMiB = loomExponent >= 31
+    ? Math.max(requiredMiB, 3840)
+    : requiredMiB;
+  if (recommendedMiB > 4096) {
+    throw new Error(
+      `--loom ${loomExponent} needs ${recommendedMiB} MiB, beyond wasm32 memory`,
+    );
+  }
+  if (maximumMiB < recommendedMiB) {
+    $('maximum-mib').value = String(recommendedMiB);
+    appendLog(
+      `memory maximum raised ${maximumMiB}MiB -> ${recommendedMiB}MiB for --loom ${loomExponent}`,
+      'rx',
+    );
+  }
+
+  return {
+    loomExponent,
+    overheadMiB,
+    maximumMiB: Math.max(maximumMiB, recommendedMiB),
+  };
 }
 
 function parseHeaders(text) {
@@ -659,12 +924,361 @@ function parseHeaders(text) {
   return headers;
 }
 
+function headerValue(headers, name) {
+  const wanted = String(name).toLowerCase();
+  for (const [key, value] of headers || []) {
+    if (String(key).toLowerCase() === wanted) {
+      return String(value);
+    }
+  }
+  return null;
+}
+
+function cookieHeader() {
+  return [...webCookieJar].map(([name, value]) => `${name}=${value}`).join('; ');
+}
+
+function storeResponseCookies(headers) {
+  for (const [key, rawValue] of headers || []) {
+    if (String(key).toLowerCase() !== 'set-cookie') {
+      continue;
+    }
+
+    const value = String(rawValue);
+    const [pair, ...attrs] = value.split(';');
+    const index = pair.indexOf('=');
+    if (index <= 0) {
+      continue;
+    }
+
+    const name = pair.slice(0, index).trim();
+    const cookieValue = pair.slice(index + 1).trim();
+    const expired = attrs.some(attr => {
+      const normalized = attr.trim().toLowerCase();
+      return normalized === 'max-age=0' || normalized === 'expires=thu, 01 jan 1970 00:00:00 gmt';
+    });
+
+    if (expired) {
+      webCookieJar.delete(name);
+    }
+    else {
+      webCookieJar.set(name, cookieValue);
+    }
+  }
+}
+
+function withWebCookies(headers) {
+  const out = [...headers];
+  if (!out.some(([key]) => String(key).toLowerCase() === 'cookie')) {
+    const cookies = cookieHeader();
+    if (cookies) {
+      out.push(['cookie', cookies]);
+    }
+  }
+  return out;
+}
+
+function mergeHeaders(baseHeaders, extraHeaders) {
+  const extraKeys = new Set(extraHeaders.map(([key]) => String(key).toLowerCase()));
+  return [
+    ...baseHeaders.filter(([key]) => !extraKeys.has(String(key).toLowerCase())),
+    ...extraHeaders,
+  ];
+}
+
+function parseEyrePath(value, basePath = activeWebPath) {
+  const url = new URL(String(value || '/'), new URL(basePath || '/', `${EYRE_FRAME_ORIGIN}/`));
+  if (!EYRE_COMPAT_ORIGINS.has(url.origin)) {
+    return null;
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+function normalizeEyrePath(value, basePath = activeWebPath) {
+  return parseEyrePath(value, basePath);
+}
+
+function clearWebBlobUrls() {
+  for (const url of webBlobUrls) {
+    URL.revokeObjectURL(url);
+  }
+  webBlobUrls = new Set();
+}
+
+function frameBaseHref(path) {
+  const url = new URL(path || '/', `${location.origin}/`);
+  url.hash = '';
+  const appMatch = url.pathname.match(/^\/apps\/([^/]+)/);
+  if (appMatch) {
+    url.pathname = `/apps/${appMatch[1]}/`;
+    url.search = '';
+  }
+  else if (!url.pathname.endsWith('/')) {
+    url.pathname = url.pathname.replace(/[^/]*$/, '');
+  }
+  return url.href;
+}
+
+function bodyBytes(value) {
+  if (value == null) {
+    return new Uint8Array();
+  }
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return Uint8Array.from(value);
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return Uint8Array.from(value);
+}
+
+function framePost(sourceWindow, message, transfer = []) {
+  sourceWindow?.postMessage({
+    source: 'vere-wasm-eyre-parent',
+    ...message,
+  }, '*', transfer);
+}
+
+function framePostBody(sourceWindow, message, body) {
+  const bytes = bodyBytes(body);
+  framePost(sourceWindow, {
+    ...message,
+    body: bytes,
+  }, bytes.byteLength > 0 ? [bytes.buffer] : []);
+}
+
+function findEyreStreamByRequestId(requestId) {
+  for (const entry of eyreStreams.values()) {
+    if (entry.requestId === requestId) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+function framePathHref(path) {
+  const url = new URL(path || '/', `${location.origin}/`);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function currentFramePath(frame) {
+  try {
+    const current = frame.contentWindow?.location;
+    if (!current) {
+      return null;
+    }
+    return `${current.pathname}${current.search}${current.hash}`;
+  }
+  catch (_) {
+    return null;
+  }
+}
+
+function waitForFrameLoad(frame, timeoutMs = 5000) {
+  return new Promise(resolve => {
+    let settled = false;
+    const done = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      frame.removeEventListener('load', done);
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    frame.addEventListener('load', done, { once: true });
+  });
+}
+
+function isVirtualAppFramePath(path) {
+  try {
+    const url = new URL(path || '/', `${location.origin}/`);
+    return url.pathname.startsWith('/apps/');
+  }
+  catch (_) {
+    return false;
+  }
+}
+
+function resourceWorkerPath(value) {
+  try {
+    const url = new URL(String(value || ''), location.origin);
+    if (url.origin !== location.origin) {
+      return '';
+    }
+    return `${url.pathname}${url.search}`;
+  }
+  catch (_) {
+    return '';
+  }
+}
+
+function registrationScopePath(registration) {
+  try {
+    const url = new URL(String(registration?.scope || ''), location.origin);
+    if (url.origin !== location.origin) {
+      return '';
+    }
+    return url.pathname;
+  }
+  catch (_) {
+    return '';
+  }
+}
+
+function isResourceWorkerRegistration(registration) {
+  return (
+    registrationScopePath(registration) === EYRE_RESOURCE_WORKER_SCOPE &&
+    resourceWorkerPath(
+      registration?.active?.scriptURL ||
+      registration?.installing?.scriptURL ||
+      registration?.waiting?.scriptURL,
+    ) === EYRE_RESOURCE_WORKER_PATH
+  );
+}
+
+function isResourceWorkerController(serviceWorker) {
+  return resourceWorkerPath(serviceWorker?.controller?.scriptURL) === EYRE_RESOURCE_WORKER_PATH;
+}
+
+function waitForResourceWorkerController(serviceWorker, timeoutMs = 5000) {
+  if (isResourceWorkerController(serviceWorker)) {
+    return Promise.resolve(true);
+  }
+  return new Promise(resolve => {
+    let settled = false;
+    const done = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      serviceWorker.removeEventListener('controllerchange', done);
+      resolve(isResourceWorkerController(serviceWorker));
+    };
+    const timer = setTimeout(done, timeoutMs);
+    serviceWorker.addEventListener('controllerchange', done);
+  });
+}
+
+async function ensureFrameResourceWorker(frame, path) {
+  if (!isVirtualAppFramePath(path)) {
+    return;
+  }
+  const serviceWorker = frame.contentWindow?.navigator?.serviceWorker;
+  if (!serviceWorker) {
+    return;
+  }
+
+  try {
+    const registrations = await serviceWorker.getRegistrations?.() || [];
+    await Promise.all(registrations.map(registration => {
+      const scopePath = registrationScopePath(registration);
+      if (
+        scopePath.startsWith('/apps/') &&
+        !isResourceWorkerRegistration(registration)
+      ) {
+        return registration.unregister?.();
+      }
+      return null;
+    }));
+
+    await serviceWorker.register(EYRE_RESOURCE_WORKER_PATH, {
+      scope: EYRE_RESOURCE_WORKER_SCOPE,
+    });
+    await serviceWorker.ready.catch(() => {});
+    if (!await waitForResourceWorkerController(serviceWorker, 4000)) {
+      frame.contentWindow?.location.reload();
+      await waitForFrameLoad(frame);
+      const nextServiceWorker = frame.contentWindow?.navigator?.serviceWorker || serviceWorker;
+      await waitForResourceWorkerController(nextServiceWorker, 4000);
+    }
+    const activeServiceWorker = frame.contentWindow?.navigator?.serviceWorker || serviceWorker;
+    if (!resourceWorkerLogged && isResourceWorkerController(activeServiceWorker)) {
+      resourceWorkerLogged = true;
+      appendLog('web resource worker ready for /apps/', 'rx');
+    }
+  }
+  catch (error) {
+    appendLog(`web resource worker unavailable: ${error}`, 'err');
+  }
+}
+
+function closeExistingFrame(frame) {
+  try {
+    frame.contentWindow?.__vereWasmCloseFrame?.();
+  }
+  catch (error) {
+    appendLog(`web frame close failed: ${error}`, 'err');
+  }
+}
+
+async function writeFrameDocument(path, html) {
+  const frame = $('web-frame');
+  closeExistingFrame(frame);
+  const href = framePathHref(path);
+  if (currentFramePath(frame) !== href) {
+    frame.removeAttribute('srcdoc');
+    frame.src = href;
+    await waitForFrameLoad(frame);
+  }
+  await ensureFrameResourceWorker(frame, path);
+
+  const doc = frame.contentDocument;
+  if (!doc) {
+    throw new Error('web frame document is not accessible');
+  }
+  doc.open();
+  doc.write(html);
+  doc.close();
+}
+
+function handleHttpStream(message) {
+  const entry = eyreStreams.get(String(message.streamId));
+  if (!entry) {
+    return;
+  }
+
+  const response = message.response || {};
+  if (response.type === 'start') {
+    return;
+  }
+
+  if (response.type === 'cancel') {
+    framePost(entry.sourceWindow, {
+      type: 'event-source-close',
+      requestId: entry.requestId,
+    });
+    eyreStreams.delete(entry.streamId);
+    return;
+  }
+
+  framePostBody(entry.sourceWindow, {
+    type: 'event-source-data',
+    requestId: entry.requestId,
+    complete: Boolean(response.complete),
+  }, response.body);
+
+  if (response.complete) {
+    eyreStreams.delete(entry.streamId);
+  }
+}
+
 function ensureClient() {
   if (client) {
     return client;
   }
+  const workerUrl = new URL('./ames-wasm-runtime-worker.mjs', import.meta.url);
+  workerUrl.searchParams.set('v', DEMO_BUILD_ID);
   worker = new Worker(
-    new URL('./ames-wasm-runtime-worker.mjs', import.meta.url),
+    workerUrl,
     { type: 'module' },
   );
   client = createRuntimeWorkerCommandClient(worker, {
@@ -675,64 +1289,80 @@ function ensureClient() {
       else if (message.type === 'terminal') {
         renderTerminalEvent(message.event);
       }
+      else if (message.type === 'http-stream') {
+        handleHttpStream(message);
+      }
     },
   });
   return client;
 }
 
-async function startRuntime() {
+async function startRuntime({
+  focusDojo = true,
+  loadInitialWeb = false,
+} = {}) {
   if (!started) {
     setStatus('booting');
     $('start').disabled = true;
-    await ensureClient().command('start', {
+    webCookieJar.clear();
+    await ensureRuntimeAssetPresets();
+    syncRuntimePresetFields();
+    resizeTerminalFromControls();
+    clearTerminal();
+    const memory = runtimeMemoryFields();
+    const result = await ensureClient().command('start', {
       wasmUrl: absoluteHref($('wasm-url').value),
       pillUrl: absoluteHref($('pill-url').value),
-      bridgeUrl: $('bridge-url').value.trim(),
-      certificateHash: $('hash').value.trim(),
       scope: $('scope').value.trim() || 'wasm-dojo-demo',
-      loomExponent: parseNumberField('loom', 'loom'),
-      overheadMiB: parseNumberField('overhead-mib', 'overhead MiB'),
-      maximumMiB: parseNumberField('maximum-mib', 'maximum MiB'),
+      loomExponent: memory.loomExponent,
+      overheadMiB: memory.overheadMiB,
+      maximumMiB: memory.maximumMiB,
       fakeShip: parseBigIntField('fake-ship', 'fake ship').toString(),
       sessionId: parseBigIntField('session-id', 'session id').toString(),
+      httpClientProxyUrl: new URL('/_vere/http-client', location.href).href,
+      autoStartHttpClient: true,
       clearStore: true,
     });
+    httpClientStarted = Boolean(result?.snapshot?.hostedHttpStarted);
     started = true;
   }
 
   if (!terminalStarted) {
-    clearTerminal();
+    syncRuntimePresetFields();
+    resizeTerminalFromControls();
     await ensureClient().command('terminal-start', {
       cols: parseNumberField('cols', 'cols'),
       rows: parseNumberField('rows', 'rows'),
     });
     terminalStarted = true;
+    flushTerminalData();
   }
 
   setStatus('dojo ready', 'ok');
-  setTab('dojo');
-  $('command').focus();
-  if (!webFrameLoaded) {
+  if (focusDojo) {
+    setTab('dojo');
+    terminal?.focus();
+  }
+  if (loadInitialWeb && !webFrameLoaded) {
     await requestWebFrame({ quiet: true });
   }
 }
 
-async function connectAmes() {
-  await startRuntime();
-  if (connected) {
+async function ensureHttpClientStarted() {
+  await startRuntime({ focusDojo: false, loadInitialWeb: false });
+  if (httpClientStarted) {
     return;
   }
-  setStatus('connecting');
-  await ensureClient().command('connect', {
-    bridgeUrl: $('bridge-url').value.trim(),
-    certificateHash: $('hash').value.trim(),
-  });
-  connected = true;
-  setStatus('connected', 'ok');
+  appendLog('http-client starting', 'tx');
+  await ensureClient().command('http-client-start');
+  httpClientStarted = true;
+  appendLog('http-client ready', 'rx');
 }
 
 async function refreshTerminal() {
   await startRuntime();
+  syncRuntimePresetFields();
+  resizeTerminalFromControls();
   await ensureClient().command('terminal-resize', {
     cols: parseNumberField('cols', 'cols'),
     rows: parseNumberField('rows', 'rows'),
@@ -740,21 +1370,1361 @@ async function refreshTerminal() {
   await ensureClient().command('terminal-refresh');
 }
 
-async function sendCommand() {
-  await startRuntime();
-  const text = $('command').value;
-  $('command').value = '';
-  await ensureClient().command('terminal-input', {
-    text,
-    enter: true,
+function frameBridgeScript(path) {
+  const source = `
+(() => {
+  const eyrePath = ${JSON.stringify(path || '/')};
+  const eyreOrigin = ${JSON.stringify(EYRE_FRAME_ORIGIN)};
+  const parentOrigin = ${JSON.stringify(location.origin)};
+  const resourceWorkerPath = ${JSON.stringify(EYRE_RESOURCE_WORKER_PATH)};
+  const resourceWorkerScope = ${JSON.stringify(EYRE_RESOURCE_WORKER_SCOPE)};
+  const browserOrigin = window.location.origin && window.location.origin !== 'null'
+    ? window.location.origin
+    : parentOrigin;
+  const compatibleOrigins = new Set([eyreOrigin, 'http://eyre.local', browserOrigin].filter(Boolean));
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const eyreBaseUrl = new URL(eyrePath || '/', eyreOrigin + '/');
+  const browserBaseUrl = new URL(eyrePath || '/', browserOrigin + '/');
+  let frameClosing = false;
+  window.__vereWasmEyrePath = eyreBaseUrl.pathname;
+  window.__vereWasmRoutePath = route => {
+    const normalize = value => {
+      const url = new URL(String(value || '/'), eyreBaseUrl);
+      let path = url.pathname || '/';
+      while (path.length > 1 && path.endsWith('/')) {
+        path = path.slice(0, -1);
+      }
+      return path || '/';
+    };
+    const routePath = normalize(route);
+    const activePath = normalize(eyreBaseUrl.pathname);
+    if (routePath !== activePath) {
+      return '/__vere_wasm_no_route__' + routePath;
+    }
+    return window.location.pathname || '/';
+  };
+  try {
+    history.replaceState(history.state, document.title, browserBaseUrl.pathname + browserBaseUrl.search + browserBaseUrl.hash);
+  }
+  catch (_) {
+  }
+  const encodePath = value => {
+    let url;
+    try {
+      url = new URL(value || '/', eyreBaseUrl);
+    }
+    catch (_) {
+      return null;
+    }
+    if (!compatibleOrigins.has(url.origin)) {
+      return null;
+    }
+    return url.pathname + url.search;
+  };
+  const send = message => parent.postMessage({
+    source: 'vere-wasm-eyre-frame',
+    ...message,
+  }, '*');
+  const teardownEvents = new Set(['beforeunload', 'unload', 'pagehide']);
+  const nativeAddEventListener = window.addEventListener.bind(window);
+  const nativeRemoveEventListener = window.removeEventListener.bind(window);
+  const teardownListeners = new WeakMap();
+  const wrappedTeardownListener = (type, listener) => {
+    if (!listener || !['function', 'object'].includes(typeof listener) || !teardownEvents.has(String(type))) {
+      return listener;
+    }
+    let byType = teardownListeners.get(listener);
+    if (!byType) {
+      byType = new Map();
+      teardownListeners.set(listener, byType);
+    }
+    if (byType.has(type)) {
+      return byType.get(type);
+    }
+    const wrapped = function(event) {
+      try {
+        if (typeof listener === 'function') {
+          return listener.call(this, event);
+        }
+        return listener.handleEvent?.(event);
+      }
+      catch (error) {
+        if (!frameClosing) {
+          throw error;
+        }
+        return undefined;
+      }
+    };
+    byType.set(type, wrapped);
+    return wrapped;
+  };
+  window.addEventListener = (type, listener, options) => (
+    nativeAddEventListener(type, wrappedTeardownListener(type, listener), options)
+  );
+  window.removeEventListener = (type, listener, options) => {
+    const wrapped = listener && ['function', 'object'].includes(typeof listener)
+      ? teardownListeners.get(listener)?.get(type) || listener
+      : listener;
+    return nativeRemoveEventListener(type, wrapped, options);
+  };
+  const formatLogArg = value => {
+    if (value instanceof Error) {
+      return value.stack || value.message || String(value);
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    try {
+      return JSON.stringify(value);
+    }
+    catch (_) {
+      return String(value);
+    }
+  };
+  for (const level of ['log', 'warn', 'error']) {
+    const native = console[level]?.bind(console);
+    console[level] = (...args) => {
+      native?.(...args);
+      send({
+        type: 'console',
+        level,
+        message: args.map(formatLogArg).join(' '),
+      });
+    };
+  }
+  window.addEventListener('error', event => {
+    if (frameClosing) {
+      return;
+    }
+    send({
+      type: 'frame-error',
+      message: event.message || 'uncaught frame error',
+      stack: event.error?.stack || '',
+    });
   });
+  window.addEventListener('unhandledrejection', event => {
+    if (frameClosing) {
+      return;
+    }
+    const reason = event.reason;
+    send({
+      type: 'frame-error',
+      message: reason?.message || String(reason || 'unhandled frame rejection'),
+      stack: reason?.stack || '',
+    });
+  });
+  const installServiceWorkerShim = () => {
+    const serviceWorker = navigator.serviceWorker;
+    if (!serviceWorker) {
+      return;
+    }
+
+    const suppressed = new Set();
+    const registrations = new Map();
+    const nativeGetRegistrations = serviceWorker.getRegistrations?.bind(serviceWorker);
+    const registrationScriptPath = registration => {
+      const scriptURL = (
+        registration?.active?.scriptURL ||
+        registration?.installing?.scriptURL ||
+        registration?.waiting?.scriptURL ||
+        ''
+      );
+      try {
+        const url = new URL(scriptURL, browserOrigin);
+        if (url.origin !== browserOrigin) {
+          return '';
+        }
+        return url.pathname + url.search;
+      }
+      catch (_) {
+        return '';
+      }
+    };
+    const isResourceRegistration = registration => {
+      try {
+        return (
+          new URL(registration.scope, browserOrigin).pathname === resourceWorkerScope &&
+          registrationScriptPath(registration) === resourceWorkerPath
+        );
+      }
+      catch (_) {
+        return false;
+      }
+    };
+    nativeGetRegistrations?.().then(items => {
+      for (const item of items || []) {
+        let scope;
+        try {
+          scope = new URL(item.scope);
+        }
+        catch (_) {
+          continue;
+        }
+        if (
+          scope.origin === browserOrigin &&
+          scope.pathname.startsWith('/apps/') &&
+          !isResourceRegistration(item)
+        ) {
+          item.unregister?.().catch?.(() => {});
+        }
+      }
+    }).catch(() => {});
+
+    const assign = (target, key, descriptor) => {
+      if (!target) {
+        return false;
+      }
+      try {
+        Object.defineProperty(target, key, {
+          configurable: true,
+          ...descriptor,
+        });
+        return true;
+      }
+      catch (_) {
+        return false;
+      }
+    };
+    const override = (key, descriptor) => (
+      assign(serviceWorker, key, descriptor) ||
+      assign(Object.getPrototypeOf(serviceWorker), key, descriptor)
+    );
+    const makeWorker = scriptUrl => {
+      const worker = new EventTarget();
+      worker.onstatechange = null;
+      worker.postMessage = () => {};
+      assign(worker, 'scriptURL', { enumerable: true, get: () => scriptUrl.href });
+      assign(worker, 'state', { enumerable: true, get: () => 'activated' });
+      return worker;
+    };
+    const makeRegistration = (scriptUrl, scopeUrl) => {
+      const active = makeWorker(scriptUrl);
+      const registration = new EventTarget();
+      registration.onupdatefound = null;
+      registration.navigationPreload = {
+        disable: async () => {},
+        enable: async () => {},
+        getState: async () => ({ enabled: false, headerValue: '' }),
+        setHeaderValue: async () => {},
+      };
+      registration.pushManager = null;
+      registration.update = async () => registration;
+      registration.unregister = async () => {
+        registrations.delete(scopeUrl.href);
+        return true;
+      };
+      registration.getNotifications = async () => [];
+      registration.showNotification = async () => {};
+      assign(registration, 'installing', { enumerable: true, get: () => null });
+      assign(registration, 'waiting', { enumerable: true, get: () => null });
+      assign(registration, 'active', { enumerable: true, get: () => active });
+      assign(registration, 'scope', { enumerable: true, get: () => scopeUrl.href });
+      return registration;
+    };
+    const registrationFor = (scriptURL, options = {}) => {
+      const scriptUrl = new URL(String(scriptURL || ''), browserBaseUrl);
+      const scopeUrl = new URL(options?.scope || './', scriptUrl);
+      let registration = registrations.get(scopeUrl.href);
+      if (!registration) {
+        registration = makeRegistration(scriptUrl, scopeUrl);
+        registrations.set(scopeUrl.href, registration);
+      }
+      return registration;
+    };
+    const matchingRegistration = clientUrl => {
+      let url;
+      try {
+        url = new URL(String(clientUrl || window.location.href), browserBaseUrl).href;
+      }
+      catch (_) {
+        url = browserBaseUrl.href;
+      }
+      let best = null;
+      for (const registration of registrations.values()) {
+        if (url.startsWith(registration.scope) && (!best || registration.scope.length > best.scope.length)) {
+          best = registration;
+        }
+      }
+      return best;
+    };
+    const defaultRegistration = () => registrationFor(resourceWorkerPath, { scope: resourceWorkerScope });
+    override('register', {
+      value: async (scriptURL, options = {}) => {
+        const registration = registrationFor(scriptURL, options || {});
+        if (!suppressed.has(registration.scope)) {
+          suppressed.add(registration.scope);
+          send({
+            type: 'console',
+            level: 'warn',
+            message: 'serviceWorker.register suppressed in bridged Eyre frame: ' + registration.scope,
+          });
+        }
+        return registration;
+      },
+    });
+    override('getRegistration', {
+      value: async clientUrl => matchingRegistration(clientUrl) || null,
+    });
+    override('getRegistrations', {
+      value: async () => Array.from(registrations.values()),
+    });
+    override('ready', {
+      get: () => Promise.resolve(matchingRegistration(window.location.href) || defaultRegistration()),
+    });
+    override('controller', {
+      get: () => null,
+    });
+  };
+  installServiceWorkerShim();
+  const pending = new Map();
+  const eventSources = new Map();
+  const resourceBlobUrls = new Set();
+  let nextRequestId = 1;
+  const headersArray = headers => {
+    const out = [];
+    try {
+      new Headers(headers || {}).forEach((value, key) => out.push([key, value]));
+    }
+    catch (_) {
+    }
+    return out;
+  };
+  const headerValue = (headers, name) => {
+    const wanted = String(name).toLowerCase();
+    for (const [key, value] of headers || []) {
+      if (String(key).toLowerCase() === wanted) {
+        return String(value);
+      }
+    }
+    return '';
+  };
+  const bodyBytes = async body => {
+    if (body == null) {
+      return null;
+    }
+    if (body instanceof Uint8Array) {
+      return [...body];
+    }
+    if (body instanceof ArrayBuffer) {
+      return [...new Uint8Array(body)];
+    }
+    if (ArrayBuffer.isView(body)) {
+      return [...new Uint8Array(body.buffer, body.byteOffset, body.byteLength)];
+    }
+    if (body instanceof Blob) {
+      return [...new Uint8Array(await body.arrayBuffer())];
+    }
+    if (body instanceof URLSearchParams) {
+      return [...encoder.encode(body.toString())];
+    }
+    if (body instanceof FormData) {
+      const params = new URLSearchParams();
+      for (const [key, value] of body) {
+        if (typeof value === 'string') {
+          params.append(key, value);
+        }
+      }
+      return [...encoder.encode(params.toString())];
+    }
+    return [...encoder.encode(String(body))];
+  };
+  const formDataParams = (form, submitter = null) => {
+    let data;
+    try {
+      data = submitter ? new FormData(form, submitter) : new FormData(form);
+    }
+    catch (_) {
+      data = new FormData(form);
+    }
+
+    const params = new URLSearchParams();
+    for (const [key, value] of data) {
+      if (typeof value === 'string') {
+        params.append(key, value);
+      }
+    }
+    return params;
+  };
+  const isSubmitControl = element => {
+    if (element instanceof HTMLButtonElement) {
+      return (element.getAttribute('type') || 'submit').toLowerCase() === 'submit';
+    }
+    if (element instanceof HTMLInputElement) {
+      return ['submit', 'image'].includes((element.getAttribute('type') || '').toLowerCase());
+    }
+    return false;
+  };
+  const submitFrameForm = (event, form, submitter = null) => {
+    if (!(form instanceof HTMLFormElement)) {
+      return false;
+    }
+    const target = form.getAttribute('target');
+    if (target && target !== '_self') {
+      return false;
+    }
+    const method = (form.getAttribute('method') || 'GET').toUpperCase();
+    const url = encodePath(form.getAttribute('action') || eyrePath);
+    if (!url) {
+      return false;
+    }
+
+    if (typeof form.checkValidity === 'function' && !form.checkValidity()) {
+      event?.preventDefault();
+      form.reportValidity?.();
+      return true;
+    }
+
+    event?.preventDefault();
+    const params = formDataParams(form, submitter);
+
+    if (method === 'GET') {
+      const targetUrl = new URL(url, eyreOrigin + '/');
+      for (const [key, value] of params) {
+        targetUrl.searchParams.append(key, value);
+      }
+      send({ type: 'navigate', url: targetUrl.pathname + targetUrl.search });
+      return true;
+    }
+
+    send({
+      type: 'submit',
+      method,
+      url,
+      headers: [['content-type', 'application/x-www-form-urlencoded']],
+      body: [...new TextEncoder().encode(params.toString())],
+    });
+    return true;
+  };
+  const requestParent = message => new Promise((resolve, reject) => {
+    const requestId = message.requestId ?? nextRequestId++;
+    const timeoutMs = message.timeoutMs === null ? null : (message.timeoutMs || 130000);
+    const timer = timeoutMs == null ? null : setTimeout(() => {
+      pending.delete(requestId);
+      reject(new Error('Eyre frame request timed out'));
+    }, timeoutMs);
+    pending.set(requestId, {
+      resolve: value => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        resolve(value);
+      },
+      reject: error => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        reject(error);
+      },
+    });
+    send({ ...message, requestId });
+  });
+  const messageBodyArray = value => {
+    if (value == null) {
+      return null;
+    }
+    if (Array.isArray(value)) {
+      return value;
+    }
+    if (value instanceof Uint8Array) {
+      return [...value];
+    }
+    if (value instanceof ArrayBuffer) {
+      return [...new Uint8Array(value)];
+    }
+    if (ArrayBuffer.isView(value)) {
+      return [...new Uint8Array(value.buffer, value.byteOffset, value.byteLength)];
+    }
+    return null;
+  };
+  const messageBytes = value => {
+    if (value == null) {
+      return new Uint8Array();
+    }
+    if (value instanceof Uint8Array) {
+      return value;
+    }
+    if (value instanceof ArrayBuffer) {
+      return new Uint8Array(value);
+    }
+    if (ArrayBuffer.isView(value)) {
+      return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    }
+    if (Array.isArray(value)) {
+      return Uint8Array.from(value);
+    }
+    return new Uint8Array();
+  };
+  navigator.serviceWorker?.addEventListener('message', event => {
+    const message = event.data || {};
+    if (message.source !== 'vere-wasm-eyre-worker' || message.type !== 'fetch') {
+      return;
+    }
+    const port = event.ports?.[0];
+    if (!port) {
+      return;
+    }
+    const path = encodePath(message.url);
+    if (!path) {
+      port.postMessage({ error: 'service worker request outside Eyre origin' });
+      port.close?.();
+      return;
+    }
+    requestParent({
+      type: 'fetch',
+      method: message.method || 'GET',
+      url: path,
+      headers: Array.isArray(message.headers) ? message.headers : [],
+      body: messageBodyArray(message.body),
+      timeoutMs: 120000,
+    }).then(reply => {
+      const bytes = messageBytes(reply.body);
+      port.postMessage({
+        status: reply.status,
+        headers: reply.headers || [],
+        body: bytes,
+      }, bytes.byteLength > 0 ? [bytes.buffer] : []);
+      port.close?.();
+    }).catch(error => {
+      port.postMessage({ error: String(error?.stack ?? error) });
+      port.close?.();
+    });
+  });
+  const closeEyreChannel = url => {
+    const path = encodePath(url);
+    if (!path || !path.startsWith('/~/channel/')) {
+      return;
+    }
+    requestParent({
+      type: 'fetch',
+      method: 'PUT',
+      url: path,
+      headers: [['content-type', 'application/json']],
+      body: [...encoder.encode(JSON.stringify([{ action: 'delete' }]))],
+      timeoutMs: 10000,
+    }).catch(() => {});
+  };
+  const closeParentStream = requestId => {
+    if (requestId == null) {
+      return;
+    }
+    eventSources.delete(requestId);
+    send({
+      type: 'event-source-close',
+      requestId,
+    });
+  };
+  window.__vereWasmCloseFrame = () => {
+    frameClosing = true;
+    for (const stream of new Set(eventSources.values())) {
+      stream._teardown?.({ deleteChannel: true });
+    }
+    for (const url of resourceBlobUrls) {
+      URL.revokeObjectURL(url);
+    }
+    resourceBlobUrls.clear();
+    pending.clear();
+  };
+
+  window.addEventListener('message', event => {
+    const message = event.data || {};
+    if (message.source !== 'vere-wasm-eyre-parent') {
+      return;
+    }
+    const waiting = pending.get(message.requestId);
+    if (!waiting) {
+      const eventSource = eventSources.get(message.requestId);
+      if (eventSource) {
+        eventSource._onStreamMessage(message);
+      }
+      return;
+    }
+    pending.delete(message.requestId);
+    if (message.type === 'fetch-error') {
+      waiting.reject(new Error(message.error || 'Eyre frame request failed'));
+    }
+    else {
+      waiting.resolve(message);
+    }
+  });
+
+  const nativeFetch = window.fetch.bind(window);
+  const wantsEventStream = request => (
+    request.headers.get('accept')?.toLowerCase().includes('text/event-stream')
+  );
+  const streamBody = body => {
+    const bytes = Uint8Array.from(body || []);
+    return bytes.byteLength > 0 ? bytes : null;
+  };
+  const openFetchStream = ({
+    method,
+    url,
+    headers,
+    body,
+    signal,
+  }) => {
+    if (typeof ReadableStream !== 'function') {
+      return requestParent({
+        type: 'fetch',
+        method,
+        url,
+        headers,
+        body,
+        timeoutMs: null,
+      }).then(reply => new Response(streamBody(reply.body), {
+        status: Number(reply.status) || 200,
+        headers: reply.headers || [],
+      }));
+    }
+    if (signal?.aborted) {
+      return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+    }
+
+    const requestId = nextRequestId++;
+    let controller = null;
+    let closed = false;
+    let abortHandler = null;
+    let rejectOpen = null;
+    const abortError = () => new DOMException('The operation was aborted.', 'AbortError');
+    const abortPromise = new Promise((_resolve, reject) => {
+      rejectOpen = reject;
+    });
+    const cleanup = () => {
+      if (abortHandler) {
+        signal?.removeEventListener?.('abort', abortHandler);
+        abortHandler = null;
+      }
+      eventSources.delete(requestId);
+    };
+    const consumer = {
+      _teardown({ deleteChannel = false } = {}) {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        if (deleteChannel) {
+          closeEyreChannel(url);
+        }
+        closeParentStream(requestId);
+        cleanup();
+        try {
+          controller?.close();
+        }
+        catch (_) {
+        }
+      },
+      _onStreamMessage(message) {
+        if (closed) {
+          return;
+        }
+        if (message.type === 'event-source-close') {
+          closed = true;
+          cleanup();
+          controller?.close();
+          return;
+        }
+        if (message.type !== 'event-source-data') {
+          return;
+        }
+        const bytes = streamBody(message.body);
+        if (bytes) {
+          controller?.enqueue(bytes);
+        }
+        if (message.complete) {
+          closed = true;
+          cleanup();
+          controller?.close();
+        }
+      },
+    };
+    const stream = new ReadableStream({
+      start(nextController) {
+        controller = nextController;
+      },
+      cancel() {
+        consumer._teardown();
+      },
+    });
+    eventSources.set(requestId, consumer);
+    abortHandler = () => {
+      const error = abortError();
+      consumer._teardown();
+      rejectOpen?.(error);
+    };
+    signal?.addEventListener?.('abort', abortHandler, { once: true });
+
+    return Promise.race([requestParent({
+      type: 'event-source-open',
+      requestId,
+      method,
+      url,
+      headers,
+      body,
+      timeoutMs: null,
+    }), abortPromise]).then(reply => {
+      if (closed) {
+        throw abortError();
+      }
+      const bytes = streamBody(reply.body);
+      if (bytes) {
+        controller?.enqueue(bytes);
+      }
+      if (reply.complete) {
+        closed = true;
+        cleanup();
+        controller?.close();
+      }
+      return new Response(stream, {
+        status: Number(reply.status) || 200,
+        headers: reply.headers || [],
+      });
+    }).catch(error => {
+      closed = true;
+      cleanup();
+      try {
+        controller?.error(error);
+      }
+      catch (_) {
+      }
+      throw error;
+    });
+  };
+  window.fetch = async (input, init = {}) => {
+    let request;
+    try {
+      request = new Request(input, init);
+    }
+    catch (_) {
+      return nativeFetch(input, init);
+    }
+    const url = encodePath(request.url);
+    if (!url) {
+      return nativeFetch(input, init);
+    }
+    const method = request.method.toUpperCase();
+    const body = ['GET', 'HEAD'].includes(method)
+      ? null
+      : [...new Uint8Array(await request.arrayBuffer())];
+    if (wantsEventStream(request)) {
+      return openFetchStream({
+        method,
+        url,
+        headers: headersArray(request.headers),
+        body,
+        signal: request.signal,
+      });
+    }
+    const reply = await requestParent({
+      type: 'fetch',
+      method,
+      url,
+      headers: headersArray(request.headers),
+      body,
+      timeoutMs: init?.timeoutMs,
+    });
+    const status = Number(reply.status) || 200;
+    const bytes = Uint8Array.from(reply.body || []);
+    const responseBody = [204, 205, 304].includes(status) ? null : bytes;
+    return new Response(responseBody, {
+      status,
+      headers: reply.headers || [],
+    });
+  };
+  const resourceMarker = Symbol('vere-wasm-bridged-resource');
+  const nativeAppendChild = Node.prototype.appendChild;
+  const nativeInsertBefore = Node.prototype.insertBefore;
+  const nativeRemoveChild = Node.prototype.removeChild;
+  const nativeReplaceChild = Node.prototype.replaceChild;
+  const resourceTarget = value => {
+    let url;
+    try {
+      url = new URL(String(value || ''), document.baseURI || browserBaseUrl.href);
+    }
+    catch (_) {
+      return null;
+    }
+    if (['about:', 'blob:', 'data:', 'javascript:'].includes(url.protocol)) {
+      return null;
+    }
+    const path = encodePath(url.href);
+    if (!path) {
+      return null;
+    }
+    return { href: url.href, path };
+  };
+  const resourceAccept = kind => {
+    if (kind === 'style') {
+      return 'text/css,*/*;q=0.1';
+    }
+    return 'text/javascript,application/javascript,*/*;q=0.1';
+  };
+  const requestBridgedResource = async (value, kind) => {
+    const target = resourceTarget(value);
+    if (!target) {
+      return null;
+    }
+    const reply = await requestParent({
+      type: 'fetch',
+      method: 'GET',
+      url: target.path,
+      headers: [['accept', resourceAccept(kind)]],
+      body: null,
+      timeoutMs: 120000,
+    });
+    const status = Number(reply.status) || 0;
+    if (status < 200 || status >= 300) {
+      throw new Error('Eyre resource ' + target.path + ' returned ' + status);
+    }
+    const type = headerValue(reply.headers || [], 'content-type');
+    if (String(type).toLowerCase().includes('text/html')) {
+      throw new Error('Eyre resource ' + target.path + ' returned HTML');
+    }
+    return {
+      body: Uint8Array.from(reply.body || []),
+      headers: reply.headers || [],
+      path: target.path,
+      type,
+    };
+  };
+  const dispatchResourceEvent = (target, type, error = null) => {
+    let event;
+    if (type === 'error' && typeof ErrorEvent === 'function') {
+      event = new ErrorEvent('error', {
+        error,
+        message: error?.message || String(error || 'resource load failed'),
+      });
+    }
+    else {
+      event = new Event(type);
+    }
+    target.dispatchEvent(event);
+  };
+  const failBridgedResource = (target, error) => {
+    send({
+      type: 'frame-error',
+      message: error?.message || String(error || 'resource load failed'),
+      stack: error?.stack || '',
+    });
+    dispatchResourceEvent(target, 'error', error);
+  };
+  const scriptBlobType = script => {
+    const type = String(script.type || '').toLowerCase();
+    if (type === 'importmap') {
+      return 'application/importmap+json';
+    }
+    return 'text/javascript';
+  };
+  const scriptBlobBody = (script, resource) => {
+    const source = decoder.decode(resource.body);
+    const type = String(script.type || '').toLowerCase();
+    if (type === 'importmap' || type.includes('json')) {
+      return source;
+    }
+    return source + '\\n//# sourceURL=' + eyreOrigin + resource.path;
+  };
+  const bridgeScriptNode = (script, insert) => {
+    if (!(script instanceof HTMLScriptElement) || script[resourceMarker]) {
+      return false;
+    }
+    const source = script.src || script.getAttribute('src');
+    if (!resourceTarget(source)) {
+      return false;
+    }
+    script[resourceMarker] = true;
+    requestBridgedResource(source, 'script').then(resource => {
+      if (frameClosing) {
+        return;
+      }
+      const blobUrl = URL.createObjectURL(new Blob([scriptBlobBody(script, resource)], {
+        type: scriptBlobType(script),
+      }));
+      resourceBlobUrls.add(blobUrl);
+      script.removeAttribute('crossorigin');
+      script.removeAttribute('integrity');
+      script.src = blobUrl;
+      insert(script);
+    }).catch(error => failBridgedResource(script, error));
+    return true;
+  };
+  const copyStyleAttributes = (from, to) => {
+    for (const name of from.getAttributeNames()) {
+      if (['as', 'crossorigin', 'href', 'integrity', 'rel'].includes(name.toLowerCase())) {
+        continue;
+      }
+      to.setAttribute(name, from.getAttribute(name));
+    }
+    to.disabled = from.disabled;
+  };
+  const bridgeLinkNode = (link, insert) => {
+    if (!(link instanceof HTMLLinkElement) || link[resourceMarker]) {
+      return false;
+    }
+    const href = link.href || link.getAttribute('href');
+    if (!resourceTarget(href)) {
+      return false;
+    }
+    const rel = String(link.rel || '').toLowerCase().split(/\\s+/);
+    if (rel.includes('stylesheet')) {
+      link[resourceMarker] = true;
+      requestBridgedResource(href, 'style').then(resource => {
+        if (frameClosing) {
+          return;
+        }
+        const style = document.createElement('style');
+        copyStyleAttributes(link, style);
+        style.textContent = '/* ' + eyreOrigin + resource.path + ' */\\n' + decoder.decode(resource.body);
+        insert(style);
+        dispatchResourceEvent(link, 'load');
+      }).catch(error => failBridgedResource(link, error));
+      return true;
+    }
+    if (rel.includes('preload') || rel.includes('modulepreload')) {
+      link[resourceMarker] = true;
+      requestBridgedResource(href, link.as === 'style' ? 'style' : 'script').then(() => {
+        dispatchResourceEvent(link, 'load');
+      }).catch(error => failBridgedResource(link, error));
+      return true;
+    }
+    return false;
+  };
+  const bridgeResourceNode = (node, insert) => (
+    bridgeScriptNode(node, insert) ||
+    bridgeLinkNode(node, insert)
+  );
+  Node.prototype.appendChild = function(node) {
+    if (bridgeResourceNode(node, child => nativeAppendChild.call(this, child))) {
+      return node;
+    }
+    return nativeAppendChild.call(this, node);
+  };
+  Node.prototype.insertBefore = function(node, referenceNode) {
+    if (bridgeResourceNode(node, child => (
+      nativeInsertBefore.call(this, child, referenceNode?.parentNode === this ? referenceNode : null)
+    ))) {
+      return node;
+    }
+    return nativeInsertBefore.call(this, node, referenceNode);
+  };
+  Node.prototype.replaceChild = function(node, oldChild) {
+    if (bridgeResourceNode(node, child => {
+      nativeInsertBefore.call(this, child, oldChild?.parentNode === this ? oldChild : null);
+      if (oldChild?.parentNode === this) {
+        nativeRemoveChild.call(this, oldChild);
+      }
+    })) {
+      return oldChild;
+    }
+    return nativeReplaceChild.call(this, node, oldChild);
+  };
+  Element.prototype.append = function(...nodes) {
+    for (const node of nodes) {
+      this.appendChild(node instanceof Node ? node : document.createTextNode(String(node)));
+    }
+  };
+  Element.prototype.prepend = function(...nodes) {
+    const referenceNode = this.firstChild;
+    for (const node of nodes) {
+      this.insertBefore(node instanceof Node ? node : document.createTextNode(String(node)), referenceNode);
+    }
+  };
+
+  class ParentXMLHttpRequest extends EventTarget {
+    constructor() {
+      super();
+      this.readyState = 0;
+      this.response = null;
+      this.responseText = '';
+      this.responseType = '';
+      this.responseURL = '';
+      this.status = 0;
+      this.statusText = '';
+      this.timeout = 0;
+      this.upload = new EventTarget();
+      this.withCredentials = false;
+      this._headers = [];
+      this._responseHeaders = [];
+      this._method = 'GET';
+      this._url = '/';
+      this._aborted = false;
+    }
+
+    open(method, url, async = true) {
+      if (async === false) {
+        throw new Error('synchronous XMLHttpRequest is not supported in the Eyre frame');
+      }
+      this._method = String(method || 'GET').toUpperCase();
+      this._url = String(url || '/');
+      this.readyState = 1;
+      this._fire('readystatechange');
+    }
+
+    setRequestHeader(key, value) {
+      this._headers.push([String(key), String(value)]);
+    }
+
+    getResponseHeader(key) {
+      const lower = String(key).toLowerCase();
+      const found = this._responseHeaders.find(([name]) => String(name).toLowerCase() === lower);
+      return found ? String(found[1]) : null;
+    }
+
+    getAllResponseHeaders() {
+      return this._responseHeaders.map(([key, value]) => key + ': ' + value).join('\\r\\n');
+    }
+
+    overrideMimeType() {
+    }
+
+    abort() {
+      this._aborted = true;
+      this.status = 0;
+      this.readyState = 4;
+      this._fire('abort');
+      this._fire('loadend');
+    }
+
+    async send(body = null) {
+      const url = encodePath(this._url);
+      if (!url) {
+        queueMicrotask(() => {
+          this.readyState = 4;
+          this._fire('readystatechange');
+          this._fire('error');
+          this._fire('loadend');
+        });
+        return;
+      }
+      try {
+        const reply = await requestParent({
+          type: 'fetch',
+          method: this._method,
+          url,
+          headers: this._headers,
+          body: ['GET', 'HEAD'].includes(this._method) ? null : await bodyBytes(body),
+          timeoutMs: this.timeout || undefined,
+        });
+        if (this._aborted) {
+          return;
+        }
+        const bytes = Uint8Array.from(reply.body || []);
+        this.status = Number(reply.status) || 0;
+        this.statusText = '';
+        this.responseURL = eyreOrigin + (reply.path || url);
+        this._responseHeaders = Array.isArray(reply.headers) ? reply.headers : [];
+        this.responseText = decoder.decode(bytes);
+        if (this.responseType === 'arraybuffer') {
+          this.response = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        }
+        else if (this.responseType === 'blob') {
+          this.response = new Blob([bytes]);
+        }
+        else if (this.responseType === 'json') {
+          this.response = this.responseText ? JSON.parse(this.responseText) : null;
+        }
+        else {
+          this.response = this.responseText;
+        }
+        this.readyState = 4;
+        this._fire('readystatechange');
+        this._fire('load');
+        this._fire('loadend');
+      }
+      catch (error) {
+        if (this._aborted) {
+          return;
+        }
+        this.status = 0;
+        this.readyState = 4;
+        this._fire('readystatechange');
+        this._fire('error', error);
+        this._fire('loadend');
+      }
+    }
+
+    _fire(type, detail = null) {
+      let event;
+      try {
+        event = new Event(type);
+      }
+      catch (_) {
+        event = { type };
+      }
+      if (detail) {
+        event.error = detail;
+      }
+      this.dispatchEvent(event);
+      const handler = this['on' + type];
+      if (typeof handler === 'function') {
+        handler.call(this, event);
+      }
+    }
+  }
+  for (const [key, value] of Object.entries({
+    UNSENT: 0,
+    OPENED: 1,
+    HEADERS_RECEIVED: 2,
+    LOADING: 3,
+    DONE: 4,
+  })) {
+    ParentXMLHttpRequest[key] = value;
+    ParentXMLHttpRequest.prototype[key] = value;
+  }
+  window.XMLHttpRequest = ParentXMLHttpRequest;
+
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const makeMessageEvent = (type, data, lastEventId) => {
+    try {
+      return new MessageEvent(type, { data, lastEventId });
+    }
+    catch (_) {
+      const event = new Event(type);
+      event.data = data;
+      event.lastEventId = lastEventId;
+      return event;
+    }
+  };
+  const dispatchServerEvents = (target, text) => {
+    const chunks = String(text || '').replace(/\\r\\n/g, '\\n').split('\\n\\n');
+    for (const chunk of chunks) {
+      if (!chunk.trim()) {
+        continue;
+      }
+      let type = 'message';
+      let id = '';
+      const data = [];
+      for (const line of chunk.split('\\n')) {
+        if (line.startsWith(':')) {
+          continue;
+        }
+        const index = line.indexOf(':');
+        const field = index < 0 ? line : line.slice(0, index);
+        const value = index < 0 ? '' : line.slice(index + 1).replace(/^ /, '');
+        if (field === 'event') {
+          type = value || 'message';
+        }
+        else if (field === 'id') {
+          id = value;
+        }
+        else if (field === 'data') {
+          data.push(value);
+        }
+      }
+      const event = makeMessageEvent(type, data.join('\\n'), id);
+      target.dispatchEvent(event);
+      const handler = target['on' + type];
+      if (typeof handler === 'function') {
+        handler.call(target, event);
+      }
+    }
+  };
+
+  class ParentEventSource extends EventTarget {
+    constructor(url, options = {}) {
+      super();
+      this.url = String(url || '/');
+      this.withCredentials = Boolean(options.withCredentials);
+      this.readyState = 0;
+      this.onopen = null;
+      this.onmessage = null;
+      this.onerror = null;
+      this._closed = false;
+      this._opened = false;
+      this._requestId = null;
+      queueMicrotask(() => this._poll());
+    }
+
+    close() {
+      this._teardown();
+    }
+
+    _teardown({ deleteChannel = false } = {}) {
+      this._closed = true;
+      this.readyState = 2;
+      if (deleteChannel) {
+        closeEyreChannel(this.url);
+      }
+      closeParentStream(this._requestId);
+      this._requestId = null;
+    }
+
+    async _poll() {
+      const url = encodePath(this.url);
+      if (!url) {
+        this.readyState = 2;
+        this._emit('error');
+        return;
+      }
+      while (!this._closed) {
+        const requestId = nextRequestId++;
+        this._requestId = requestId;
+        eventSources.set(requestId, this);
+        try {
+          const reply = await requestParent({
+            type: 'event-source-open',
+            requestId,
+            method: 'GET',
+            url,
+            headers: [['accept', 'text/event-stream']],
+            body: null,
+            timeoutMs: 120000,
+          });
+          if (this._closed) {
+            return;
+          }
+          const status = Number(reply.status) || 0;
+          if (status >= 400) {
+            throw new Error('EventSource status ' + status);
+          }
+          if (!this._opened) {
+            this._opened = true;
+            this.readyState = 1;
+            this._emit('open');
+          }
+          this._dispatchBody(reply.body);
+          if (reply.complete) {
+            this._scheduleReconnect();
+          }
+          return;
+        }
+        catch (error) {
+          eventSources.delete(requestId);
+          if (this._requestId === requestId) {
+            this._requestId = null;
+          }
+          if (this._closed) {
+            return;
+          }
+          this.readyState = 0;
+          this._emit('error', error);
+          await delay(1000);
+        }
+      }
+    }
+
+    _onStreamMessage(message) {
+      if (this._closed) {
+        return;
+      }
+      if (message.type === 'event-source-close') {
+        this._scheduleReconnect();
+        return;
+      }
+      if (message.type !== 'event-source-data') {
+        return;
+      }
+      this._dispatchBody(message.body);
+      if (message.complete) {
+        this._scheduleReconnect();
+      }
+    }
+
+    _dispatchBody(body) {
+      const bytes = Uint8Array.from(body || []);
+      if (bytes.length > 0) {
+        dispatchServerEvents(this, decoder.decode(bytes));
+      }
+    }
+
+    _scheduleReconnect(error = null) {
+      if (this._closed) {
+        return;
+      }
+      if (this._requestId != null) {
+        eventSources.delete(this._requestId);
+        this._requestId = null;
+      }
+      this._opened = false;
+      this.readyState = 0;
+      this._emit('error', error);
+      setTimeout(() => this._poll(), 1000);
+    }
+
+    _emit(type, detail = null) {
+      const event = makeMessageEvent(type, '', '');
+      if (detail) {
+        event.error = detail;
+      }
+      this.dispatchEvent(event);
+      const handler = this['on' + type];
+      if (typeof handler === 'function') {
+        handler.call(this, event);
+      }
+    }
+  }
+  ParentEventSource.CONNECTING = 0;
+  ParentEventSource.OPEN = 1;
+  ParentEventSource.CLOSED = 2;
+  ParentEventSource.prototype.CONNECTING = 0;
+  ParentEventSource.prototype.OPEN = 1;
+  ParentEventSource.prototype.CLOSED = 2;
+  window.EventSource = ParentEventSource;
+
+  try {
+    const nativeBeacon = navigator.sendBeacon?.bind(navigator);
+    navigator.sendBeacon = (url, data) => {
+      const path = encodePath(url);
+      if (!path) {
+        return nativeBeacon ? nativeBeacon(url, data) : false;
+      }
+      bodyBytes(data)
+        .then(body => requestParent({
+          type: 'fetch',
+          method: 'POST',
+          url: path,
+          headers: [['content-type', 'text/plain;charset=UTF-8']],
+          body,
+          timeoutMs: 10000,
+        }))
+        .catch(() => {});
+      return true;
+    };
+  }
+  catch (_) {
+  }
+
+  document.addEventListener('click', event => {
+    const link = event.target.closest?.('a[href]');
+    if (!link || event.defaultPrevented) {
+      return;
+    }
+    const target = link.getAttribute('target');
+    if (target && target !== '_self') {
+      return;
+    }
+    const url = encodePath(link.getAttribute('href'));
+    if (!url) {
+      return;
+    }
+    event.preventDefault();
+    send({ type: 'navigate', url });
+  }, true);
+
+  document.addEventListener('click', event => {
+    const submitter = event.target.closest?.('button, input');
+    if (!isSubmitControl(submitter) || !submitter.form) {
+      return;
+    }
+    submitFrameForm(event, submitter.form, submitter);
+  }, true);
+
+  document.addEventListener('submit', event => {
+    submitFrameForm(event, event.target, event.submitter || null);
+  }, true);
+})();`;
+  return `<base href="${frameBaseHref(path)}"><script>${source}</` + 'script>';
 }
 
-function frameDocument({ status, type, body, path }) {
-  const bodyText = decoder.decode(body);
-  if (String(type).includes('text/html')) {
-    return bodyText;
+function injectFrameBridge(html, path) {
+  const bridge = frameBridgeScript(path);
+  if (/<head[\s>]/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1>${bridge}`);
   }
+  return `${bridge}${html}`;
+}
+
+function plainFrameDocument({ status, type, body, path }) {
+  const bodyText = decoder.decode(body);
+  const display = bodyText || `[${body.length} bytes]`;
   const escaped = bodyText
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -767,27 +2737,320 @@ function frameDocument({ status, type, body, path }) {
   pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>
 <div class="meta">${status} ${type || 'unknown'} ${path}</div>
-<pre>${escaped || `[${body.length} bytes]`}</pre>`;
+<pre>${escaped || display}</pre>`;
 }
 
-async function requestWebFrame({ quiet = false } = {}) {
-  const path = $('http-path').value.trim() || '/';
-  const response = await ensureClient().command('http-request', {
-    method: $('http-method').value,
-    url: path,
+function eyreResourceTypeMatches(type, expected) {
+  const normalized = String(type || '').toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  if (normalized.includes('text/html')) {
+    return false;
+  }
+  if (expected === 'script') {
+    return (
+      normalized.includes('javascript') ||
+      normalized.includes('ecmascript') ||
+      normalized.includes('text/plain') ||
+      normalized.includes('application/octet-stream')
+    );
+  }
+  if (expected === 'style') {
+    return (
+      normalized.includes('text/css') ||
+      normalized.includes('text/plain') ||
+      normalized.includes('application/octet-stream')
+    );
+  }
+  return true;
+}
+
+function localDebugResourceCandidates(path) {
+  const clean = String(path || '').split('?', 1)[0];
+  if (!clean.startsWith('/~debug/')) {
+    return [];
+  }
+  const relative = clean.slice('/~debug/'.length);
+  if (!relative || relative.includes('..') || !/^[a-zA-Z0-9_./-]+$/.test(relative)) {
+    return [];
+  }
+  return [
+    `./assets/debug/${relative}`,
+    `../../../../urbit/pkg/arvo/app/debug/${relative}`,
+  ];
+}
+
+function syntheticDebugResource(path, expected) {
+  const clean = String(path || '').split('?', 1)[0];
+  if (clean !== '/~debug/js/session.js') {
+    return null;
+  }
+  if (!eyreResourceTypeMatches('text/javascript', expected)) {
+    return null;
+  }
+  const ship = patp(parseBigIntField('fake-ship', 'fake ship')).replace(/^~/, '');
+  const source = `window.ship = ${JSON.stringify(ship)};\n`;
+  return {
+    body: new TextEncoder().encode(source),
+    path,
+    type: 'text/javascript',
+    sourceUrl: `${EYRE_FRAME_ORIGIN}${clean}`,
+  };
+}
+
+async function loadLocalDebugResource(path, expected) {
+  for (const candidate of localDebugResourceCandidates(path)) {
+    const url = new URL(candidate, import.meta.url);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        continue;
+      }
+      const type = response.headers.get('content-type') || '';
+      if (!eyreResourceTypeMatches(type, expected)) {
+        continue;
+      }
+      return {
+        body: new Uint8Array(await response.arrayBuffer()),
+        path,
+        type,
+        sourceUrl: url.href,
+      };
+    }
+    catch (_) {
+    }
+  }
+  return null;
+}
+
+async function loadEyreResource(value, basePath, expected) {
+  const url = normalizeEyrePath(value, basePath);
+  if (!url) {
+    return null;
+  }
+  if (url === '/src/index.css') {
+    appendLog('web resource skipped stale /src/index.css reference', '');
+    return null;
+  }
+  const synthetic = syntheticDebugResource(url, expected);
+  if (synthetic) {
+    return synthetic;
+  }
+  const localDebug = await loadLocalDebugResource(url, expected);
+  if (localDebug) {
+    return localDebug;
+  }
+  const { response, path } = await requestEyre({
+    method: 'GET',
+    url,
     headers: parseHeaders($('headers').value),
-    timeoutMs: 120_000,
   });
-  const body = Uint8Array.from(response.body || []);
+  const body = bodyBytes(response.body);
+  const type = headerValue(response.headers || [], 'content-type');
+  const status = Number(response.status);
+  if (status < 200 || status >= 300 || !eyreResourceTypeMatches(type, expected)) {
+    appendLog(`web resource skipped ${url} status=${status} type=${type || 'unknown'}`, status >= 400 ? 'err' : '');
+    return null;
+  }
+  return {
+    body,
+    path,
+    type,
+  };
+}
+
+function sourceUrlFor(path) {
+  return `${EYRE_FRAME_ORIGIN}${path || '/'}`;
+}
+
+function patchFrameScriptSource(source, path) {
+  const clean = String(path || '').split('?', 1)[0];
+  if (clean !== '/~debug/index.js') {
+    return source;
+  }
+
+  let patched = source.replace(
+    'path:"/~debug"',
+    'path:window.__vereWasmRoutePath("/~debug")',
+  );
+  patched = patched.replace(
+    /path:Hi\("([a-zA-Z0-9_-]+)"\)/g,
+    (_match, name) => `path:window.__vereWasmRoutePath(Hi(${JSON.stringify(name)}))`,
+  );
+
+  if (patched !== source) {
+    appendLog('web resource patched debug BrowserRouter routes for iframe', 'rx');
+  }
+  return patched;
+}
+
+async function materializeFrameResources(html, path) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  if (!doc.head) {
+    const head = doc.createElement('head');
+    doc.documentElement.prepend(head);
+  }
+  doc.head.insertAdjacentHTML('afterbegin', frameBridgeScript(path));
+
+  let materialized = 0;
+  const tasks = [];
+
+  for (const script of doc.querySelectorAll('script[src]')) {
+    const src = script.getAttribute('src');
+    tasks.push((async () => {
+      const resource = await loadEyreResource(src, path, 'script');
+      if (!resource) {
+        return;
+      }
+      script.removeAttribute('src');
+      script.removeAttribute('integrity');
+      script.removeAttribute('crossorigin');
+      const scriptSource = patchFrameScriptSource(decoder.decode(resource.body), resource.path);
+      script.textContent = `${scriptSource}\n//# sourceURL=${resource.sourceUrl || sourceUrlFor(resource.path)}`;
+      materialized++;
+    })());
+  }
+
+  for (const link of doc.querySelectorAll('link[rel~="stylesheet"][href]')) {
+    const href = link.getAttribute('href');
+    tasks.push((async () => {
+      const resource = await loadEyreResource(href, path, 'style');
+      if (!resource) {
+        return;
+      }
+      const style = doc.createElement('style');
+      if (link.hasAttribute('media')) {
+        style.setAttribute('media', link.getAttribute('media'));
+      }
+      style.textContent = `/* ${resource.sourceUrl || sourceUrlFor(resource.path)} */\n${decoder.decode(resource.body)}`;
+      link.replaceWith(style);
+      materialized++;
+    })());
+  }
+
+  for (const style of doc.querySelectorAll('style[src]')) {
+    const src = style.getAttribute('src');
+    tasks.push((async () => {
+      const resource = await loadEyreResource(src, path, 'style');
+      if (!resource) {
+        return;
+      }
+      style.removeAttribute('src');
+      style.textContent = `/* ${resource.sourceUrl || sourceUrlFor(resource.path)} */\n${decoder.decode(resource.body)}`;
+      materialized++;
+    })());
+  }
+
+  await Promise.all(tasks);
+  if (materialized > 0) {
+    appendLog(`web frame materialized ${materialized} Eyre resources for ${path}`, 'rx');
+  }
+
+  return `<!doctype html>\n${doc.documentElement.outerHTML}`;
+}
+
+async function frameDocument({ status, type, body, path }) {
+  const bodyText = decoder.decode(body);
+  if (!String(type).includes('text/html') || bodyText.trim() === '') {
+    return plainFrameDocument({ status, type, body, path });
+  }
+  return materializeFrameResources(bodyText, path);
+}
+
+async function requestEyre({
+  method = 'GET',
+  url = '/',
+  headers = [],
+  body = null,
+  timeoutMs = 120_000,
+} = {}) {
+  let request = {
+    method,
+    url: normalizeEyrePath(url) || '/',
+    headers,
+    body,
+  };
+
+  for (let redirects = 0; redirects < 6; redirects++) {
+    const response = await ensureClient().command('http-request', {
+      method: request.method,
+      url: request.url,
+      headers: withWebCookies(request.headers),
+      body: request.body,
+      secure: true,
+      local: false,
+      timeoutMs,
+    });
+    const responseHeaders = response.headers || [];
+    storeResponseCookies(responseHeaders);
+
+    const location = headerValue(responseHeaders, 'location');
+    if (![301, 302, 303, 307, 308].includes(Number(response.status)) || !location) {
+      return {
+        response,
+        path: request.url,
+      };
+    }
+
+    const nextPath = normalizeEyrePath(location, request.url);
+    if (!nextPath) {
+      return {
+        response,
+        path: request.url,
+      };
+    }
+
+    appendLog(`web redirect ${response.status} ${request.url} -> ${nextPath}`, 'rx');
+    if (
+      Number(response.status) === 303 ||
+      ([301, 302].includes(Number(response.status)) && !['GET', 'HEAD'].includes(request.method))
+    ) {
+      request = {
+        method: 'GET',
+        url: nextPath,
+        headers: request.headers.filter(([key]) => (
+          !['content-type', 'content-length'].includes(String(key).toLowerCase())
+        )),
+        body: null,
+      };
+    }
+    else {
+      request = {
+        ...request,
+        url: nextPath,
+      };
+    }
+  }
+
+  throw new Error(`too many web redirects from ${url}`);
+}
+
+async function requestWebFrame({
+  quiet = false,
+  request = null,
+} = {}) {
+  const initial = request ?? {
+    method: $('http-method').value,
+    url: $('http-path').value.trim() || '/',
+    headers: parseHeaders($('headers').value),
+    body: null,
+  };
+  const { response, path } = await requestEyre(initial);
+  const body = bodyBytes(response.body);
   const type = (response.headers || []).find(([key]) => (
     String(key).toLowerCase() === 'content-type'
   ))?.[1] || 'unknown';
-  $('web-frame').srcdoc = frameDocument({
+  activeWebPath = path;
+  setPathValueOrRemember(path, path);
+  $('http-method').value = 'GET';
+  clearWebBlobUrls();
+  await writeFrameDocument(path, await frameDocument({
     status: response.status,
     type,
     body,
     path,
-  });
+  }));
   webFrameLoaded = true;
   if (!quiet) {
     appendLog(`web frame ${path} status=${response.status} type=${type} bytes=${body.length}`, 'rx');
@@ -795,8 +3058,139 @@ async function requestWebFrame({ quiet = false } = {}) {
 }
 
 async function loadWebFrame({ quiet = false } = {}) {
-  await startRuntime();
+  await startRuntime({ focusDojo: false, loadInitialWeb: false });
+  await ensureHttpClientStarted();
   await requestWebFrame({ quiet });
+  setTab('web');
+}
+
+async function handleFrameFetch(message, sourceWindow) {
+  await startRuntime({ focusDojo: false, loadInitialWeb: false });
+  await ensureHttpClientStarted();
+  try {
+    const messageHeaders = Array.isArray(message.headers) ? message.headers : [];
+    const { response, path } = await requestEyre({
+      method: message.method || 'GET',
+      url: message.url || '/',
+      headers: mergeHeaders(parseHeaders($('headers').value), messageHeaders),
+      body: Array.isArray(message.body) ? message.body : null,
+      timeoutMs: Number(message.timeoutMs) || 120_000,
+    });
+    const responseBody = bodyBytes(response.body);
+    appendLog(
+      `web fetch ${message.method || 'GET'} ${path} ` +
+        `status=${response.status} bytes=${responseBody.length}`,
+      Number(response.status) >= 400 ? 'err' : 'rx',
+    );
+    framePostBody(sourceWindow, {
+      type: 'fetch-response',
+      requestId: message.requestId,
+      status: response.status,
+      headers: response.headers || [],
+      path,
+    }, responseBody);
+  }
+  catch (error) {
+    sourceWindow?.postMessage({
+      source: 'vere-wasm-eyre-parent',
+      type: 'fetch-error',
+      requestId: message.requestId,
+      error: String(error?.stack ?? error),
+    }, '*');
+  }
+}
+
+async function cancelEyreStream(entry) {
+  entry.closed = true;
+  if (!entry.wire) {
+    return;
+  }
+  try {
+    await ensureClient().command('http-request-cancel', entry.wire);
+  }
+  catch (error) {
+    appendLog(`event-source cancel failed ${entry.requestId}: ${error}`, 'err');
+  }
+}
+
+async function handleFrameEventSourceOpen(message, sourceWindow) {
+  await startRuntime({ focusDojo: false, loadInitialWeb: false });
+  await ensureHttpClientStarted();
+
+  const requestId = message.requestId;
+  const streamId = `eyre-stream-${nextEyreStreamId++}`;
+  const entry = {
+    streamId,
+    requestId,
+    sourceWindow,
+    wire: null,
+    closed: false,
+  };
+  eyreStreams.set(streamId, entry);
+
+  try {
+    const messageHeaders = Array.isArray(message.headers) ? message.headers : [];
+    const response = await ensureClient().command('http-request', {
+      method: message.method || 'GET',
+      url: message.url || '/',
+      headers: withWebCookies(mergeHeaders(parseHeaders($('headers').value), messageHeaders)),
+      body: Array.isArray(message.body) ? message.body : null,
+      secure: true,
+      local: false,
+      timeoutMs: null,
+      stream: true,
+      streamId,
+    });
+
+    entry.wire = response.wire;
+    storeResponseCookies(response.headers || []);
+
+    if (entry.closed) {
+      await cancelEyreStream(entry);
+      eyreStreams.delete(streamId);
+      return;
+    }
+
+    framePostBody(sourceWindow, {
+      type: 'event-source-open',
+      requestId,
+      status: response.status,
+      headers: response.headers || [],
+      complete: Boolean(response.complete),
+      path: message.url || '/',
+    }, response.body);
+  }
+  catch (error) {
+    eyreStreams.delete(streamId);
+    framePost(sourceWindow, {
+      type: 'fetch-error',
+      requestId,
+      error: String(error?.stack ?? error),
+    });
+  }
+}
+
+async function handleFrameEventSourceClose(message) {
+  const entry = findEyreStreamByRequestId(message.requestId);
+  if (!entry) {
+    return;
+  }
+  eyreStreams.delete(entry.streamId);
+  await cancelEyreStream(entry);
+}
+
+async function handleFrameRequest(message) {
+  await startRuntime({ focusDojo: false, loadInitialWeb: false });
+  await ensureHttpClientStarted();
+  const messageHeaders = Array.isArray(message.headers) ? message.headers : [];
+  await requestWebFrame({
+    request: {
+      method: message.method || 'GET',
+      url: message.url || '/',
+      headers: mergeHeaders(parseHeaders($('headers').value), messageHeaders),
+      body: Array.isArray(message.body) ? message.body : null,
+    },
+  });
   setTab('web');
 }
 
@@ -816,8 +3210,18 @@ async function shutdownRuntime() {
     client = null;
     started = false;
     terminalStarted = false;
-    connected = false;
+    httpClientStarted = false;
+    terminalInputChars = 0;
+    terminalInputBuffer = '';
+    terminalInputQueue = Promise.resolve();
+    if (terminalInputFlushTimer !== null) {
+      clearTimeout(terminalInputFlushTimer);
+      terminalInputFlushTimer = null;
+    }
     webFrameLoaded = false;
+    activeWebPath = '/~debug';
+    webCookieJar.clear();
+    clearWebBlobUrls();
     $('start').disabled = false;
     setStatus('idle');
   }
@@ -831,7 +3235,7 @@ function action(fn) {
     catch (error) {
       setStatus('error', 'err');
       appendLog(String(error?.stack ?? error), 'err');
-      setTab('logs');
+      setTab('dojo');
       $('start').disabled = false;
     }
   };
@@ -842,30 +3246,66 @@ for (const button of document.querySelectorAll('[data-tab-target]')) {
 }
 
 $('start').addEventListener('click', action(startRuntime));
-$('connect').addEventListener('click', action(connectAmes));
 $('refresh').addEventListener('click', action(refreshTerminal));
-$('send').addEventListener('click', action(sendCommand));
 $('http-send').addEventListener('click', action(() => loadWebFrame()));
+$('http-path').addEventListener('keydown', event => {
+  if (event.key !== 'Enter') {
+    return;
+  }
+  event.preventDefault();
+  action(() => loadWebFrame())();
+});
 $('shutdown').addEventListener('click', action(shutdownRuntime));
 
-$('command').addEventListener('keydown', event => {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    $('send').click();
+$('pill-preset').addEventListener('change', () => {
+  syncRuntimePresetFields({ applyPillMemory: true });
+});
+$('memory-preset').addEventListener('change', () => syncRuntimePresetFields());
+
+window.addEventListener('message', event => {
+  const message = event.data || {};
+  if (message.source !== 'vere-wasm-eyre-frame') {
+    return;
+  }
+  if (message.type === 'console') {
+    const level = message.level || 'log';
+    appendLog(`web ${level}: ${message.message || ''}`, level === 'error' || level === 'warn' ? 'err' : '');
+    return;
+  }
+  if (message.type === 'frame-error') {
+    appendLog(`web error: ${message.stack || message.message || 'frame error'}`, 'err');
+    return;
+  }
+  if (message.type === 'fetch') {
+    handleFrameFetch(message, event.source);
+    return;
+  }
+  if (message.type === 'event-source-open') {
+    handleFrameEventSourceOpen(message, event.source);
+    return;
+  }
+  if (message.type === 'event-source-close') {
+    handleFrameEventSourceClose(message);
+    return;
+  }
+  if (message.type === 'navigate' || message.type === 'submit') {
+    action(() => handleFrameRequest(message))();
   }
 });
 
-$('http-path').addEventListener('keydown', event => {
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    $('http-send').click();
+document.addEventListener('keydown', event => {
+  if (event.target instanceof Element && event.target.closest('#terminal')) {
+    return;
   }
+  handleTerminalKeydown(event);
 });
 
-for (const button of document.querySelectorAll('[data-command]')) {
-  button.addEventListener('click', () => {
-    $('command').value = button.dataset.command;
-    $('send').click();
+for (const id of ['tab-dojo', 'terminal-scroll', 'terminal']) {
+  $(id).addEventListener('pointerdown', event => {
+    if (event.target instanceof Element && event.target.closest('#log-tail')) {
+      return;
+    }
+    requestAnimationFrame(() => terminal?.focus());
   });
 }
 
@@ -873,5 +3313,6 @@ window.addEventListener('beforeunload', () => {
   client?.terminate();
 });
 
-preferBundledAssets();
+syncRuntimePresetFields();
+ensureRuntimeAssetPresets();
 </script>

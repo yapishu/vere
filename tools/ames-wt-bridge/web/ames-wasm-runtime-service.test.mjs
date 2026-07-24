@@ -15,6 +15,11 @@ import {
   httpServerWire,
 } from './ames-wasm-http-server.mjs';
 import {
+  BrowserBehnTimerHost,
+  behnWire,
+  urbitDateFromUnixMs,
+} from './ames-wasm-behn.mjs';
+import {
   termWire,
 } from './ames-wasm-terminal.mjs';
 import {
@@ -99,7 +104,22 @@ function terminalBlitEffects({
   ));
 }
 
+function behnDozeEffects(date = null) {
+  return jamBytes(list(
+    tuple(
+      behnWire(),
+      tuple(
+        termAtom('give'),
+        tuple(termAtom('doze'), date == null ? 0n : [0n, date]),
+      ),
+    ),
+  ));
+}
+
 function makeRuntimeFactory({
+  behnBornEffects = emptyEffects(),
+  behnWakeEffects = emptyEffects(),
+  httpBornEffects = emptyEffects(),
   mateEffects = pushEffects(0n),
   keenEffects = pushEffects(0n),
   replyEffects = emptyEffects(),
@@ -130,7 +150,16 @@ function makeRuntimeFactory({
       },
       pokeOvum({ ovumPath, effectsPath }) {
         this.currentEvent++;
-        if (ovumPath.includes('mate')) {
+        if (ovumPath.includes('behn-born')) {
+          this.host.files.set(effectsPath, behnBornEffects);
+        }
+        else if (ovumPath.includes('behn-wake')) {
+          this.host.files.set(effectsPath, behnWakeEffects);
+        }
+        else if (ovumPath.includes('http-client-born')) {
+          this.host.files.set(effectsPath, httpBornEffects);
+        }
+        else if (ovumPath.includes('mate')) {
           this.host.files.set(effectsPath, mateEffects);
         }
         else if (ovumPath.includes('keen')) {
@@ -214,12 +243,16 @@ test('AmesWasmRuntimeService starts a resident runtime and routes pokes over Web
 
   const started = await service.start();
   assert.equal(started.snapshot.started, true);
-  assert.equal(started.httpBorn.event, 22n);
-  assert.equal(started.httpServerBorn.event, 23n);
-  assert.equal(started.httpServerLive.event, 24n);
-  assert.equal(started.born.event, 25n);
+  assert.equal(started.behnBorn.event, 22n);
+  assert.equal(started.httpBorn.event, 23n);
+  assert.equal(started.httpServerBorn.event, 24n);
+  assert.equal(started.httpServerLive.event, 25n);
+  assert.equal(started.born.event, 26n);
   assert.equal(runtimeFactory.runtimes[0].initialized, true);
   assert.equal(runtimeFactory.runtimes[0].ship, 0x100n);
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
+    path => path.includes('behn-born'),
+  ));
   assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
     path => path.includes('http-client-born'),
   ));
@@ -273,6 +306,34 @@ test('AmesWasmRuntimeService hosts inbound http-server requests', async () => {
   assert.deepEqual([...response.body], [111, 107]);
   assert.equal(service.snapshot().totals.httpServerRequests, 1);
   assert.equal(service.snapshot().totals.httpServerResponses, 1);
+});
+
+test('AmesWasmRuntimeService routes large http-server responses on the narrow path', async () => {
+  const logs = [];
+  const body = Uint8Array.from([1, 2, 3, 4]);
+  const runtimeFactory = makeRuntimeFactory({
+    httpServerEffects: httpServerResponseEffects({ body }),
+  });
+  const service = new AmesWasmRuntimeService({
+    wasmUrl: 'vere-disk-wasm.wasm',
+    pillBytes: Uint8Array.from([1]),
+    fileStore: {},
+    runtimeFactory,
+    onLog: event => logs.push(event.message),
+    largeHttpServerEffectBytes: 1,
+  });
+
+  await service.start();
+  const response = await service.httpRequest({
+    method: 'GET',
+    url: '/apps/landscape/assets/index.js',
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.length, body.length);
+  assert.deepEqual([...response.body], [...body]);
+  assert.equal(service.snapshot().totals.httpServerResponses, 1);
+  assert.ok(logs.some(line => line.includes('routing=http-server-only')));
 });
 
 test('AmesWasmRuntimeService hosts a Dill terminal session', async () => {
@@ -364,6 +425,115 @@ test('AmesWasmRuntimeService hosts %http-client requests through browser fetch',
   ));
 });
 
+test('AmesWasmRuntimeService can defer hosted %http-client born', async () => {
+  const runtimeFactory = makeRuntimeFactory({
+    httpBornEffects: httpRequestEffects({
+      id: 8n,
+      url: 'https://bootstrap.urbit.org/deferred.glob',
+    }),
+  });
+  const httpClientHost = new BrowserHttpClientHost({
+    fetchFn: async () => ({
+      status: 200,
+      headers: new Map(),
+      async arrayBuffer() {
+        return Uint8Array.from([4, 5, 6]).buffer;
+      },
+    }),
+  });
+  const service = new AmesWasmRuntimeService({
+    wasmUrl: 'vere-disk-wasm.wasm',
+    pillBytes: Uint8Array.from([1]),
+    fileStore: {},
+    runtimeFactory,
+    httpClientHost,
+    autoStartHttpClient: false,
+  });
+
+  const started = await service.start();
+  assert.equal(started.httpBorn, null);
+  assert.equal(service.snapshot().hostedHttpStarted, false);
+  assert.equal(service.snapshot().totals.httpRequests, 0);
+
+  const httpStarted = await service.httpClientStart();
+  assert.equal(httpStarted.routes.http.requests, 1);
+  await httpClientHost.waitAll();
+  assert.equal(service.snapshot().hostedHttpStarted, true);
+  assert.equal(service.snapshot().totals.httpRequests, 1);
+});
+
+test('AmesWasmRuntimeService drains replayed Iris requests from http-client born', async () => {
+  const runtimeFactory = makeRuntimeFactory({
+    httpBornEffects: httpRequestEffects({
+      id: 7n,
+      url: 'https://bootstrap.urbit.org/glob-0v3.test.glob',
+    }),
+  });
+  const httpClientHost = new BrowserHttpClientHost({
+    fetchFn: async (url, init) => {
+      assert.equal(url, 'https://bootstrap.urbit.org/glob-0v3.test.glob');
+      assert.equal(init.method, 'GET');
+      return {
+        status: 200,
+        headers: new Map([['content-type', 'application/octet-stream']]),
+        async arrayBuffer() {
+          return Uint8Array.from([1, 2, 3]).buffer;
+        },
+      };
+    },
+  });
+  const service = new AmesWasmRuntimeService({
+    wasmUrl: 'vere-disk-wasm.wasm',
+    pillBytes: Uint8Array.from([1]),
+    fileStore: {},
+    runtimeFactory,
+    clientFactory: makeClientFactory(),
+    httpClientHost,
+  });
+
+  const started = await service.start();
+
+  assert.equal(started.httpBorn.routes.http.requests, 1);
+  await httpClientHost.waitAll();
+  assert.equal(service.snapshot().hostedHttp.pending, 0);
+  assert.equal(service.snapshot().totals.httpRequests, 1);
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
+    path => path.includes('http-receive-7'),
+  ));
+});
+
+test('AmesWasmRuntimeService schedules Behn doze effects and injects wake', async () => {
+  const timers = [];
+  const runtimeFactory = makeRuntimeFactory({
+    behnBornEffects: behnDozeEffects(urbitDateFromUnixMs(1_250)),
+  });
+  const service = new AmesWasmRuntimeService({
+    wasmUrl: 'vere-disk-wasm.wasm',
+    pillBytes: Uint8Array.from([1]),
+    fileStore: {},
+    runtimeFactory,
+    clientFactory: makeClientFactory(),
+    behnHostFactory: options => new BrowserBehnTimerHost({
+      ...options,
+      clock: () => 1_000,
+      setTimer: (fn, delay) => {
+        timers.push({ fn, delay });
+        return timers.length;
+      },
+      clearTimer: () => {},
+    }),
+  });
+
+  await service.start();
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 250);
+  await timers[0].fn();
+
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
+    path => path.includes('behn-wake'),
+  ));
+});
+
 test('AmesWasmRuntimeService can run and stop a background input loop', async () => {
   const runtimeFactory = makeRuntimeFactory();
   const service = new AmesWasmRuntimeService({
@@ -449,6 +619,8 @@ test('publicRuntimeSnapshot serializes bigint fields', () => {
     inputLoopActive: true,
     queue: { accepted: 0 },
     hostedHttp: { pending: 0 },
+    hostedHttpStarted: true,
+    hostedBehn: { active: false },
     hostedHttpServer: null,
     hostedTerminal: null,
     totals: { sent: 0 },
@@ -461,6 +633,8 @@ test('publicRuntimeSnapshot serializes bigint fields', () => {
     inputLoopActive: true,
     queue: { accepted: 0 },
     hostedHttp: { pending: 0 },
+    hostedHttpStarted: true,
+    hostedBehn: { active: false },
     hostedHttpServer: null,
     hostedTerminal: null,
     totals: { sent: 0 },

@@ -3,6 +3,10 @@ import {
   publicRuntimeSnapshot,
 } from './ames-wasm-runtime-service.mjs';
 import {
+  BrowserHttpClientHost,
+  createHttpClientProxyFetch,
+} from './ames-wasm-http-client.mjs';
+import {
   IndexedDBVereWasmFileStore,
 } from './vere-wasm-host.mjs';
 
@@ -39,7 +43,7 @@ function publicResult(value) {
     return value.map(publicResult);
   }
   if (value instanceof Uint8Array) {
-    return [...value];
+    return Uint8Array.from(value);
   }
   if (typeof value === 'bigint') {
     return value.toString();
@@ -54,8 +58,47 @@ function publicResult(value) {
   return value;
 }
 
+function collectTransfers(value, out = [], seen = new Set()) {
+  if (value instanceof Uint8Array) {
+    if (!seen.has(value.buffer)) {
+      seen.add(value.buffer);
+      out.push(value.buffer);
+    }
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectTransfers(item, out, seen);
+    }
+    return out;
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) {
+      collectTransfers(item, out, seen);
+    }
+  }
+  return out;
+}
+
+function isRoutineWasmLog(line) {
+  return (
+    /^disk-wasm: wrote effects \/out\/runtime-\d+-(?:terminal-data-\d+|behn-wake|http-(?:receive|continue|cancel)-\d+)\.effects\.jam /.test(line) ||
+    /^disk-wasm: host ovum \/in\/runtime-\d+-(?:terminal-data-\d+|behn-wake|http-(?:receive|continue|cancel)-\d+)\.ovum\.jam committed /.test(line)
+  );
+}
+
 async function fetchBytes(fetchFn, url) {
-  const response = await fetchFn(url);
+  let response;
+  try {
+    response = await fetchFn(url);
+  }
+  catch (error) {
+    throw new Error(
+      `fetch ${url} failed before a response; remote pill URLs must permit ` +
+      `browser CORS, otherwise use a same-origin URL such as ` +
+      `./assets/brass-4.6.pill: ${error}`,
+    );
+  }
   if (!response.ok) {
     throw new Error(`fetch ${url} failed: ${response.status}`);
   }
@@ -91,7 +134,7 @@ class WasmLogBuffer {
   }
 
   #emitLine(line) {
-    if (line) {
+    if (line && !isRoutineWasmLog(line)) {
       this.emit({
         type: 'log',
         message: `wasm: ${line}`,
@@ -145,6 +188,13 @@ export function createAmesRuntimeWorkerHandler({
     }
     const pillBytes = await fetchBytes(fetchFn, pillUrl);
     emit({ type: 'log', message: `pill-bytes=${pillBytes.length}` });
+    emit({
+      type: 'log',
+      message: message.httpClientProxyUrl
+        ? `http-client proxy enabled ${message.httpClientProxyUrl}`
+        : 'http-client proxy disabled',
+      className: message.httpClientProxyUrl ? 'rx' : 'err',
+    });
 
     service = new Service({
       wasmUrl,
@@ -155,6 +205,16 @@ export function createAmesRuntimeWorkerHandler({
       memoryOptions: normalizeMemory(message),
       fakeShip: asBigInt(message.fakeShip ?? '0x100', 'fakeShip'),
       sessionId: asBigInt(message.sessionId ?? '1', 'sessionId'),
+      autoStartHttpClient: message.autoStartHttpClient !== false,
+      httpClientHostFactory: input => new BrowserHttpClientHost({
+        ...input,
+        fetchFn: createHttpClientProxyFetch({
+          fetchFn,
+          proxyUrl: message.httpClientProxyUrl,
+          onLog: event => emit({ type: 'log', ...event }),
+        }),
+        streamResponses: message.streamHttpClientResponses !== false,
+      }),
       onLog: event => emit({ type: 'log', ...event }),
       onStdout: bytes => wasmStdout.write(bytes),
       onStderr: bytes => wasmStderr.write(bytes),
@@ -163,6 +223,19 @@ export function createAmesRuntimeWorkerHandler({
         mode: event.mode,
         bytes: [...event.packet],
       }),
+      onHttpServer: event => {
+        if (event.response?.type === 'start') {
+          return;
+        }
+        const message = {
+          type: 'http-stream',
+          streamId: event.streamId,
+          key: event.key,
+          wire: publicResult(event.wire),
+          response: publicResult(event.response),
+        };
+        emit(message, collectTransfers(message));
+      },
       onTerminal: event => emit({
         type: 'terminal',
         event: publicResult(event),
@@ -183,11 +256,12 @@ export function createAmesRuntimeWorkerHandler({
   function attachLoopCompletion(currentService) {
     const promise = currentService.waitInputLoop()
       .then(result => {
-        emit({
+        const message = {
           type: 'loop',
           status: 'complete',
           result: publicResult(result),
-        });
+        };
+        emit(message, collectTransfers(message));
         return result;
       })
       .catch(error => {
@@ -246,9 +320,21 @@ export function createAmesRuntimeWorkerHandler({
             headers: Array.isArray(message.headers) ? message.headers : [],
             body: asBytes(message.body, 'body'),
             secure: Boolean(message.secure),
-            local: message.local !== false,
+            local: message.local === true,
             timeoutMs: message.timeoutMs,
+            stream: message.stream === true,
+            streamId: message.streamId ?? null,
           });
+          break;
+        case 'http-request-cancel':
+          result = await requireService().httpRequestCancel({
+            service: message.service,
+            connectionId: message.connectionId,
+            requestId: message.requestId,
+          });
+          break;
+        case 'http-client-start':
+          result = await requireService().httpClientStart();
           break;
         case 'terminal-start':
           result = await requireService().terminalStart({
@@ -269,6 +355,11 @@ export function createAmesRuntimeWorkerHandler({
           result = await requireService().terminalInput({
             text: String(message.text ?? ''),
             enter: message.enter !== false,
+          });
+          break;
+        case 'terminal-data':
+          result = await requireService().terminalData({
+            data: String(message.data ?? ''),
           });
           break;
         case 'pump':
@@ -318,12 +409,13 @@ export function createAmesRuntimeWorkerHandler({
           throw new Error(`unknown command: ${message.type}`);
       }
 
-      emit({
+      const response = {
         type: 'result',
         id,
         command: message.type,
         result: publicResult(result),
-      });
+      };
+      emit(response, collectTransfers(response));
     }
     catch (error) {
       emit({
@@ -349,7 +441,7 @@ if (
   typeof globalThis.postMessage === 'function'
 ) {
   const handler = createAmesRuntimeWorkerHandler({
-    emit: message => globalThis.postMessage(message),
+    emit: (message, transfer = []) => globalThis.postMessage(message, transfer),
   });
   globalThis.addEventListener('message', event => {
     handler.handle(event.data);

@@ -8,10 +8,28 @@ import {
 function okFetch(bytes = [1, 2, 3]) {
   return async () => ({
     ok: true,
+    status: 200,
     async arrayBuffer() {
       return Uint8Array.from(bytes).buffer;
     },
   });
+}
+
+function recordingFetch(bytes = [1, 2, 3]) {
+  const calls = [];
+  const fn = async (resource, init = {}) => {
+    const url = String(resource?.url ?? resource);
+    calls.push({ url, init });
+    return {
+      ok: true,
+      status: 200,
+      async arrayBuffer() {
+        return Uint8Array.from(bytes).buffer;
+      },
+    };
+  };
+  fn.calls = calls;
+  return fn;
 }
 
 class FakeStore {
@@ -79,6 +97,11 @@ class FakeService {
     };
   }
 
+  async httpClientStart() {
+    this.httpClientStarted = true;
+    return { event: 25n, routes: { http: { requests: 0 } } };
+  }
+
   async terminalStart(input) {
     this.terminalStartInput = input;
     return { snapshot: { terminal: 'started' } };
@@ -87,6 +110,11 @@ class FakeService {
   async terminalInput(input) {
     this.terminalInputInput = input;
     return { events: [{ event: 26n }] };
+  }
+
+  async terminalData(input) {
+    this.terminalDataInput = input;
+    return { events: [{ event: 27n }] };
   }
 
   async runInputLoop(input) {
@@ -217,15 +245,17 @@ test('runtime worker handler runs command lifecycle and serializes results', asy
     headers: [['content-type', 'text/plain']],
     body: [104, 105],
   });
-  await handler.handle({ id: 7, type: 'terminal-start', cols: 100, rows: 30 });
-  await handler.handle({ id: 8, type: 'terminal-input', text: '+trouble' });
-  await handler.handle({ id: 9, type: 'pump', maxRounds: 1, firstIdleTimeoutMs: 0 });
-  await handler.handle({ id: 10, type: 'pump-start', firstIdleTimeoutMs: 1000 });
-  await handler.handle({ id: 11, type: 'pump-stop' });
-  await handler.handle({ id: 12, type: 'snapshot' });
-  await handler.handle({ id: 13, type: 'save' });
-  await handler.handle({ id: 14, type: 'replay', shutdownRuntime: false });
-  await handler.handle({ id: 15, type: 'shutdown' });
+  await handler.handle({ id: 7, type: 'http-client-start' });
+  await handler.handle({ id: 8, type: 'terminal-start', cols: 100, rows: 30 });
+  await handler.handle({ id: 9, type: 'terminal-input', text: '+trouble' });
+  await handler.handle({ id: 10, type: 'terminal-data', data: '+code\r' });
+  await handler.handle({ id: 11, type: 'pump', maxRounds: 1, firstIdleTimeoutMs: 0 });
+  await handler.handle({ id: 12, type: 'pump-start', firstIdleTimeoutMs: 1000 });
+  await handler.handle({ id: 13, type: 'pump-stop' });
+  await handler.handle({ id: 14, type: 'snapshot' });
+  await handler.handle({ id: 15, type: 'save' });
+  await handler.handle({ id: 16, type: 'replay', shutdownRuntime: false });
+  await handler.handle({ id: 17, type: 'shutdown' });
 
   assert.equal(FakeStore.instances.length, 1);
   assert.equal(FakeStore.instances[0].options.scope, 'worker-test');
@@ -237,10 +267,13 @@ test('runtime worker handler runs command lifecycle and serializes results', asy
   assert.deepEqual([...FakeService.instances[0].injectInput.packet], [9, 8, 7]);
   assert.equal(FakeService.instances[0].httpRequestInput.method, 'POST');
   assert.equal(FakeService.instances[0].httpRequestInput.url, '/~/name');
+  assert.equal(FakeService.instances[0].httpRequestInput.local, false);
   assert.deepEqual([...FakeService.instances[0].httpRequestInput.body], [104, 105]);
+  assert.equal(FakeService.instances[0].httpClientStarted, true);
   assert.equal(FakeService.instances[0].terminalStartInput.cols, 100);
   assert.equal(FakeService.instances[0].terminalStartInput.rows, 30);
   assert.equal(FakeService.instances[0].terminalInputInput.text, '+trouble');
+  assert.equal(FakeService.instances[0].terminalDataInput.data, '+code\r');
   assert.equal(FakeService.instances[0].pumpStartInput.firstIdleTimeoutMs, 1000);
   assert.equal(FakeService.instances[0].replayInput.shutdownRuntime, false);
 
@@ -269,18 +302,18 @@ test('runtime worker handler runs command lifecycle and serializes results', asy
   )));
   assert.deepEqual(
     emitted.filter(message => message.type === 'result').map(message => message.id),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
   );
   assert.equal(
     emitted.find(message => message.id === 6).result.body.join(','),
     '111,107',
   );
   assert.equal(
-    emitted.find(message => message.id === 12).result.snapshot.fakeShip,
+    emitted.find(message => message.id === 14).result.snapshot.fakeShip,
     '256',
   );
   assert.equal(
-    emitted.find(message => message.id === 14).result.replay.exitCode,
+    emitted.find(message => message.id === 16).result.replay.exitCode,
     0,
   );
   assert.ok(emitted.some(message => (
@@ -305,4 +338,49 @@ test('runtime worker handler reports command errors', async () => {
   assert.equal(emitted.length, 1);
   assert.equal(emitted[0].type, 'error');
   assert.match(emitted[0].error, /runtime service is not started/);
+});
+
+test('runtime worker routes hosted http-client fetches through configured proxy', async () => {
+  FakeStore.instances = [];
+  FakeService.instances = [];
+  const emitted = [];
+  const fetchFn = recordingFetch([7, 8, 9]);
+  const handler = createAmesRuntimeWorkerHandler({
+    emit: message => emitted.push(message),
+    Service: FakeService,
+    FileStore: FakeStore,
+    fetchFn,
+  });
+
+  await handler.handle({
+    id: 1,
+    type: 'start',
+    wasmUrl: 'https://example.invalid/vere-disk-wasm.wasm',
+    pillUrl: 'https://example.invalid/brass.pill',
+    bridgeUrl: 'https://bridge/~_~/ames',
+    fakeShip: '0x100',
+    sessionId: '1',
+    httpClientProxyUrl: 'https://demo.invalid/_vere/http-client',
+  });
+
+  const host = FakeService.instances[0].options.httpClientHostFactory({
+    onLog: message => emitted.push({ type: 'log', ...message }),
+  });
+  assert.equal(host.streamResponses, true);
+  await host.fetchFn('https://bootstrap.urbit.org/glob-0v3.test.glob', {
+    method: 'GET',
+    headers: { accept: 'application/octet-stream' },
+  });
+
+  assert.equal(fetchFn.calls.at(-1).url, 'https://demo.invalid/_vere/http-client');
+  assert.equal(fetchFn.calls.at(-1).init.method, 'POST');
+  assert.deepEqual(JSON.parse(fetchFn.calls.at(-1).init.body), {
+    url: 'https://bootstrap.urbit.org/glob-0v3.test.glob',
+    method: 'GET',
+    headers: [['accept', 'application/octet-stream']],
+  });
+  assert.ok(emitted.some(message => (
+    message.type === 'log' &&
+    message.message.includes('http-client proxy GET https://bootstrap.urbit.org/glob-0v3.test.glob')
+  )));
 });
