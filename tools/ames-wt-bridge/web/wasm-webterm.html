@@ -455,12 +455,14 @@
         <div class="grid2">
           <label>WebTransport gateway URL (optional)
             <input id="bridge-url"
-              value="https://ames-wt.wasm.urbit.gay/~_~/ames?token=791ee3c751c3b082b81aea23291ffeb9ce8f1a29fb51c6d5df71009a625f5b95"
+              value="https://ames.wasm.urbit.gay:8443/~_~/ames?token=hxh6Bersgxyf1-BFCym0TZgF17hHkNPmC5LyCFHXiCw"
               placeholder="https://gateway.example/~_~/ames?token=..."
               spellcheck="false">
           </label>
           <label>development certificate SHA-256 (optional)
-            <input id="certificate-hash" value="" spellcheck="false">
+            <input id="certificate-hash"
+              value="uoYde4Vwes9hZiax/QEkJgwsapy5Iv4CyQuZAKozbRY="
+              spellcheck="false">
           </label>
         </div>
         <input id="session-id" type="hidden" value="1">
@@ -517,7 +519,7 @@ const EYRE_FRAME_ORIGIN = 'https://eyre.local';
 const EYRE_COMPAT_ORIGINS = new Set([EYRE_FRAME_ORIGIN, 'http://eyre.local']);
 const EYRE_RESOURCE_WORKER_PATH = '/apps/__vere_wasm_sw.js?v=2026-07-22-resource-bridge';
 const EYRE_RESOURCE_WORKER_SCOPE = '/apps/';
-const DEMO_BUILD_ID = '2026-07-24-offline-dojo';
+const DEMO_BUILD_ID = '2026-07-24-fast-persist-ames-send-v2';
 const BOOT_FORM_STORAGE_KEY = 'vere-wasm-boot-form-v1';
 const WASM_URL_CANDIDATES = [
   './assets/vere-disk-wasm.wasm',

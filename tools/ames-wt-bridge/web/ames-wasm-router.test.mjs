@@ -19,6 +19,13 @@ function pushEffect(...lanes) {
   ]);
 }
 
+function sendEffect(lane) {
+  return list([
+    [termAtom('ames'), 0n],
+    tuple(termAtom('give'), tuple(termAtom('send'), lane, packetAtom())),
+  ]);
+}
+
 test('describePactLane classifies galaxy and IPv4 lanes', () => {
   const ipLane = tuple(termAtom('if'), 0x7f000001n, 13337n);
   assert.equal(isPactGalaxyLane(0n), true);
@@ -57,6 +64,25 @@ test('routeMesaEffects sends galaxy and IPv4 lanes through the UDP callback', as
   ]);
   assert.equal(out.sent.length, 2);
   assert.equal(out.dropped.length, 0);
+});
+
+test('routeMesaEffects sends legacy Ames galaxy and packed IPv4 lanes', async () => {
+  const routed = [];
+  const galaxy = [0n, 42n];
+  const address = [1n, (8443n << 32n) | 0x7f00_0001n];
+  for (const lane of [galaxy, address]) {
+    await routeMesaEffects(jamBytes(sendEffect(lane)), {
+      sendLane: async (described, packet) => {
+        routed.push([described, Array.from(packet)]);
+        return 'datagram';
+      },
+    });
+  }
+
+  assert.deepEqual(routed, [
+    [{ type: 'galaxy', ship: 42 }, [1, 2, 3]],
+    [{ type: 'if', ip: 0x7f00_0001, port: 8443 }, [1, 2, 3]],
+  ]);
 });
 
 test('routeMesaEffects drops unsupported lanes', async () => {

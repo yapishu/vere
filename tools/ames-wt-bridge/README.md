@@ -78,6 +78,8 @@ Allow the WebTransport/HTTP3 UDP port and the configured Ames UDP range
 through the host and cloud firewalls. The gateway binds the first available
 port for each session and releases it when that session closes. With
 `-udp-port-min 0 -udp-port-max 0`, the OS chooses ephemeral ports instead.
+Add `-log-packets` while debugging to log compact WebTransport-to-UDP and
+UDP-to-WebTransport packet routes without dumping packet contents.
 
 Do not expose a tokenless gateway publicly. Without `-token`, anyone who can
 reach it can use it as a UDP relay. A production service should additionally

@@ -44,6 +44,13 @@ function pushEffects(lane = 0n, bytes = [1, 2, 3]) {
   ]));
 }
 
+function sendEffects(lane = [0n, 0n], bytes = [1, 2, 3]) {
+  return jamBytes(list([
+    [termAtom('ames'), 0n],
+    tuple(termAtom('give'), tuple(termAtom('send'), lane, packetAtom(bytes))),
+  ]));
+}
+
 function httpRequestEffects({
   id = 42n,
   url = 'https://example.invalid/data',
@@ -124,6 +131,7 @@ function makeRuntimeFactory({
   replyEffects = emptyEffects(),
   httpServerEffects = httpServerResponseEffects(),
   terminalEffects = terminalBlitEffects(),
+  bornEffects = emptyEffects(),
 } = {}) {
   const runtimes = [];
 
@@ -172,6 +180,9 @@ function makeRuntimeFactory({
         }
         else if (ovumPath.includes('terminal-')) {
           this.host.files.set(effectsPath, terminalEffects);
+        }
+        else if (/\/in\/runtime-\d+-born\.ovum\.jam$/.test(ovumPath)) {
+          this.host.files.set(effectsPath, bornEffects);
         }
         else {
           this.host.files.set(effectsPath, emptyEffects());
@@ -253,14 +264,8 @@ test('AmesWasmRuntimeService starts a resident runtime and routes pokes over Web
   assert.equal(started.born.event, 26n);
   assert.equal(runtimeFactory.runtimes[0].initialized, true);
   assert.equal(runtimeFactory.runtimes[0].ship, 0x100n);
-  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
-    path => path.includes('behn-born'),
-  ));
-  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
-    path => path.includes('http-client-born'),
-  ));
-  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
-    path => path.includes('http-server-born'),
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].every(
+    path => !path.startsWith('/in/') && !path.startsWith('/out/runtime-'),
   ));
 
   await service.connect();
@@ -288,6 +293,28 @@ test('AmesWasmRuntimeService starts a resident runtime and routes pokes over Web
   assert.equal(runtimeFactory.runtimes[0].saved, true);
   assert.equal(runtimeFactory.runtimes[0].shutDown, true);
   assert.equal(clientFactory.clients[0].closed, true);
+});
+
+test('AmesWasmRuntimeService queues legacy sends until WebTransport opens', async () => {
+  const runtimeFactory = makeRuntimeFactory({
+    bornEffects: sendEffects([0n, 42n], [7, 8, 9]),
+  });
+  const clientFactory = makeClientFactory();
+  const service = new AmesWasmRuntimeService({
+    wasmUrl: 'vere-disk-wasm.wasm',
+    pillBytes: Uint8Array.from([1]),
+    fileStore: {},
+    runtimeFactory,
+    clientFactory,
+    autoSaveDelayMs: 0,
+  });
+
+  await service.start();
+  assert.equal(clientFactory.sent.length, 0);
+  await service.connect();
+  assert.equal(clientFactory.sent.length, 1);
+  assert.deepEqual(clientFactory.sent[0].lane, { type: 'galaxy', ship: 42 });
+  assert.deepEqual([...clientFactory.sent[0].packet], [7, 8, 9]);
 });
 
 test('AmesWasmRuntimeService hosts inbound http-server requests', async () => {
@@ -424,8 +451,9 @@ test('AmesWasmRuntimeService hosts %http-client requests through browser fetch',
   assert.equal(keen.routes.sent, 0);
   assert.equal(keen.routes.http.requests, 1);
   assert.equal(service.snapshot().totals.httpRequests, 1);
-  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
-    path => path.includes('http-receive-42'),
+  assert.equal(runtimeFactory.runtimes[0].currentEvent, 28n);
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].every(
+    path => !path.includes('http-receive-42'),
   ));
 });
 
@@ -501,8 +529,9 @@ test('AmesWasmRuntimeService drains replayed Iris requests from http-client born
   await httpClientHost.waitAll();
   assert.equal(service.snapshot().hostedHttp.pending, 0);
   assert.equal(service.snapshot().totals.httpRequests, 1);
-  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
-    path => path.includes('http-receive-7'),
+  assert.ok(runtimeFactory.runtimes[0].currentEvent > started.httpBorn.event);
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].every(
+    path => !path.includes('http-receive-7'),
   ));
 });
 
@@ -533,8 +562,9 @@ test('AmesWasmRuntimeService schedules Behn doze effects and injects wake', asyn
   assert.equal(timers[0].delay, 250);
   await timers[0].fn();
 
-  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].some(
-    path => path.includes('behn-wake'),
+  assert.equal(runtimeFactory.runtimes[0].currentEvent, 27n);
+  assert.ok([...runtimeFactory.runtimes[0].host.files.keys()].every(
+    path => !path.includes('behn-wake'),
   ));
 });
 

@@ -68,6 +68,7 @@ func main() {
 		udpMax         = flag.Int("udp-port-max", 0, "last UDP port to allocate (0 uses ephemeral ports)")
 		domain         = flag.String("ames-domain", "urbit.org", "galaxy Ames DNS domain")
 		galaxyBasePort = flag.Int("galaxy-base-port", 13337, "UDP port for ~zod; galaxy number is added")
+		logPackets     = flag.Bool("log-packets", false, "log compact per-packet WebTransport/UDP routing")
 	)
 	flag.Parse()
 	if (*udpMin == 0) != (*udpMax == 0) || *udpMin < 0 || *udpMax < *udpMin || *udpMax > 65535 {
@@ -115,7 +116,7 @@ func main() {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		go serve(sess, allocator, resolver)
+		go serve(sess, allocator, resolver, *logPackets)
 	})
 	if *token == "" {
 		log.Printf("bridge: WARNING no -token set; this endpoint is an unauthenticated UDP relay")
@@ -198,6 +199,7 @@ func serve(
 	sess *webtransport.Session,
 	allocator *udpAllocator,
 	galaxies *galaxyResolver,
+	logPackets bool,
 ) {
 	conn, err := allocator.listen()
 	if err != nil {
@@ -214,6 +216,9 @@ func serve(
 			n, source, err := conn.ReadFromUDP(buf)
 			if err != nil {
 				return
+			}
+			if logPackets {
+				log.Printf("bridge: UDP %s -> session %s %dB", source, sess.RemoteAddr(), n)
 			}
 			frame, err := gateway.Encode(
 				gateway.FrameHear,
@@ -240,6 +245,8 @@ func serve(
 		}
 		if _, err := conn.WriteToUDP(frame.Packet, destination); err != nil {
 			log.Printf("bridge: UDP send %s: %v", destination, err)
+		} else if logPackets {
+			log.Printf("bridge: session %s -> UDP %s %dB", sess.RemoteAddr(), destination, len(frame.Packet))
 		}
 	})
 

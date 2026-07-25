@@ -41,6 +41,7 @@ const DEFAULT_MEMORY_OPTIONS = Object.freeze({
 });
 
 const DEFAULT_LARGE_HTTP_SERVER_EFFECT_BYTES = 256 * 1024;
+const DEFAULT_AUTO_SAVE_DELAY_MS = 5_000;
 
 function packetCopy(event) {
   return {
@@ -59,6 +60,10 @@ function log(onLog, message, className = '') {
 
 function isRoutineHostLabel(label) {
   return /^(?:terminal-data-\d+|behn-wake|http-(?:receive|continue|cancel)-\d+)(?:-effects)?$/.test(label);
+}
+
+function isTransientRuntimeFile(path) {
+  return /^\/(?:in|out)\/runtime-\d+-/.test(String(path));
 }
 
 function isLargeHttpServerEffectsLabel(label, effectsBytes, threshold) {
@@ -255,6 +260,7 @@ export class AmesWasmRuntimeService {
     httpClientHostFactory = defaultHttpClientHostFactory,
     autoStartHttpClient = true,
     autoSave = true,
+    autoSaveDelayMs = DEFAULT_AUTO_SAVE_DELAY_MS,
     behnHost = null,
     behnHostFactory = defaultBehnHostFactory,
     httpServerHost = null,
@@ -296,6 +302,10 @@ export class AmesWasmRuntimeService {
     this.clientFactory = clientFactory;
     this.autoStartHttpClient = Boolean(autoStartHttpClient);
     this.autoSave = Boolean(autoSave);
+    this.autoSaveDelayMs = Math.max(0, Number(autoSaveDelayMs) || 0);
+    this.autoSaveTimer = null;
+    this.saveChain = Promise.resolve();
+    this.pendingOutbound = [];
     this.onLog = onLog;
     this.onStdout = onStdout;
     this.onStderr = onStderr;
@@ -394,6 +404,21 @@ export class AmesWasmRuntimeService {
       onStderr: this.onStderr,
     });
 
+    let removedTransientFiles = 0;
+    for (const path of this.runtime.host?.files?.keys?.() ?? []) {
+      if (isTransientRuntimeFile(path)) {
+        this.runtime.host.files.delete(path);
+        removedTransientFiles++;
+      }
+    }
+    if (removedTransientFiles > 0) {
+      log(
+        this.onLog,
+        `removed ${removedTransientFiles} stale runtime transfer files`,
+        'rx',
+      );
+    }
+
     this.runtime.init({
       loomExponent: this.memoryOptions.loomExponent,
       ship: this.fakeShip,
@@ -417,6 +442,7 @@ export class AmesWasmRuntimeService {
       'load-effects',
       this.runtime.host.files.get(loadPath),
     );
+    this.runtime.host.files.delete(loadPath);
     const behnBorn = this.behnHost
       ? await this.#pokeOvum({
         label: 'behn-born',
@@ -496,6 +522,7 @@ export class AmesWasmRuntimeService {
     if (typeof this.client.connect === 'function') {
       await this.client.connect();
     }
+    await this.#flushPendingOutbound();
 
     return {
       snapshot: this.snapshot(),
@@ -898,7 +925,7 @@ export class AmesWasmRuntimeService {
 
   async save() {
     this.#ensureStarted();
-    await this.runtime.save?.();
+    await this.#flushAutoSave();
     return {
       snapshot: this.snapshot(),
     };
@@ -912,7 +939,7 @@ export class AmesWasmRuntimeService {
     if (this.inputLoopPromise) {
       await this.stopInputLoop();
     }
-    await this.runtime.save?.();
+    await this.#flushAutoSave();
     const savedSnapshot = this.snapshot();
 
     if (shutdownRuntime) {
@@ -965,6 +992,7 @@ export class AmesWasmRuntimeService {
       this.behnHost?.abortAll?.();
       this.httpServerHost?.cancelAll?.();
       await this.client?.close?.({ reason: 'browser runtime service shutdown' });
+      await this.#flushAutoSave();
     }
     finally {
       this.client = null;
@@ -1049,14 +1077,16 @@ export class AmesWasmRuntimeService {
       );
     }
     this.runtime.pokeOvum({ ovumPath, effectsPath });
-    if (this.autoSave) {
-      await this.runtime.save?.();
-    }
     if (!isRoutineHostLabel(label)) {
       log(this.onLog, `injected %${label} event=${this.runtime.event()}`, 'rx');
     }
 
     const effectsBytes = this.runtime.host.files.get(effectsPath);
+    // These are host/WASM transfer files, not pier state. Keeping them would
+    // duplicate every HTTP body in IndexedDB in addition to the event log.
+    this.runtime.host.files.delete(ovumPath);
+    this.runtime.host.files.delete(effectsPath);
+    this.#scheduleAutoSave();
     return {
       effectsLabel: `${label}-effects`,
       effectsBytes,
@@ -1083,8 +1113,15 @@ export class AmesWasmRuntimeService {
 
     const routes = await routeMesaEffects(effectsNoun, {
       sendLane: async (lane, packet) => {
-        if (!this.client) {
-          throw new Error('WebTransport client is not connected');
+        if (!this.client?.sessionOpen) {
+          this.pendingOutbound.push({
+            lane: { ...lane },
+            packet: Uint8Array.from(packet),
+          });
+          if (!routine) {
+            log(this.onLog, `${label}: queued ${lane.type} ${packet.length}B`);
+          }
+          return 'queued';
         }
         if (!routine) {
           log(
@@ -1189,6 +1226,46 @@ export class AmesWasmRuntimeService {
       httpServer,
       terminal: emptyTerminalRoute(),
     };
+  }
+
+  #scheduleAutoSave() {
+    if (!this.autoSave || !this.runtime) {
+      return;
+    }
+    if (this.autoSaveTimer !== null) {
+      clearTimeout(this.autoSaveTimer);
+    }
+    this.autoSaveTimer = setTimeout(() => {
+      this.autoSaveTimer = null;
+      void this.#enqueueSave().catch(error => {
+        log(this.onLog, `browser pier persistence failed: ${error}`, 'err');
+      });
+    }, this.autoSaveDelayMs);
+  }
+
+  #enqueueSave() {
+    this.saveChain = this.saveChain.then(() => this.runtime?.save?.());
+    return this.saveChain;
+  }
+
+  async #flushAutoSave() {
+    if (this.autoSaveTimer !== null) {
+      clearTimeout(this.autoSaveTimer);
+      this.autoSaveTimer = null;
+    }
+    await this.#enqueueSave();
+  }
+
+  async #flushPendingOutbound() {
+    if (!this.client?.sessionOpen || this.pendingOutbound.length === 0) {
+      return;
+    }
+    const pending = this.pendingOutbound;
+    this.pendingOutbound = [];
+    for (const { lane, packet } of pending) {
+      await this.client.sendTo(lane, packet);
+      log(this.onLog, `queued: tx datagram ${packet.length}B`, 'tx');
+    }
   }
 
   #inputPath(label) {
