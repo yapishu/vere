@@ -1721,10 +1721,37 @@ _mesa_send_leaf(u3_mesa*      sam_u,
   u3_mesa_data* dat_u = &pac_u->pag_u.dat_u;
 
   nam_u->fra_d = fra_d;
-  c3_d i_d = fra_d - (lin_u->nam_u.fra_d * (1 << u3_Host.ops_u.jum_y));
-  c3_w cur_w = i_d * 1024;
-  dat_u->fra_y = lin_u->dat_y + cur_w;
-  dat_u->len_w = c3_min(lin_u->dat_w - cur_w, 1024);
+
+  //  SECURITY: `i_d` is the leaf index of the requested fragment within this
+  //  cached jumbo frame, derived from the attacker-controlled fragment number
+  //  `fra_d`.  The jumbo cache is keyed on the path only (`_name_to_jumbo_str`
+  //  normalizes fra_d to 0), so a %peek may carry any `fra_d` and still hit
+  //  this line.  A wild `fra_d` must never be used to index `dat_y`/`haz_y`:
+  //  without this bound it performs an arbitrary-address 64-byte read (`pair`)
+  //  and/or emits out-of-buffer bytes as the fragment body -- memory disclosure
+  //  or a reliable SIGSEGV in one unauthenticated packet.  The frame holds
+  //  mesa_num_leaves(dat_w) leaves of up to 1024 bytes each (dat_y ..
+  //  dat_y+dat_w), followed by one 64-byte lss_pair per leaf (haz_y).  Reject
+  //  anything outside that range up front; because `i_d` is unsigned, this
+  //  single upper-bound test also catches the fra_d-below-frame-base wraparound.
+  //
+  c3_d i_d   = fra_d - (lin_u->nam_u.fra_d * (1 << u3_Host.ops_u.jum_y));
+  c3_d lev_d = mesa_num_leaves((c3_d)lin_u->dat_w);
+  if ( i_d >= lev_d ) {
+    MESA_LOG(sam_u, STRANGE);
+    return;
+  }
+
+  //  Keep the offset arithmetic 64-bit end-to-end.  i_d * 1024 can exceed the
+  //  32-bit range once fra_d is large; assigning it to a c3_w truncates, and
+  //  (dat_w - off) in 32-bit underflows, turning this leaf fetch into an
+  //  arbitrary-address read / length-1024 over-read.  The 64-bit offset also
+  //  guarantees dat_y + off stays inside this frame and dat_w - off is the
+  //  true (positive) fragment length.
+  //
+  c3_d off_d = i_d * 1024;
+  dat_u->fra_y = lin_u->dat_y + off_d;
+  dat_u->len_w = (c3_w)c3_min((c3_d)lin_u->dat_w - off_d, (c3_d)1024);
 
   lss_pair* pair = ((lss_pair*)lin_u->haz_y) + i_d;
 
