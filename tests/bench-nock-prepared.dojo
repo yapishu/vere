@@ -1,0 +1,14 @@
+=g-count 80.001
+=g-num (gulf 1 g-count)
+=g-inc (gulf 2 +(g-count))
+=g-two (gulf 3 +(+(g-count)))
+=g-want (weld (gulf 2 42) [42 (gulf 44 +(g-count))])
+=g-pairs (turn g-num |=(v=@ [v +(v)]))
+=g-shift 2
+
+?>(=(~>(%bout (turn g-pairs |=([a=@ b=@] b))) g-inc) 42)
+?>(=(~>(%bout (turn g-num |=(a=@ +(a)))) g-inc) 42)
+?>(=(~>(%bout (turn g-num |=(a=@ ?:(=(a 42) 42 +(a))))) g-want) 42)
+?>(=(~>(%bout (skim g-num |=(a=@ =(a 42)))) ~[42]) 42)
+?>(=(~>(%bout (roll g-num |=([v=@ acc=@] +(acc)))) g-count) 42)
+?>(=(~>(%bout (turn g-num |=(a=@ (add a g-shift)))) g-two) 42)

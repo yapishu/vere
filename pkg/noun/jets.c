@@ -1771,6 +1771,94 @@ u3j_kink(u3_noun cor, u3_noun axe)
   }
 }
 
+#ifdef U3_GATE_SAMPLE
+enum { gate_full, gate_slot, gate_literal, gate_program };
+
+/* Axis 6 is the root of the sample in [battery [sample context]]. */
+static c3_w
+_cj_sample_axis(u3_noun axis)
+{
+  if ( axis < 6 || c3n == u3a_is_cat(axis) ) return 0;
+  c3_w depth = u3x_dep(axis) - 2;
+  c3_w root = (c3_w)1 << depth;
+  return (axis >> depth) == 6 ? root | (axis & (root - 1)) : 0;
+}
+
+/* Rebase a bounded, pure expression whose every slot reads the sample.
+ * Constants retain their values. Operators keep their evaluation order. */
+static u3_weak
+_cj_sample_formula(u3_noun fol, c3_w* budget)
+{
+  u3_noun op, arg, left, right;
+  if ( !*budget || c3n == u3r_cell(fol, &op, &arg) ) return u3_none;
+  --*budget;
+
+  if ( op == 0 ) {
+    c3_w axis = _cj_sample_axis(arg);
+    return axis ? u3nc(0, axis) : u3_none;
+  }
+  if ( op == 1 ) return u3k(fol);
+  if ( op == 3 || op == 4 ) {
+    u3_weak sub = _cj_sample_formula(arg, budget);
+    return sub == u3_none ? sub : u3nc(op, sub);
+  }
+  if ( c3y == u3du(op) ) {
+    left = op;
+    right = arg;
+  }
+  else if ( (op != 5 && op != 6) || c3n == u3r_cell(arg, &left, &right) ) {
+    return u3_none;
+  }
+  if ( op == 6 && c3n == u3du(right) ) return u3_none;
+
+  u3_weak a = _cj_sample_formula(left, budget);
+  if ( a == u3_none ) return a;
+  if ( op == 6 ) {
+    u3_weak yes = _cj_sample_formula(u3h(right), budget);
+    if ( yes != u3_none ) {
+      u3_weak no = _cj_sample_formula(u3t(right), budget);
+      if ( no != u3_none ) return u3nq(6, a, yes, no);
+      u3z(yes);
+    }
+    u3z(a);
+    return u3_none;
+  }
+  u3_weak b = _cj_sample_formula(right, budget);
+  if ( b == u3_none ) {
+    u3z(a);
+    return b;
+  }
+  return op == 5 ? u3nt(5, a, b) : u3nc(a, b);
+}
+
+static void
+_cj_sample_prep(u3j_site* site)
+{
+  site->sample_y = gate_full;
+  if ( site->loc != u3_none && site->jet_o == c3y ) return;
+
+  u3_noun fol = u3h(site->bat), op, arg;
+  if ( c3n == u3r_cell(fol, &op, &arg) ) return;
+  if ( op == 1 ) site->sample_y = gate_literal;
+  else if ( op == 0 ) {
+    c3_w axis = _cj_sample_axis(arg);
+    if ( axis ) {
+      site->sample_y = gate_slot;
+      site->sample_axis = axis;
+    }
+  }
+  else {
+    c3_w budget = 32;
+    u3_weak body = _cj_sample_formula(fol, &budget);
+    if ( body != u3_none ) {
+      site->sample_p = _cj_prog(u3_none, body);
+      site->sample_y = gate_program;
+      u3z(body);
+    }
+  }
+}
+#endif
+
 /* u3j_gate_prep(): prepare a locally cached gate to call repeatedly.
  *                  core is TRANSFERRED.
  */
@@ -1807,10 +1895,13 @@ u3j_gate_prep(u3j_site* sit_u, u3_noun cor)
     }
     u3z(pam); u3z(pax);
   }
+#ifdef U3_GATE_SAMPLE
+  _cj_sample_prep(sit_u);
+#endif
   u3t_off(glu_o);
 }
 
-/* u3j_gate_slam(): slam a site prepared by u3j_gate_find() with sample.
+/* u3j_gate_slam(): slam a site prepared by u3j_gate_prep() with sample.
  *                  sam is TRANSFERRED.
  */
 u3_noun
@@ -1820,6 +1911,33 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   u3_noun cor;
 
   u3t_on(glu_o);
+#ifdef U3_GATE_SAMPLE
+  if ( sit_u->sample_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
+    switch ( sit_u->sample_y ) {
+      case gate_program:
+        pro = _cj_burn(sit_u->sample_p, sam);
+        u3t_off(glu_o);
+        return pro;
+      case gate_literal:
+        pro = u3t(u3h(sit_u->bat));
+        break;
+      default:
+        pro = sit_u->sample_axis == 1 ? sam : u3r_at(sit_u->sample_axis, sam);
+        break;
+    }
+    if ( pro != u3_none ) {
+      if ( pro != sam ) {
+        pro = u3k(pro);
+        u3z(sam);
+      }
+#ifdef U3_CPU_DEBUG
+      u3R->pro.nox_d++;
+#endif
+      u3t_off(glu_o);
+      return pro;
+    }
+  }
+#endif
   pro = u3_none;
   cor = u3nt(u3k(u3h(sit_u->bat)),
              sam,
@@ -1834,7 +1952,7 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   return pro;
 }
 
-/* u3j_gate_lose(): clean up site prepared by u3j_gate_find().
+/* u3j_gate_lose(): clean up site prepared by u3j_gate_prep().
  */
 void
 u3j_gate_lose(u3j_site* sit_u)

@@ -120,10 +120,21 @@
         u3_weak       loc;            //  location (for reaming)
         c3_o          jet_o;          //  have jet driver?
         c3_o          fon_o;          //  site owns fink?
+#ifdef U3_GATE_SAMPLE
+        c3_y          sample_y;       //  entry selected by gate preparation
+#endif
         u3_weak       lab;            //  label (for tracing)
         u3j_core*     cop_u;          //  jet core
         u3j_harm*     ham_u;          //  jet arm
+#ifdef U3_GATE_SAMPLE
+        union {
+          u3p(u3j_fink) fin_p;        //  ordinary call site
+          c3_w          sample_axis;  //  prepared slot on the sample
+          u3p(struct _u3n_prog) sample_p; //  prepared program on the sample
+        };
+#else
         u3p(u3j_fink) fin_p;          //  fine check
+#endif
       } u3j_site;
 
       /* u3j_hank: cached hook information.
@@ -290,12 +301,12 @@
         void
         u3j_gate_prep(u3j_site* sit_u, u3_noun cor);
 
-      /* u3j_gate_slam(): slam a site prepared by u3j_gate_find() with sample.
+      /* u3j_gate_slam(): slam a site prepared by u3j_gate_prep() with sample.
        */
         u3_noun
         u3j_gate_slam(u3j_site* sit_u, u3_noun sam);
 
-      /* u3j_gate_lose(): clean up site prepared by u3j_gate_find().
+      /* u3j_gate_lose(): clean up site prepared by u3j_gate_prep().
        */
         void
         u3j_gate_lose(u3j_site* sit_u);

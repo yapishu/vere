@@ -522,6 +522,144 @@ _project_pair(void)
   }
 }
 
+/* Compare a prepared gate with the oracle on [battery [sample context]].
+ * Reuse the prepared site for two calls to exercise sample ownership. */
+static u3_noun
+_prepared_twice(u3_noun input)
+{
+  u3_noun gate, sample, specialized;
+  u3x_trel(input, &gate, &sample, &specialized);
+  u3j_site site;
+  u3j_gate_prep(&site, u3k(gate));
+#ifdef U3_GATE_SAMPLE
+  if ( !!site.sample_y != specialized ) abort();
+#endif
+  u3_noun a = u3j_gate_slam(&site, u3k(sample));
+  u3_noun b = u3j_gate_slam(&site, u3k(sample));
+  if ( c3n == u3r_sing(a, b) ) abort();
+  u3z(a);
+  u3j_gate_lose(&site);
+  return b;
+}
+
+static void
+_check_prepared(u3_noun formula, u3_noun sample, c3_w specialized)
+{
+  u3_noun subject = u3nt(u3k(formula), u3k(sample), 37);
+  u3_weak expected = _eval(subject, formula);
+  u3_noun input = u3nt(u3nt(formula, 0, 37), sample, specialized);
+  u3_noun result = u3m_soft(0, _prepared_twice, input);
+  if ( expected == u3_none ? u3h(result) != c3__exit :
+       (u3h(result) != 0 || c3n == u3r_sing(expected, u3t(result))) ) abort();
+  if ( expected != u3_none ) u3z(expected);
+  u3z(result);
+  u3z(subject);
+}
+
+static u3_noun
+_sample_expression(c3_w depth, c3_h key)
+{
+  if ( !depth ) {
+    const c3_w slots[] = {6, 12, 13, 24, 27};
+    return key & 1 ? _slot(slots[(key >> 1) % 5]) : _lit(key % 19);
+  }
+  c3_h left = key * 1664525U + 1013904223U;
+  c3_h right = (left ^ (left >> 16)) * 2246822519U;
+  u3_noun a = _sample_expression(depth - 1, left);
+  switch ( key % 5 ) {
+    case 0: return u3nc(3, a);
+    case 1: return u3nc(4, a);
+    case 2: return u3nt(5, a, _sample_expression(depth - 1, right));
+    case 3: return u3nc(a, _sample_expression(depth - 1, right));
+    default: return u3nq(6, u3nc(3, _slot(6)), a, _sample_expression(depth - 1, right));
+  }
+}
+
+static void
+_prepared_cases(void)
+{
+  u3_noun tree = _numbered(5, 1);
+  for ( c3_w axis = 1; axis < 128; ++axis ) {
+    c3_w root = 1;
+    while ( root <= axis / 2 ) root <<= 1;
+    u3_noun slot = _slot(6 * root + axis - root);
+    _check_prepared(u3k(slot), u3k(tree), 1);
+    _check_prepared(u3nc(slot, _slot(6)), u3k(tree), 1);
+  }
+  for ( c3_h i = 0; i < 256; ++i ) {
+    u3_noun expression = _sample_expression(3, i);
+    _check_prepared(u3k(expression), u3k(tree), 1);
+    _check_prepared(expression, i, 1);
+  }
+  _check_prepared(_slot(0), u3k(tree), 0);
+  _check_prepared(_slot(1), u3k(tree), 0);
+  _check_prepared(_slot(3), u3k(tree), 0);
+  _check_prepared(_slot(7), u3k(tree), 0);
+  _check_prepared(_lit(u3k(tree)), u3k(tree), 1);
+  _check_prepared(u3nc(4, _slot(6)), u3k(tree), 1);
+  _check_prepared(u3nc(4, _slot(6)), u3i_chub(0xffffffffULL), 1);
+  _check_prepared(u3nq(6, _slot(6), _lit(7), _lit(8)), 19, 1);
+  u3_noun cond = u3nq(6, u3nc(3, _slot(6)), _slot(12), _slot(6));
+  _check_prepared(u3k(cond), u3k(tree), 1);
+  _check_prepared(cond, 41, 1);
+  _check_prepared(u3nt(5, _slot(12), _slot(13)), u3nc(u3k(tree), u3k(tree)), 1);
+  _check_prepared(u3nt(7, _slot(6), _slot(1)), u3k(tree), 0);
+  _check_prepared(u3nt(5, _slot(6), _slot(7)), 37, 0);
+  _check_prepared(u3nq(6, _slot(6), _lit(3), _slot(7)), 1, 0);
+
+  u3_noun wide = _slot(6);
+  for ( unsigned i = 0; i < 5; ++i ) wide = u3nc(u3k(wide), wide);
+  _check_prepared(wide, 9, 0);
+
+  // A 43-bit slot is direct on a 64-bit loom and indirect on a 32-bit loom.
+  // Its suffix selects the final leaf after forty rightward steps.
+  u3_noun deep = 79;
+  for ( unsigned i = 0; i < 40; ++i ) deep = u3nc(0, deep);
+  _check_prepared(_slot(u3i_chub((7ULL << 40) - 1)), deep, sizeof(u3_noun) == 8);
+
+  logs = 0;
+  u3C.slog_f = _log;
+  _check_prepared(u3nt(11, u3nc(c3__slog, _lit(71)), _slot(6)), 19, 0);
+  u3C.slog_f = 0;
+  if ( logs != 2 || logged[0] != 71 || logged[1] != 71 ) abort();
+  u3z(tree);
+}
+
+// A projection consumes a newly allocated sample and returns an owned child.
+// Both references to that child in the sample must disappear when it does.
+static void
+_prepared_ownership(void)
+{
+  u3j_site site;
+  u3j_gate_prep(&site, u3nt(_slot(12), 0, 37));
+  u3_noun child = u3nc(9, 8);
+  u3_noun result = u3j_gate_slam(&site, u3nc(u3k(child), u3k(child)));
+  if ( result != child || u3a_use(child) != 2 ) abort();
+  u3z(result);
+  if ( u3a_use(child) != 1 ) abort();
+  u3z(child);
+  u3j_gate_lose(&site);
+}
+
+#if defined(U3_CPU_DEBUG) && defined(U3_GATE_SAMPLE)
+static void
+_prepared_profile(void)
+{
+  u3j_site site;
+  u3j_gate_prep(&site, u3nt(_slot(6), 0, 37));
+  const c3_w flags[] = {0, u3o_trace, u3o_debug_cpu, 0};
+  c3_w saved = u3C.wag_h;
+  for ( unsigned i = 0; i < 4; ++i ) {
+    u3C.wag_h = saved | flags[i];
+    c3_d before = u3R->pro.cel_d;
+    if ( 42 != u3j_gate_slam(&site, 42) ) abort();
+    if ( u3R->pro.cel_d - before != (flags[i] ? 2 : 0) ) abort();
+  }
+  u3C.wag_h = saved;
+  u3j_gate_lose(&site);
+}
+#endif
+
 static u3_noun
 _borrow_formula(c3_w op, c3_w base, c3_w left, c3_w right)
 {
@@ -939,6 +1077,14 @@ main(void)
   trace = getenv("U3_CASE_TRACE") != 0;
   if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
   _effects();
+  _prepared_cases();
+#if defined(U3_CPU_DEBUG) && defined(U3_GATE_SAMPLE)
+  _prepared_profile();
+#endif
+  _prepared_ownership();
+  u3m_hate(0);
+  _prepared_ownership();
+  u3z(u3m_love(0));
   _indexed();
   _mixed();
   _mixed_effects();
