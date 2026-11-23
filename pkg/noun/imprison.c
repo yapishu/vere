@@ -632,6 +632,30 @@ u3i_defcons(u3_noun** hed, u3_noun** tel)
   return pro;
 }
 
+#ifdef U3_LIST_SHARING
+/* Copy a borrowed list prefix. Each source cell supplies one head and
+ * each new cell owns that head. The caller fills the final tail. */
+u3_noun*
+u3i_list_prefix(u3_noun* out, u3_noun list, u3_noun stop)
+{
+  while ( list != stop ) {
+    u3_noun first = u3k(u3h(list));
+    list = u3t(list);
+    if ( list == stop ) {
+      u3_noun *head, *tail;
+      *out = u3i_defcons(&head, &tail);
+      *head = first;
+      return tail;
+    }
+    *out = u3nt(first, u3k(u3h(list)), u3_nul);
+    u3a_cell* last = u3a_to_ptr(u3t(*out));
+    out = &last->tel;
+    list = u3t(list);
+  }
+  return out;
+}
+#endif
+
 /* u3i_cell(): Produce the cell `[a b]`.
 */
 u3_noun

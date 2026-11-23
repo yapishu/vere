@@ -5,6 +5,10 @@
 
 #include "noun.h"
 
+#ifdef U3_LIST_SHARING
+#include "list_walk.h"
+#endif
+
 u3_noun
 u3qb_turn(u3_noun a, u3_noun b)
 {
@@ -18,6 +22,13 @@ u3qb_turn(u3_noun a, u3_noun b)
     u3j_site sit_u;
 
     u3j_gate_prep(&sit_u, u3k(b));
+#ifdef U3_LIST_SHARING
+    if ( c3y == u3j_gate_read_only(&sit_u) ) {
+      pro = _walk_list(a, &sit_u, _walk_turn);
+      u3j_gate_lose(&sit_u);
+      return pro;
+    }
+#endif
     u3k(a);
 
     do {

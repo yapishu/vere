@@ -522,6 +522,123 @@ _project_pair(void)
   }
 }
 
+#ifdef U3_LIST_SHARING
+static u3_noun (*const _list_jets[])(u3_noun, u3_noun) = {
+  u3qb_turn, u3qb_skim, u3qb_skip, u3qb_murn
+};
+
+static u3_noun
+_list_call(u3_noun args)
+{
+  u3_noun kind, list, gate;
+  u3x_trel(args, &kind, &list, &gate);
+  return _list_jets[kind](list, gate);
+}
+
+/* Each input element is [loobean payload]. Its bit in the mask determines
+ * whether the jet keeps it, drops it, or replaces it. */
+static void
+_list_masks(void)
+{
+  for ( unsigned kind = 0; kind < 4; kind++ ) {
+    u3_noun fol = _slot(12);
+    if ( kind == 0 ) fol = u3nq(6, fol, _slot(6), _lit(42));
+    if ( kind == 3 ) fol = u3nq(6, fol, u3nc(_lit(0), _slot(6)), _lit(0));
+    u3_noun gate = u3nt(fol, 0, 37);
+    if ( _list_jets[kind](0, 99) != 0 ) abort();
+    for ( unsigned mask = 0; mask < 256; mask++ ) {
+      u3_noun list = 0, want = 0, suffix = 0;
+      unsigned copied = 0;
+      for ( unsigned i = 8; i-- > 0; ) {
+        unsigned bit = (mask >> i) & 1;
+        u3_noun item = u3nc(bit, u3i_chub(0xffffffffULL + i));
+        list = u3nc(item, list);
+        if ( kind == 2 ? bit : !bit ) {
+          want = u3nc(u3k(item), want);
+          if ( u3t(list) == suffix ) suffix = list;
+          else copied++;
+        }
+        else if ( kind == 0 ) {
+          want = u3nc(42, want);
+          copied++;
+        }
+      }
+      u3_noun out = _list_jets[kind](list, gate), tail = out;
+      for ( unsigned i = 0; i < copied; i++ ) tail = u3t(tail);
+      if ( tail != suffix ) abort();
+      u3z(list);
+      if ( c3n == u3r_sing(out, want) ) abort();
+      u3z(out);
+      u3z(want);
+    }
+    u3z(gate);
+  }
+}
+
+static void
+_list_failure(unsigned kind, u3_noun list, u3_noun fol, unsigned log_count)
+{
+  logs = 0;
+  u3C.slog_f = _log;
+  u3_noun got = u3m_soft(0, _list_call, u3nt(kind, list, u3nt(fol, 0, 37)));
+  u3C.slog_f = 0;
+  if ( u3h(got) != c3__exit || logs != log_count ) abort();
+  for ( unsigned i = 0; i < logs; ++i ) if ( logged[i] != i + 1 ) abort();
+  u3z(got);
+}
+
+static void
+_list_weld(void)
+{
+  for ( c3_w len = 8192; len <= 8193; len++ ) {
+    u3_noun list = 0, item = u3nc(23, 45), tail = u3nc(56, 78);
+    for ( c3_w i = 0; i < len; i++ ) list = u3nc(u3k(item), list);
+    u3_noun product = u3qb_weld(list, tail), node = product;
+    u3z(list);
+    if ( u3a_use(item) != len + 1 || u3a_use(tail) != 2 ) abort();
+    for ( c3_w i = 0; i < len; i++, node = u3t(node) ) {
+      if ( u3h(node) != item ) abort();
+    }
+    if ( node != tail ) abort();
+    u3z(product);
+    if ( u3a_use(item) != 1 || u3a_use(tail) != 1 ) abort();
+    u3z(tail);
+    u3z(item);
+  }
+}
+
+static void
+_list_guards(void)
+{
+  for ( unsigned kind = 0; kind < 4; kind++ ) {
+    u3_noun val = (kind == 3) ? u3nc(0, 7) : 0;
+    _list_failure(kind, u3nt(1, 2, 9), _lit(u3k(val)), 0);
+    _list_failure(kind, u3nt(1, 2, 9), u3nt(11, u3nc(c3__slog, _slot(6)), _lit(val)), 2);
+  }
+  _list_failure(1, u3nc(0, 0), _lit(2), 0);
+  _list_failure(2, u3nc(0, 0), _lit(u3nc(0, 0)), 0);
+  _list_failure(3, u3nc(0, 0), _lit(2), 0);
+  _list_failure(0, u3nc(0, 0), _slot(12), 0);
+
+  u3j_site site;
+  u3_noun equal = u3nt(5, _slot(12), _slot(13));
+  u3j_gate_prep(&site, u3nt(u3nq(6, equal, _slot(6), _lit(42)), 0, 37));
+  if ( c3y == u3j_gate_read_only(&site) ) abort();
+  u3_noun item = u3nc(u3nc(5, 6), u3nc(5, 6));
+  u3_noun list = u3nc(u3k(item), 0);
+  u3_noun out = u3qb_turn(list, site.bat);
+  u3z(list);
+  if ( u3t(out) != 0 || c3n == u3r_sing(u3h(out), item) ) abort();
+  u3z(item);
+  u3z(out);
+  u3j_gate_lose(&site);
+
+  u3j_gate_prep(&site, u3nt(u3nt(5, _slot(6), _lit(u3i_chub(0xffffffffULL))), 0, 37));
+  if ( c3n == u3j_gate_read_only(&site) ) abort();
+  u3j_gate_lose(&site);
+}
+#endif
+
 /* Compare a prepared gate with the oracle on [battery [sample context]].
  * Reuse the prepared site for two calls to exercise sample ownership. */
 static u3_noun
@@ -574,6 +691,55 @@ _sample_expression(c3_w depth, c3_h key)
     default: return u3nq(6, u3nc(3, _slot(6)), a, _sample_expression(depth - 1, right));
   }
 }
+
+#ifdef U3_LIST_SHARING
+/* Evaluate each gate on the full core, then apply the list operation to
+ * those products. No prepared site or optimized list jet enters the oracle. */
+static u3_weak
+_list_reference(unsigned kind, u3_noun list, u3_noun formula)
+{
+  if ( list == 0 ) return 0;
+  u3_noun item = u3h(list), core = u3nt(u3k(formula), u3k(item), 37);
+  u3_weak val = _eval(core, formula);
+  u3z(core);
+  if ( val == u3_none ) return u3_none;
+  if ( kind == 1 || kind == 2 ) {
+    if ( val > 1 ) { u3z(val); return u3_none; }
+    val = (val == (kind == 1 ? c3y : c3n)) ? u3k(item) : u3_none;
+  }
+  else if ( kind == 3 ) {
+    u3_noun unit = val;
+    if ( unit && c3n == u3du(unit) ) { u3z(unit); return u3_none; }
+    val = unit ? u3k(u3t(unit)) : u3_none;
+    u3z(unit);
+  }
+  u3_weak tail = _list_reference(kind, u3t(list), formula);
+  if ( val == u3_none ) return tail;
+  if ( tail == u3_none ) { u3z(val); return tail; }
+  return u3nc(val, tail);
+}
+
+static void
+_list_expressions(void)
+{
+  u3_noun list = u3nq(u3nc(0, 1), u3nc(1, 0), 0,
+                      u3nc(u3i_chub(0xffffffffULL), 0));
+  for ( unsigned i = 0; i < 256; i++ ) {
+    u3_noun fol = _sample_expression(3, i);
+    for ( unsigned kind = 0; kind < 4; kind++ ) {
+      u3_weak want = _list_reference(kind, list, fol);
+      u3_noun args = u3nt(kind, u3k(list), u3nt(u3k(fol), 0, 37));
+      u3_noun got = u3m_soft(0, _list_call, args);
+      if ( want == u3_none ? u3h(got) != c3__exit :
+           (u3h(got) != 0 || c3n == u3r_sing(want, u3t(got))) ) abort();
+      if ( want != u3_none ) u3z(want);
+      u3z(got);
+    }
+    u3z(fol);
+  }
+  u3z(list);
+}
+#endif
 
 static void
 _prepared_cases(void)
@@ -651,6 +817,9 @@ _prepared_profile(void)
   c3_w saved = u3C.wag_h;
   for ( unsigned i = 0; i < 4; ++i ) {
     u3C.wag_h = saved | flags[i];
+#ifdef U3_LIST_SHARING
+    if ( u3j_gate_read_only(&site) != __(flags[i] == 0) ) abort();
+#endif
     c3_d before = u3R->pro.cel_d;
     if ( 42 != u3j_gate_slam(&site, 42) ) abort();
     if ( u3R->pro.cel_d - before != (flags[i] ? 2 : 0) ) abort();
@@ -1076,6 +1245,16 @@ main(void)
   }
   trace = getenv("U3_CASE_TRACE") != 0;
   if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
+#ifdef U3_LIST_SHARING
+  _list_masks();
+  _list_weld();
+  u3m_hate(0);
+  _list_masks();
+  _list_weld();
+  u3z(u3m_love(0));
+  _list_guards();
+  _list_expressions();
+#endif
   _effects();
   _prepared_cases();
 #if defined(U3_CPU_DEBUG) && defined(U3_GATE_SAMPLE)

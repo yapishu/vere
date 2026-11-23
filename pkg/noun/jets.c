@@ -1772,7 +1772,12 @@ u3j_kink(u3_noun cor, u3_noun axe)
 }
 
 #ifdef U3_GATE_SAMPLE
-enum { gate_full, gate_slot, gate_literal, gate_program };
+enum { gate_full, gate_slot, gate_literal, gate_program, gate_borrow_program };
+
+typedef struct {
+  c3_w nodes;
+  c3_t may_unify;
+} _cj_sample_check;
 
 /* Axis 6 is the root of the sample in [battery [sample context]]. */
 static c3_w
@@ -1787,11 +1792,11 @@ _cj_sample_axis(u3_noun axis)
 /* Rebase a bounded, pure expression whose every slot reads the sample.
  * Constants retain their values. Operators keep their evaluation order. */
 static u3_weak
-_cj_sample_formula(u3_noun fol, c3_w* budget)
+_cj_sample_formula(u3_noun fol, _cj_sample_check* check)
 {
   u3_noun op, arg, left, right;
-  if ( !*budget || c3n == u3r_cell(fol, &op, &arg) ) return u3_none;
-  --*budget;
+  if ( !check->nodes || c3n == u3r_cell(fol, &op, &arg) ) return u3_none;
+  --check->nodes;
 
   if ( op == 0 ) {
     c3_w axis = _cj_sample_axis(arg);
@@ -1799,7 +1804,7 @@ _cj_sample_formula(u3_noun fol, c3_w* budget)
   }
   if ( op == 1 ) return u3k(fol);
   if ( op == 3 || op == 4 ) {
-    u3_weak sub = _cj_sample_formula(arg, budget);
+    u3_weak sub = _cj_sample_formula(arg, check);
     return sub == u3_none ? sub : u3nc(op, sub);
   }
   if ( c3y == u3du(op) ) {
@@ -1811,23 +1816,30 @@ _cj_sample_formula(u3_noun fol, c3_w* budget)
   }
   if ( op == 6 && c3n == u3du(right) ) return u3_none;
 
-  u3_weak a = _cj_sample_formula(left, budget);
+  u3_weak a = _cj_sample_formula(left, check);
   if ( a == u3_none ) return a;
   if ( op == 6 ) {
-    u3_weak yes = _cj_sample_formula(u3h(right), budget);
+    u3_weak yes = _cj_sample_formula(u3h(right), check);
     if ( yes != u3_none ) {
-      u3_weak no = _cj_sample_formula(u3t(right), budget);
+      u3_weak no = _cj_sample_formula(u3t(right), check);
       if ( no != u3_none ) return u3nq(6, a, yes, no);
       u3z(yes);
     }
     u3z(a);
     return u3_none;
   }
-  u3_weak b = _cj_sample_formula(right, budget);
+  u3_weak b = _cj_sample_formula(right, check);
   if ( b == u3_none ) {
     u3z(a);
     return b;
   }
+#ifdef U3_LIST_SHARING
+  // Cell equality can rewrite interior pointers through unification.
+  if ( op == 5 && !(u3h(left) == 1 && c3y == u3ud(u3t(left)))
+               && !(u3h(right) == 1 && c3y == u3ud(u3t(right))) ) {
+    check->may_unify = 1;
+  }
+#endif
   return op == 5 ? u3nt(5, a, b) : u3nc(a, b);
 }
 
@@ -1848,15 +1860,32 @@ _cj_sample_prep(u3j_site* site)
     }
   }
   else {
-    c3_w budget = 32;
-    u3_weak body = _cj_sample_formula(fol, &budget);
+    _cj_sample_check check = { .nodes = 32 };
+    u3_weak body = _cj_sample_formula(fol, &check);
     if ( body != u3_none ) {
       site->sample_p = _cj_prog(u3_none, body);
       site->sample_y = gate_program;
+#ifdef U3_LIST_SHARING
+      if ( !check.may_unify ) site->sample_y = gate_borrow_program;
+#endif
       u3z(body);
     }
   }
 }
+
+#ifdef U3_LIST_SHARING
+c3_o
+u3j_gate_read_only(const u3j_site* site)
+{
+  if ( u3C.wag_h & (u3o_trace | u3o_debug_cpu) ) return c3n;
+  switch ( site->sample_y ) {
+    case gate_slot:
+    case gate_literal:
+    case gate_borrow_program: return c3y;
+    default: return c3n;
+  }
+}
+#endif
 #endif
 
 /* u3j_gate_prep(): prepare a locally cached gate to call repeatedly.
@@ -1915,6 +1944,7 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   if ( sit_u->sample_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
     switch ( sit_u->sample_y ) {
       case gate_program:
+      case gate_borrow_program:
         pro = _cj_burn(sit_u->sample_p, sam);
         u3t_off(glu_o);
         return pro;

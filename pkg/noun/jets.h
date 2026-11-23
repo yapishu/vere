@@ -3,6 +3,11 @@
 #ifndef U3_JETS_H
 #define U3_JETS_H
 
+/* List sharing uses the prepared sample entry for each callback. */
+#if defined(U3_LIST_SHARING) && !defined(U3_GATE_SAMPLE)
+#define U3_GATE_SAMPLE
+#endif
+
 #include "allocate.h"
 #include "c3/c3.h"
 #include "types.h"
@@ -300,6 +305,12 @@
        */
         void
         u3j_gate_prep(u3j_site* sit_u, u3_noun cor);
+
+#ifdef U3_LIST_SHARING
+      /* Can this prepared gate run while borrowing interior noun pointers? */
+        c3_o
+        u3j_gate_read_only(const u3j_site* site);
+#endif
 
       /* u3j_gate_slam(): slam a site prepared by u3j_gate_prep() with sample.
        */
