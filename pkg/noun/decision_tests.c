@@ -666,6 +666,129 @@ _owner_cases(void)
   u3z(got); u3z(expected);
 }
 
+// Check a lexical subject inside a result, a kept operand, and a tail call.
+static void
+_bind_cases(void)
+{
+  for ( c3_w i = 0; i < 256; ++i ) {
+    u3_noun subject = _tree(4);
+    u3_noun value = (i & 1) ? _slot(1 + i % 7) : _lit(_tree(3));
+    u3_noun read = _slot(2 + 2 * (i % 2));
+    u3_noun field = _slot(6 + i % 2);
+    u3_noun body;
+    switch ( i % 8 ) {
+      case 0: body = u3nc(read, field); break;
+      case 1: body = u3nt(10, u3nc(2, field), read); break;
+      case 2: body = u3nt(7, read, u3nc(_slot(1), field)); break;
+      case 3: body = u3nc(u3nc(3, read), u3nc(4, field)); break;
+      case 4: body = u3nc(field, read); break;
+      case 5: body = u3nc(read, u3nc(_slot(2), field)); break;
+      case 6: body = u3nc(read, u3nc(_slot(1), field)); break;
+      default: body = u3nc(read, _memo(field)); break;
+    }
+    u3_noun fol = u3nt(8, value, body);
+    if ( i & 2 ) fol = u3nc(fol, _slot(1));
+    _check(subject, fol);
+  }
+
+  u3_noun deep = _slot(3);
+  for ( c3_w i = 0; i < 40; ++i ) deep = u3nc(3, deep);
+  _check(12, u3nt(8, _lit(42), u3nc(_slot(2), deep)));
+  _check(12, u3nt(8, _lit(42), u3nc(_slot(2), _slot(u3i_chub(1ULL << 36)))));
+  _check(12, u3nt(8, _slot(2), _lit(42)));
+
+  // A gate receives its new sample. The binding's slog precedes the slog
+  // in the arm, including when selecting the replacement later bails.
+  u3_noun arm = u3nt(11, u3nc(c3__slog, _lit(82)), _slot(6));
+  u3_noun gate = u3nt(arm, 0, 5);
+  u3_noun bound = u3nt(11, u3nc(c3__slog, _lit(81)), _lit(gate));
+  u3_noun call = u3nt(9, 2, u3nt(10, u3nc(6, _slot(6)), _slot(2)));
+  u3_noun fol = u3nt(8, bound, call);
+  logs = 0;
+  u3C.slog_f = _log;
+  u3_noun got = u3m_soft_run(0, u3n_nock_on, u3nc(42, 99), u3k(fol));
+  if ( u3h(got) || u3t(got) != 42 || logs != 2 ||
+       logged[0] != 81 || logged[1] != 82 ) abort();
+  u3z(got);
+  got = u3m_soft(0, _burn_twice, u3nc(0, fol));
+  if ( u3h(got) != c3__exit || logs != 3 || logged[2] != 81 ) abort();
+  u3z(got);
+  u3C.slog_f = 0;
+}
+
+static void
+_pooled_triples(void)
+{
+  u3_noun shared = u3nc(32, 64);
+  u3_noun held = u3_nul;
+  for ( c3_w remaining = 0; remaining <= 2; ++remaining ) {
+    if ( u3R->cel.cel_p ) {
+      if ( u3R->cel.hav_w < remaining ) {
+        while ( u3R->cel.hav_w ) held = u3nc(0, held);
+        held = u3nc(0, held);
+      }
+      while ( u3R->cel.hav_w > remaining ) held = u3nc(0, held);
+      if ( u3R->cel.hav_w != remaining ) abort();
+    }
+    u3_noun triple = u3nt(u3k(shared), remaining, u3k(shared));
+    if ( u3h(triple) != shared || u3h(u3t(triple)) != remaining ||
+         u3t(u3t(triple)) != shared || u3a_use(shared) != 3 ||
+         u3a_use(triple) != 1 || u3a_use(u3t(triple)) != 1 ) abort();
+    u3z(triple);
+    if ( u3a_use(shared) != 1 ) abort();
+  }
+  u3z(held);
+  u3z(shared);
+}
+
+static u3_noun
+_factory_formula(c3_w index, u3_noun clue)
+{
+  u3_noun battery = _lit(0x10000 + index);
+  u3_noun core = u3nt(8, _lit(index), u3nc(_lit(battery), _slot(1)));
+  return u3nt(7, core, u3nt(11, u3nc(c3__fast, _lit(clue)), _slot(1)));
+}
+
+static void
+_factory_cases(void)
+{
+  // A single program crosses both byte-sized pools, including one valid
+  // registration. Other clues exercise the jet dashboard's rejection path.
+  u3m_hate(0);
+  u3_noun clue = u3nt(u3i_string("shape"), _lit(0), 0);
+  u3_noun formula = _factory_formula(260, u3k(clue));
+  for ( c3_w i = 260; i-- > 0; ) {
+    formula = u3nc(_factory_formula(i, u3nc(i, 0)), formula);
+  }
+  u3p(u3n_prog) ref = u3n_find(0, formula);
+  u3n_prog* program = u3to(u3n_prog, ref);
+  if ( program->reg_u.len_w != 261 || program->lit_u.len_w <= 256 ) abort();
+  u3p(u3j_fink) previous = 0;
+  for ( c3_w pass = 0; pass < 4; ++pass ) {
+    u3_noun subject = u3nc(77, pass >> 1);
+    u3_noun expected = _eval(subject, formula);
+    u3_noun result = u3n_burn(ref, subject);
+    if ( c3n == u3r_sing(expected, result) ) abort();
+    u3z(expected);
+    u3z(result);
+    c3_w registered = 0;
+    for ( c3_w i = 0; i < program->reg_u.len_w; ++i ) {
+      u3_weak cached = program->reg_u.rit_u[i].clu;
+      if ( cached != u3_none ) {
+        if ( c3n == u3r_sing(cached, clue) ) abort();
+        u3p(u3j_fink) current = program->reg_u.rit_u[i].fin_p;
+        if ( (pass & 1) && current != previous ) abort();
+        previous = current;
+        ++registered;
+      }
+    }
+    if ( registered != 1 ) abort();
+  }
+  u3z(formula);
+  u3z(clue);
+  u3z(u3m_love(0));
+}
+
 static double
 _seconds(void)
 {
@@ -867,6 +990,12 @@ main(void)
     u3_noun fol = _formula(1 + _rand() % 5);
     _check(_tree(4), fol);
   }
+  _bind_cases();
+  _factory_cases();
+  _pooled_triples();
+  u3m_hate(0);
+  _pooled_triples();
+  u3z(u3m_love(0));
   fprintf(stderr, "decision-test: %u cases, %u products, %u exits\n",
           cases, cases - exits, exits);
   return 0;

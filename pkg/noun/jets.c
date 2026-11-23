@@ -2050,13 +2050,11 @@ u3j_mine(u3_noun clu, u3_noun cor)
   u3t_off(glu_o);
 }
 
-/* u3j_rite_mine(): mine cor with clue, using u3j_rite for caching
-*/
-void
-u3j_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+// Both arguments stay owned by the caller while the registration changes.
+static inline void
+_cj_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
 {
   c3_t non_t;
-  u3t_on(glu_o);
 
   non_t = (u3_none == rit_u->clu);
 
@@ -2079,6 +2077,25 @@ u3j_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
       }
     }
   }
+}
+
+#ifdef U3_NOUN_SHAPES
+void
+u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+{
+  u3t_on(glu_o);
+  _cj_rite_mine(rit_u, clu, cor);
+  u3t_off(glu_o);
+}
+#endif
+
+/* u3j_rite_mine(): mine cor with clue, using u3j_rite for caching
+*/
+void
+u3j_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+{
+  u3t_on(glu_o);
+  _cj_rite_mine(rit_u, clu, cor);
   u3z(clu);
   u3z(cor);
   u3t_off(glu_o);

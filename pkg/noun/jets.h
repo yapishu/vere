@@ -231,6 +231,12 @@
         u3a_jets
         u3j_take(u3a_jets jed_u);
 
+#ifdef U3_NOUN_SHAPES
+      /* Register a core with both clue and core retained by the caller. */
+        void
+        u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor);
+#endif
+
       /* u3j_rite_mine(): mine cor with clu, using u3j_rite for caching
       */
         void

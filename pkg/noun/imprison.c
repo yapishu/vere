@@ -661,6 +661,32 @@ u3i_cell(u3_noun a, u3_noun b)
 u3_noun
 u3i_trel(u3_noun a, u3_noun b, u3_noun c)
 {
+#ifdef U3_NOUN_SHAPES
+  // Pop the two cells in ordinary allocation order. A depleted pool takes
+  // the regular allocation path, including its refill and accounting.
+  if ( u3R->cel.cel_p && u3R->cel.hav_w >= 2 ) {
+    u3t_on(mal_o);
+    u3_post* pool = u3to(u3_post, u3R->cel.cel_p);
+    u3R->cel.hav_w -= 2;
+    u3_post outer = pool[u3R->cel.hav_w];
+    u3_post inner = pool[u3R->cel.hav_w + 1];
+    u3a_cell* tail = u3to(u3a_cell, inner);
+    u3a_cell* root = u3to(u3a_cell, outer);
+    tail->use_w = 1;
+    tail->mug_w = 0;
+    tail->hed = b;
+    tail->tel = c;
+    root->use_w = 1;
+    root->mug_w = 0;
+    root->hed = a;
+    root->tel = u3a_to_pom(inner);
+#ifdef U3_CPU_DEBUG
+    u3R->pro.cel_d += 2;
+#endif
+    u3t_off(mal_o);
+    return u3a_to_pom(outer);
+  }
+#endif
   return u3i_cell(a, u3i_cell(b, c));
 }
 

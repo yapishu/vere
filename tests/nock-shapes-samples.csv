@@ -1,0 +1,297 @@
+suite,workload,comparison,round,cpu,build,nanoseconds
+full compiler,hoon,three builds,1,4,stock,25899275667
+full compiler,hoon,three builds,1,6,branch,20531075587
+full compiler,hoon,three builds,1,8,shapes,18784615136
+full compiler,prelude,three builds,1,4,stock,26842044879
+full compiler,prelude,three builds,1,6,branch,21264883443
+full compiler,prelude,three builds,1,8,shapes,19338368228
+full compiler,prelude,three builds,2,6,stock,26880978651
+full compiler,prelude,three builds,2,8,branch,21504746969
+full compiler,prelude,three builds,2,4,shapes,19269389802
+full compiler,hoon,three builds,2,6,stock,26679578771
+full compiler,hoon,three builds,2,8,branch,21267420367
+full compiler,hoon,three builds,2,4,shapes,18993758373
+full compiler,hoon,three builds,3,8,stock,28050077539
+full compiler,hoon,three builds,3,4,branch,21254019702
+full compiler,hoon,three builds,3,6,shapes,19076314640
+full compiler,prelude,three builds,3,8,stock,26590595596
+full compiler,prelude,three builds,3,4,branch,21538638823
+full compiler,prelude,three builds,3,6,shapes,19163470430
+full compiler,prelude,three builds,4,4,stock,26724240559
+full compiler,prelude,three builds,4,6,branch,21359380341
+full compiler,prelude,three builds,4,8,shapes,18968141803
+full compiler,hoon,three builds,4,4,stock,25643530650
+full compiler,hoon,three builds,4,6,branch,20663164331
+full compiler,hoon,three builds,4,8,shapes,18244642876
+full compiler,hoon,three builds,5,6,stock,25889198654
+full compiler,hoon,three builds,5,8,branch,20740190185
+full compiler,hoon,three builds,5,4,shapes,18770353125
+full compiler,prelude,three builds,5,6,stock,26514125186
+full compiler,prelude,three builds,5,8,branch,20927035942
+full compiler,prelude,three builds,5,4,shapes,18877786322
+full compiler,prelude,three builds,6,8,stock,26667813381
+full compiler,prelude,three builds,6,4,branch,21435218180
+full compiler,prelude,three builds,6,6,shapes,19098909255
+full compiler,hoon,three builds,6,8,stock,25819212691
+full compiler,hoon,three builds,6,4,branch,21504174505
+full compiler,hoon,three builds,6,6,shapes,18845359770
+Dojo batch,ackermann,branch,1,0,branch,601728000
+Dojo batch,ackermann,branch,1,2,shapes,594604000
+Dojo batch,add,branch,1,0,branch,46205000
+Dojo batch,add,branch,1,2,shapes,44897000
+Dojo batch,dec,branch,1,0,branch,39466000
+Dojo batch,dec,branch,1,2,shapes,40704000
+Dojo batch,factorial,branch,1,0,branch,88995000
+Dojo batch,factorial,branch,1,2,shapes,86973000
+Dojo batch,fibonacci,branch,1,0,branch,39143000
+Dojo batch,fibonacci,branch,1,2,shapes,39185000
+Dojo batch,bigslot,branch,1,0,branch,15863000
+Dojo batch,bigslot,branch,1,2,shapes,16161000
+Dojo batch,mmul,branch,1,0,branch,15842000
+Dojo batch,mmul,branch,1,2,shapes,15451000
+Dojo batch,mmul,branch,2,2,branch,15622000
+Dojo batch,mmul,branch,2,0,shapes,16535000
+Dojo batch,bigslot,branch,2,2,branch,15559000
+Dojo batch,bigslot,branch,2,0,shapes,16285000
+Dojo batch,fibonacci,branch,2,2,branch,38581000
+Dojo batch,fibonacci,branch,2,0,shapes,39453000
+Dojo batch,factorial,branch,2,2,branch,87348000
+Dojo batch,factorial,branch,2,0,shapes,89419000
+Dojo batch,dec,branch,2,2,branch,38622000
+Dojo batch,dec,branch,2,0,shapes,40849000
+Dojo batch,add,branch,2,2,branch,45445000
+Dojo batch,add,branch,2,0,shapes,47472000
+Dojo batch,ackermann,branch,2,2,branch,585648000
+Dojo batch,ackermann,branch,2,0,shapes,611489000
+Dojo batch,ackermann,branch,3,0,branch,610996000
+Dojo batch,ackermann,branch,3,2,shapes,622523000
+Dojo batch,add,branch,3,0,branch,45735000
+Dojo batch,add,branch,3,2,shapes,47687000
+Dojo batch,dec,branch,3,0,branch,39443000
+Dojo batch,dec,branch,3,2,shapes,41536000
+Dojo batch,factorial,branch,3,0,branch,89920000
+Dojo batch,factorial,branch,3,2,shapes,91769000
+Dojo batch,fibonacci,branch,3,0,branch,39680000
+Dojo batch,fibonacci,branch,3,2,shapes,39504000
+Dojo batch,bigslot,branch,3,0,branch,16098000
+Dojo batch,bigslot,branch,3,2,shapes,15892000
+Dojo batch,mmul,branch,3,0,branch,15919000
+Dojo batch,mmul,branch,3,2,shapes,16515000
+Dojo batch,mmul,branch,4,2,branch,16669000
+Dojo batch,mmul,branch,4,0,shapes,16319000
+Dojo batch,bigslot,branch,4,2,branch,16355000
+Dojo batch,bigslot,branch,4,0,shapes,16386000
+Dojo batch,fibonacci,branch,4,2,branch,40197000
+Dojo batch,fibonacci,branch,4,0,shapes,39319000
+Dojo batch,factorial,branch,4,2,branch,89061000
+Dojo batch,factorial,branch,4,0,shapes,89087000
+Dojo batch,dec,branch,4,2,branch,38617000
+Dojo batch,dec,branch,4,0,shapes,42130000
+Dojo batch,add,branch,4,2,branch,44676000
+Dojo batch,add,branch,4,0,shapes,46429000
+Dojo batch,ackermann,branch,4,2,branch,586965000
+Dojo batch,ackermann,branch,4,0,shapes,615983000
+Dojo batch,ackermann,branch,5,0,branch,607309000
+Dojo batch,ackermann,branch,5,2,shapes,593688000
+Dojo batch,add,branch,5,0,branch,46682000
+Dojo batch,add,branch,5,2,shapes,45183000
+Dojo batch,dec,branch,5,0,branch,39738000
+Dojo batch,dec,branch,5,2,shapes,39730000
+Dojo batch,factorial,branch,5,0,branch,89848000
+Dojo batch,factorial,branch,5,2,shapes,86999000
+Dojo batch,fibonacci,branch,5,0,branch,40098000
+Dojo batch,fibonacci,branch,5,2,shapes,38358000
+Dojo batch,bigslot,branch,5,0,branch,16357000
+Dojo batch,bigslot,branch,5,2,shapes,15791000
+Dojo batch,mmul,branch,5,0,branch,19318000
+Dojo batch,mmul,branch,5,2,shapes,16323000
+Dojo batch,mmul,branch,6,2,branch,15706000
+Dojo batch,mmul,branch,6,0,shapes,16700000
+Dojo batch,bigslot,branch,6,2,branch,16288000
+Dojo batch,bigslot,branch,6,0,shapes,27417000
+Dojo batch,fibonacci,branch,6,2,branch,38928000
+Dojo batch,fibonacci,branch,6,0,shapes,41018000
+Dojo batch,factorial,branch,6,2,branch,88650000
+Dojo batch,factorial,branch,6,0,shapes,95368000
+Dojo batch,dec,branch,6,2,branch,39500000
+Dojo batch,dec,branch,6,0,shapes,42678000
+Dojo batch,add,branch,6,2,branch,45562000
+Dojo batch,add,branch,6,0,shapes,50149000
+Dojo batch,ackermann,branch,6,2,branch,599395000
+Dojo batch,ackermann,branch,6,0,shapes,644676000
+Dojo batch,ackermann,branch,7,0,branch,638055000
+Dojo batch,ackermann,branch,7,2,shapes,600869000
+Dojo batch,add,branch,7,0,branch,48470000
+Dojo batch,add,branch,7,2,shapes,45238000
+Dojo batch,dec,branch,7,0,branch,41615000
+Dojo batch,dec,branch,7,2,shapes,41095000
+Dojo batch,factorial,branch,7,0,branch,94085000
+Dojo batch,factorial,branch,7,2,shapes,88568000
+Dojo batch,fibonacci,branch,7,0,branch,41346000
+Dojo batch,fibonacci,branch,7,2,shapes,39568000
+Dojo batch,bigslot,branch,7,0,branch,16410000
+Dojo batch,bigslot,branch,7,2,shapes,15937000
+Dojo batch,mmul,branch,7,0,branch,15801000
+Dojo batch,mmul,branch,7,2,shapes,15936000
+Dojo batch,mmul,branch,8,2,branch,15605000
+Dojo batch,mmul,branch,8,0,shapes,16313000
+Dojo batch,bigslot,branch,8,2,branch,15960000
+Dojo batch,bigslot,branch,8,0,shapes,16649000
+Dojo batch,fibonacci,branch,8,2,branch,39428000
+Dojo batch,fibonacci,branch,8,0,shapes,39359000
+Dojo batch,factorial,branch,8,2,branch,88261000
+Dojo batch,factorial,branch,8,0,shapes,88110000
+Dojo batch,dec,branch,8,2,branch,38449000
+Dojo batch,dec,branch,8,0,shapes,41125000
+Dojo batch,add,branch,8,2,branch,44898000
+Dojo batch,add,branch,8,0,shapes,46162000
+Dojo batch,ackermann,branch,8,2,branch,592782000
+Dojo batch,ackermann,branch,8,0,shapes,622187000
+Dojo compile,slap,branch,1,0,branch,14607000
+Dojo compile,slap,branch,1,2,shapes,11474000
+Dojo compile,slap,branch,2,2,branch,13106000
+Dojo compile,slap,branch,2,0,shapes,11793000
+Dojo compile,slap,branch,3,0,branch,13599000
+Dojo compile,slap,branch,3,2,shapes,13311000
+Dojo compile,slap,branch,4,2,branch,13945000
+Dojo compile,slap,branch,4,0,shapes,11698000
+Dojo compile,slap,branch,5,0,branch,13723000
+Dojo compile,slap,branch,5,2,shapes,12551000
+Dojo compile,slap,branch,6,2,branch,13226000
+Dojo compile,slap,branch,6,0,shapes,11891000
+Dojo compile,slap,branch,7,0,branch,13148000
+Dojo compile,slap,branch,7,2,shapes,11177000
+Dojo compile,slap,branch,8,2,branch,13509000
+Dojo compile,slap,branch,8,0,shapes,11309000
+Dojo batch,ackermann,stock,1,0,stock,931839000
+Dojo batch,ackermann,stock,1,2,shapes,596154000
+Dojo batch,add,stock,1,0,stock,71330000
+Dojo batch,add,stock,1,2,shapes,47294000
+Dojo batch,dec,stock,1,0,stock,58773000
+Dojo batch,dec,stock,1,2,shapes,40873000
+Dojo batch,factorial,stock,1,0,stock,122417000
+Dojo batch,factorial,stock,1,2,shapes,87460000
+Dojo batch,fibonacci,stock,1,0,stock,53029000
+Dojo batch,fibonacci,stock,1,2,shapes,37875000
+Dojo batch,bigslot,stock,1,0,stock,23375000
+Dojo batch,bigslot,stock,1,2,shapes,16214000
+Dojo batch,mmul,stock,1,0,stock,22718000
+Dojo batch,mmul,stock,1,2,shapes,15840000
+Dojo batch,mmul,stock,2,2,stock,21715000
+Dojo batch,mmul,stock,2,0,shapes,16386000
+Dojo batch,bigslot,stock,2,2,stock,22990000
+Dojo batch,bigslot,stock,2,0,shapes,16443000
+Dojo batch,fibonacci,stock,2,2,stock,52142000
+Dojo batch,fibonacci,stock,2,0,shapes,41461000
+Dojo batch,factorial,stock,2,2,stock,117780000
+Dojo batch,factorial,stock,2,0,shapes,88831000
+Dojo batch,dec,stock,2,2,stock,57290000
+Dojo batch,dec,stock,2,0,shapes,41592000
+Dojo batch,add,stock,2,2,stock,67003000
+Dojo batch,add,stock,2,0,shapes,46167000
+Dojo batch,ackermann,stock,2,2,stock,883485000
+Dojo batch,ackermann,stock,2,0,shapes,632085000
+Dojo batch,ackermann,stock,3,0,stock,906071000
+Dojo batch,ackermann,stock,3,2,shapes,599595000
+Dojo batch,add,stock,3,0,stock,68841000
+Dojo batch,add,stock,3,2,shapes,45389000
+Dojo batch,dec,stock,3,0,stock,58556000
+Dojo batch,dec,stock,3,2,shapes,39825000
+Dojo batch,factorial,stock,3,0,stock,123574000
+Dojo batch,factorial,stock,3,2,shapes,86735000
+Dojo batch,fibonacci,stock,3,0,stock,53219000
+Dojo batch,fibonacci,stock,3,2,shapes,38277000
+Dojo batch,bigslot,stock,3,0,stock,23319000
+Dojo batch,bigslot,stock,3,2,shapes,15848000
+Dojo batch,mmul,stock,3,0,stock,22026000
+Dojo batch,mmul,stock,3,2,shapes,15594000
+Dojo batch,mmul,stock,4,2,stock,21549000
+Dojo batch,mmul,stock,4,0,shapes,15754000
+Dojo batch,bigslot,stock,4,2,stock,23017000
+Dojo batch,bigslot,stock,4,0,shapes,15866000
+Dojo batch,fibonacci,stock,4,2,stock,52309000
+Dojo batch,fibonacci,stock,4,0,shapes,39893000
+Dojo batch,factorial,stock,4,2,stock,119616000
+Dojo batch,factorial,stock,4,0,shapes,91795000
+Dojo batch,dec,stock,4,2,stock,57775000
+Dojo batch,dec,stock,4,0,shapes,41880000
+Dojo batch,add,stock,4,2,stock,68044000
+Dojo batch,add,stock,4,0,shapes,48717000
+Dojo batch,ackermann,stock,4,2,stock,883173000
+Dojo batch,ackermann,stock,4,0,shapes,621861000
+Dojo batch,ackermann,stock,5,0,stock,911068000
+Dojo batch,ackermann,stock,5,2,shapes,607707000
+Dojo batch,add,stock,5,0,stock,72950000
+Dojo batch,add,stock,5,2,shapes,47891000
+Dojo batch,dec,stock,5,0,stock,75074000
+Dojo batch,dec,stock,5,2,shapes,41118000
+Dojo batch,factorial,stock,5,0,stock,169872000
+Dojo batch,factorial,stock,5,2,shapes,117332000
+Dojo batch,fibonacci,stock,5,0,stock,55948000
+Dojo batch,fibonacci,stock,5,2,shapes,41053000
+Dojo batch,bigslot,stock,5,0,stock,24729000
+Dojo batch,bigslot,stock,5,2,shapes,16483000
+Dojo batch,mmul,stock,5,0,stock,23539000
+Dojo batch,mmul,stock,5,2,shapes,16094000
+Dojo batch,mmul,stock,6,2,stock,22598000
+Dojo batch,mmul,stock,6,0,shapes,17038000
+Dojo batch,bigslot,stock,6,2,stock,23923000
+Dojo batch,bigslot,stock,6,0,shapes,17760000
+Dojo batch,fibonacci,stock,6,2,stock,54287000
+Dojo batch,fibonacci,stock,6,0,shapes,41003000
+Dojo batch,factorial,stock,6,2,stock,125043000
+Dojo batch,factorial,stock,6,0,shapes,95030000
+Dojo batch,dec,stock,6,2,stock,60286000
+Dojo batch,dec,stock,6,0,shapes,42197000
+Dojo batch,add,stock,6,2,stock,70833000
+Dojo batch,add,stock,6,0,shapes,49797000
+Dojo batch,ackermann,stock,6,2,stock,905897000
+Dojo batch,ackermann,stock,6,0,shapes,655109000
+Dojo batch,ackermann,stock,7,0,stock,936418000
+Dojo batch,ackermann,stock,7,2,shapes,613456000
+Dojo batch,add,stock,7,0,stock,72411000
+Dojo batch,add,stock,7,2,shapes,47230000
+Dojo batch,dec,stock,7,0,stock,62650000
+Dojo batch,dec,stock,7,2,shapes,41124000
+Dojo batch,factorial,stock,7,0,stock,127765000
+Dojo batch,factorial,stock,7,2,shapes,89276000
+Dojo batch,fibonacci,stock,7,0,stock,59943000
+Dojo batch,fibonacci,stock,7,2,shapes,39302000
+Dojo batch,bigslot,stock,7,0,stock,24865000
+Dojo batch,bigslot,stock,7,2,shapes,16167000
+Dojo batch,mmul,stock,7,0,stock,22382000
+Dojo batch,mmul,stock,7,2,shapes,15638000
+Dojo batch,mmul,stock,8,2,stock,21458000
+Dojo batch,mmul,stock,8,0,shapes,17975000
+Dojo batch,bigslot,stock,8,2,stock,23099000
+Dojo batch,bigslot,stock,8,0,shapes,17252000
+Dojo batch,fibonacci,stock,8,2,stock,53657000
+Dojo batch,fibonacci,stock,8,0,shapes,38948000
+Dojo batch,factorial,stock,8,2,stock,119015000
+Dojo batch,factorial,stock,8,0,shapes,94327000
+Dojo batch,dec,stock,8,2,stock,57327000
+Dojo batch,dec,stock,8,0,shapes,42319000
+Dojo batch,add,stock,8,2,stock,67227000
+Dojo batch,add,stock,8,0,shapes,47739000
+Dojo batch,ackermann,stock,8,2,stock,885339000
+Dojo batch,ackermann,stock,8,0,shapes,652317000
+Dojo compile,slap,stock,1,0,stock,15366000
+Dojo compile,slap,stock,1,2,shapes,11730000
+Dojo compile,slap,stock,2,2,stock,15039000
+Dojo compile,slap,stock,2,0,shapes,13580000
+Dojo compile,slap,stock,3,0,stock,15429000
+Dojo compile,slap,stock,3,2,shapes,11432000
+Dojo compile,slap,stock,4,2,stock,15103000
+Dojo compile,slap,stock,4,0,shapes,12297000
+Dojo compile,slap,stock,5,0,stock,16278000
+Dojo compile,slap,stock,5,2,shapes,12196000
+Dojo compile,slap,stock,6,2,stock,14849000
+Dojo compile,slap,stock,6,0,shapes,13270000
+Dojo compile,slap,stock,7,0,stock,15332000
+Dojo compile,slap,stock,7,2,shapes,11627000
+Dojo compile,slap,stock,8,2,stock,15083000
+Dojo compile,slap,stock,8,0,shapes,12249000
+cold replay,events 6-143,branch,1,10,shapes,308980000000
+cold replay,events 6-143,branch,1,0,branch,363080000000
+cold replay,events 6-143,branch,2,0,shapes,319460000000
+cold replay,events 6-143,branch,2,10,branch,344680000000

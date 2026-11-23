@@ -1335,6 +1335,10 @@ _n_comp_operands(u3_noun* ops, u3_noun left, u3_noun right, c3_o lose)
   return size + 1 + _n_comp(ops, right, lose, c3n);
 }
 
+#ifdef U3_NOUN_SHAPES
+#include "nock_bind.inc"
+#endif
+
 /* _n_comp(): compile nock formula to reversed opcode list
  *            ops is a pointer to a list (to be emitted to)
  *            fol is the nock formula to compile. RETAIN.
@@ -1561,6 +1565,18 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
 
     case 8:
       u3x_cell(arg, &hed, &tel);
+#ifdef U3_NOUN_SHAPES
+      {
+        c3_t first = 1;
+        c3_w budget = 32;
+        u3_weak body = _n_bind_body(tel, hed, &first, &budget);
+        if ( body != u3_none ) {
+          tot_w += _n_comp(ops, body, los_o, tel_o);
+          u3z(body);
+          break;
+        }
+      }
+#endif
       tot_w += _n_comp(ops, hed, c3n, c3n);
       ++tot_w; _n_emit(ops, (c3y == los_o) ? SNOL : SNOC);
       tot_w += _n_comp(ops, tel, c3y, tel_o);
@@ -2519,10 +2535,45 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       *top = u3nc(*top, x);          // [pro]
       BURN();
 
-#ifdef U3_DECISION_BENCH
+#if defined(U3_DECISION_BENCH) || defined(U3_NOUN_SHAPES)
     do_snoc:
     do_snol: {
       c3_t keep = pog[ip_w - 1] == SNOC;
+#ifdef U3_NOUN_SHAPES
+      // [value context] followed by [literal subject] produces one trel.
+      // The literal table and the result own both operands of a %fast
+      // hint that immediately registers the constructed core.
+      if ( pog[ip_w] == LIBK || pog[ip_w] == LISK ) {
+        c3_w cursor = ip_w + 1;
+        c3_w literal = pog[ip_w] == LIBK ? pog[cursor++] : _n_resh(pog, &cursor);
+        if ( pog[cursor] == SWAP && pog[cursor + 1] == AULT ) {
+          ip_w = cursor + 2;
+          x = _n_pep(mov, off);
+          top = _n_peek(off);
+          u3_noun context = keep ? u3k(*top) : *top;
+          u3_noun product = u3nt(u3k(pog_u->lit_u.non[literal]), x, context);
+
+          if ( pog[ip_w] == LIBK || pog[ip_w] == LISK ) {
+            cursor = ip_w + 1;
+            c3_w clue = pog[ip_w] == LIBK ? pog[cursor++] : _n_resh(pog, &cursor);
+            if ( pog[cursor] == SWAP &&
+                 (pog[cursor + 1] == BALT || pog[cursor + 1] == SALT) ) {
+              c3_y op = pog[cursor + 1];
+              cursor += 2;
+              c3_w site = op == BALT ? pog[cursor++] : _n_resh(pog, &cursor);
+              u3t_off(noc_o);
+              u3j_rite_mine_keep(&pog_u->reg_u.rit_u[site], pog_u->lit_u.non[clue], product);
+              u3t_on(noc_o);
+              ip_w = cursor;
+            }
+          }
+          if ( keep ) _n_push(mov, off, product);
+          else *top = product;
+          BURN();
+        }
+      }
+#endif
+#ifdef U3_DECISION_BENCH
       // [x y] -> [[x y]] -> [x [x y]] -> [[x y] x] -> [fragment x].
       // Forward the children directly while the pair stays unobservable.
       if ( pog[ip_w] == HEAD && pog[ip_w + 1] == SWAP ) {
@@ -2553,6 +2604,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
           BURN();
         }
       }
+#endif
       x = _n_pep(mov, off);
       top = _n_peek(off);
       if ( keep ) _n_push(mov, off, u3nc(x, u3k(*top)));
