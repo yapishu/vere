@@ -1,6 +1,7 @@
 /// @file
 
 #include "noun.h"
+#include "../ur/bitstream.h"
 
 /* _setup(): prepare for tests.
 */
@@ -119,6 +120,155 @@ _test_cue_spec(const c3_c* cap_c,
   }
 
   return ret_i;
+}
+
+/* Check both cue entry points against a noun built independently of the
+** bitstream. Reuse the external dictionary across successes and exits.
+*/
+static void
+_check_stream(u3_cue_xeno* decoder, ur_bsw_t* writer, u3_weak expected)
+{
+  c3_d len;
+  c3_y* bytes;
+  ur_bsw_done(writer, &len, &bytes);
+  u3_noun result = u3m_soft(0, u3s_cue_atom, u3i_bytes(len, bytes));
+  u3_weak external = u3s_cue_xeno_with(decoder, len, bytes);
+  if ( expected == u3_none ) {
+    u3_assert(u3h(result) == c3__exit && external == u3_none);
+  }
+  else {
+    u3_assert(u3h(result) == 0 && external != u3_none);
+    u3_assert(c3y == u3r_sing(expected, u3t(result)));
+    u3_assert(c3y == u3r_sing(expected, external));
+    u3z(external);
+  }
+  u3z(result);
+  c3_free(bytes);
+}
+
+typedef struct {
+  uint32_t rng;
+  unsigned used;
+  c3_d starts[64];
+  u3_noun values[64];
+} _cue_generator;
+
+static uint32_t
+_sample(_cue_generator* gen)
+{
+  uint32_t r = gen->rng;
+  r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+  return gen->rng = r;
+}
+
+// Build the expected noun while writing a prefix stream. Backreferences pick
+// completed values by index in this generator, independently of cue's lookup.
+static u3_noun
+_write_tree(ur_bsw_t* writer, _cue_generator* gen, unsigned depth)
+{
+  c3_d start = writer->bits;
+  uint32_t draw = _sample(gen);
+  if ( gen->used && draw % 7 == 0 ) {
+    unsigned i = _sample(gen) % c3_min(gen->used, 64);
+    c3_d bit = gen->starts[i];
+    ur_bsw_back64(writer, bit ? 64 - __builtin_clzll(bit) : 0, bit);
+    return u3k(gen->values[i]);
+  }
+
+  u3_noun value;
+  if ( depth && draw % 4 != 0 ) {
+    ur_bsw_cell(writer);
+    u3_noun head = _write_tree(writer, gen, depth - 1);
+    value = u3nc(head, _write_tree(writer, gen, depth - 1));
+  }
+  else {
+    c3_d atom = draw % 3 ? draw % 257 : ((c3_d)draw << 32) | _sample(gen);
+    ur_bsw_atom64(writer, atom ? 64 - __builtin_clzll(atom) : 0, atom);
+    value = u3i_chub(atom);
+  }
+  unsigned i = gen->used++ % 64;
+  gen->starts[i] = start;
+  gen->values[i] = value;
+  return value;
+}
+
+static void
+_test_cue_positions(void)
+{
+  u3_cue_xeno* decoder = u3s_cue_xeno_init_with(1, 2);
+  // The prefix is [ [42 7] [ back-to-42 ... ] ]. An offset may name a
+  // completed atom or cell. Open cells, payload bits and the backreference
+  // token itself have no dictionary value.
+  for ( c3_d target = 0; target < 80; target++ ) {
+    ur_bsw_t writer = {0};
+    ur_bsw_init(&writer, 13, 21);
+    ur_bsw_cell(&writer);
+    c3_d pair = writer.bits;
+    ur_bsw_cell(&writer);
+    c3_d first = writer.bits;
+    ur_bsw_atom64(&writer, 6, 42);
+    c3_d second = writer.bits;
+    ur_bsw_atom64(&writer, 3, 7);
+    ur_bsw_cell(&writer);
+    ur_bsw_back64(&writer, c3_bits_word(first), first);
+    ur_bsw_back64(&writer, c3_bits_word(target), target);
+    u3_weak value = target == pair ? u3nc(42, 7)
+                   : target == first ? 42 : target == second ? 7 : u3_none;
+    u3_weak expected = value == u3_none ? u3_none : u3nt(u3nc(42, 7), 42, value);
+    _check_stream(decoder, &writer, expected);
+    if ( expected != u3_none ) u3z(expected);
+  }
+
+  // Skip many empty pages with a single atom, then refer to completed
+  // entries on both sides of the gap in a nonmonotonic order.
+  {
+    ur_bsw_t writer = {0};
+    c3_d starts[128];
+    u3_noun values[128];
+    c3_y payload[4096];
+    memset(payload, 0xa5, sizeof(payload));
+    ur_bsw_init(&writer, 13, 21);
+    for ( unsigned i = 0; i < 128; i++ ) {
+      ur_bsw_cell(&writer);
+      starts[i] = writer.bits;
+      if ( i == 64 ) {
+        ur_bsw_atom_bytes(&writer, sizeof(payload) * 8, payload);
+        values[i] = u3i_bytes(sizeof(payload), payload);
+      }
+      else {
+        ur_bsw_atom64(&writer, c3_bits_word(i), i);
+        values[i] = i;
+      }
+    }
+    for ( unsigned i = 0; i < 128; i++ ) {
+      c3_d bit = starts[(i * 73) % 128];
+      ur_bsw_cell(&writer);
+      ur_bsw_back64(&writer, c3_bits_word(bit), bit);
+    }
+    ur_bsw_atom64(&writer, 0, 0);
+    u3_noun expected = 0;
+    for ( unsigned i = 128; i-- > 0; ) {
+      expected = u3nc(u3k(values[(i * 73) % 128]), expected);
+    }
+    for ( unsigned i = 128; i-- > 0; ) expected = u3nc(values[i], expected);
+    _check_stream(decoder, &writer, expected);
+    u3z(expected);
+  }
+
+  // A backreference into the previous input must fail on a reused handle.
+  ur_bsw_t writer = {0};
+  ur_bsw_init(&writer, 13, 21);
+  ur_bsw_back64(&writer, 2, 2);
+  _check_stream(decoder, &writer, u3_none);
+  for ( uint32_t seed = 1; seed <= 512; seed++ ) {
+    _cue_generator gen = { .rng = seed };
+    ur_bsw_t bits = {0};
+    ur_bsw_init(&bits, 13, 21);
+    u3_noun expected = _write_tree(&bits, &gen, 9);
+    _check_stream(decoder, &bits, expected);
+    u3z(expected);
+  }
+  u3s_cue_xeno_done(decoder);
 }
 
 static c3_i
@@ -254,6 +404,8 @@ main(int argc, char* argv[])
     fprintf(stderr, "test jam: failed\r\n");
     exit(1);
   }
+
+  _test_cue_positions();
 
   //  GC
   //

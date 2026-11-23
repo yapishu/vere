@@ -856,6 +856,17 @@ fn buildBinary(
                 .deps = noun_test_deps,
             },
             .{
+                .name = "cue-bench",
+                .file = "pkg/noun/cue_bench.c",
+                .deps = &.{
+                    pkg_noun.artifact("noun"),
+                    pkg_c3.artifact("c3"),
+                    gmp.artifact("gmp"),
+                    urcrypt.artifact("urcrypt"),
+                },
+                .nix = true,
+            },
+            .{
                 .name = "serial-test",
                 .file = "pkg/noun/serial_tests.c",
                 .deps = noun_test_deps,
