@@ -464,6 +464,10 @@ u3i_halfs(c3_w        a_w,
     u3i_slab_bare(&sab_u, 5, a_w);
 
     u3t_on(mal_o);
+#ifdef VERE64
+    // An odd number of 32-bit limbs fills only half of the final loom word.
+    sab_u.buf_w[sab_u.len_w - 1] = 0;
+#endif
     memcpy(sab_u.buf_w, b_h, (size_t)4 * a_w);
     u3t_off(mal_o);
 

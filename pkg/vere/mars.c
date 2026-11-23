@@ -15,6 +15,9 @@
 #include "db/lmdb.h"
 #include <mars.h>
 #include <stdio.h>
+#ifdef U3_REPLAY_AUDIT
+#include <openssl/sha.h>
+#endif
 
 c3_c tac_c[256];  //  tracing label
 
@@ -1016,6 +1019,24 @@ _mars_disk_cb(void* ptr_v, c3_d eve_d, c3_o ret_o)
   _mars_flush(mar_u);
 }
 
+#ifdef U3_REPLAY_AUDIT
+// Hash the canonical jam in a child road so the serializer borrows the state.
+static void
+_mars_audit(const char* kind, c3_d event, u3_noun value)
+{
+  c3_d len_d;
+  c3_y *buf_y, dig_y[SHA256_DIGEST_LENGTH];
+  u3m_hate(0);
+  u3s_jam_xeno(value, &len_d, &buf_y);
+  SHA256(buf_y, len_d, dig_y);
+  free(buf_y);
+  u3z(u3m_love(0));
+  fprintf(stderr, "\n%s %" PRIu64 " %" PRIu64 " ", kind, event, len_d);
+  for ( size_t i = 0; i < sizeof(dig_y); ++i ) fprintf(stderr, "%02x", dig_y[i]);
+  fputc('\n', stderr);
+}
+#endif
+
 /* _mars_poke_play(): replay an event.
 */
 static u3_weak
@@ -1065,6 +1086,10 @@ _mars_poke_play(u3_mars* mar_u, const u3_fact* tac_u)
     u3A->eve_d++;
   }
 
+#ifdef U3_REPLAY_AUDIT
+  u3a_defer_close();
+  _mars_audit("product", tac_u->eve_d, dat);
+#endif
   u3z(gon);
   u3a_defer_close();
   u3e_Phase = pha_y;
@@ -1426,6 +1451,9 @@ u3_mars_play(u3_mars* mar_u, c3_d eve_d, c3_d sap_d)
     }
 
     mar_u->sen_d = mar_u->dun_d = met_u.lif_h;
+#ifdef U3_REPLAY_AUDIT
+    _mars_audit("bootstrap-core", met_u.lif_h, u3A->roc);
+#endif
     u3m_save();
   }
 

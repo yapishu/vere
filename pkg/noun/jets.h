@@ -269,6 +269,11 @@
         void
         u3j_site_ream(u3j_site* sit_u);
 
+#ifdef U3_TAIL_BENCH
+      c3_o
+      u3j_site_unregistered(const u3j_site* site);
+#endif
+
       /* u3j_site_kick(): kick a core with a u3j_site cache.
        */
         u3_weak

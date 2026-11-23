@@ -1697,6 +1697,23 @@ _cj_site_kick(u3_noun cor, u3j_site* sit_u)
   return pro;
 }
 
+#ifdef U3_TAIL_BENCH
+// Check all roads for the battery, independently of the current sample.
+// This decision lasts only while executing a body with no registrations.
+c3_o
+u3j_site_unregistered(const u3j_site* site)
+{
+  if ( site->loc != u3_none || site->bas == u3_none ||
+       (u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) return c3n;
+  if ( !(u3C.wag_h & u3o_hashless) &&
+       u3_none != u3h_git(u3H->rod_u.jed.hot_p, site->bas) ) return c3n;
+  u3_weak reg = _cj_find_cold(site->bat);
+  if ( reg == u3_none ) return c3y;
+  u3z(reg);
+  return c3n;
+}
+#endif
+
 /* u3j_site_kick(): kick a core with a u3j_site cache.
  */
 u3_weak

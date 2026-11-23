@@ -1,0 +1,13 @@
+=bweight |=([x=* y=*] ^-(@ud ?:(=(x y) 7 11)))
+=bswap |=([x=* y=*] ^-([* *] [y x]))
+=brep |=([n=@ud l=(list [x=* y=*])] ^-((list [x=* y=*]) ?:(=(n 0) l $(n (dec n), l (weld l l)))))
+=brows (brep 15 ~[[1 1] [2 3] [[4 5] [4 5]] [[4 5] [4 6]] [[2 3] 8] [11 11] [[4 5] [4 5]] [7 8]])
+=bcall |=([l=(list [x=* y=*]) a=@ud] ^-(@ud ?~(l a $(l t.l, a (add a (bweight x.i.l y.i.l))))))
+=binline |=([l=(list [x=* y=*]) a=@ud] ^-(@ud ?~(l a $(l t.l, a (add a ?:(=(x.i.l y.i.l) 7 11))))))
+=bpair |=([l=(list [x=* y=*]) a=@ud] ^-(@ud ?~(l a $(l t.l, a (add a (bweight (bswap x.i.l y.i.l)))))))
+=bcount |=([n=@ud i=@ud a=@ud] ^-(@ud ?:(=(i n) a $(i +(i), a +(+(a))))))
+
+~>(%bout (bcall brows 41))
+~>(%bout (binline brows 41))
+~>(%bout (bpair brows 41))
+~>(%bout (bcount 2.000.000 0 41))
