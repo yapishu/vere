@@ -18,7 +18,12 @@ typedef c3_h       u3n_version;
 
 #define U3N_VER1   (u3n_version)0  // zero-indexedfor backcompat
 #define U3N_VER2   (u3n_version)1
+#define U3N_VER_PATHS (u3n_version)3
+#ifdef U3_COMPILED_PROJECTIONS
+#define U3N_VERLAT U3N_VER_PATHS
+#else
 #define U3N_VERLAT U3N_VER2
+#endif
 
 /*  snapshot patch format
  */

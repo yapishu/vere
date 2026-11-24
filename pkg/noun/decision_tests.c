@@ -373,6 +373,60 @@ _at_axis(c3_w axis, u3_noun val)
   return val;
 }
 
+// Retained subjects, consuming slots, overlapping reads, and a failing read
+// on either arm. The reference evaluator walks each axis independently.
+static void
+_projection_cases(void)
+{
+  const c3_h axes[] = {4, 6, 14, 126, 255, 256, 1023, 16382};
+  u3_noun values[] = {0, 1, 42, 256, 65535, 65536, u3i_chub(1ULL << 56),
+                      u3i_string("an indirect atom on either loom"), u3nc(42, 42)};
+  for ( size_t i = 0; i < sizeof(axes)/sizeof(*axes); ++i ) {
+    c3_h base = axes[i];
+    u3_noun subject = _at_axis(base, _numbered(2, 1));
+    for ( c3_h first = 0; first < 3; ++first ) {
+      c3_h axis = first ? 2 * base + first - 1 : base;
+      c3_h arms[] = {base, 2 * base, 2 * base + 1, 4 * base + 2, 3, 0};
+      for ( size_t j = 0; j < sizeof(arms)/sizeof(*arms); ++j ) {
+        c3_h field = arms[j];
+        u3_noun arm = _slot(field);
+        u3_noun pair = u3nc(_slot(axis), u3k(arm));
+        _check(u3k(subject), u3k(pair));
+        _check(u3k(subject), u3nc(pair, _slot(1)));
+        for ( size_t k = 0; k <= sizeof(values)/sizeof(*values); ++k ) {
+          u3_noun test = k ? u3nt(5, _slot(axis), _lit(u3k(values[k - 1])))
+                           : u3nc(3, _slot(axis));
+          u3_noun nested = u3nq(6, u3nc(3, _slot(base)), u3k(arm), _slot(2));
+          u3_noun fol = u3nq(6, test, nested, u3nc(u3k(arm), _slot(1)));
+          _check(u3k(subject), u3k(fol));
+          _check(_at_axis(axis, k ? u3k(values[k - 1]) : 0), u3k(fol));
+          _check(0, fol);
+        }
+        u3z(arm);
+      }
+    }
+    u3z(subject);
+  }
+  // Both edges into a wide conditional are reachable. One arm starts
+  // with a retained slot and the other with a consuming slot.
+  for ( unsigned depth = 8; depth <= 14; depth += 6 ) {
+    u3_noun padding = _lit(1024);
+    for ( unsigned i = 0; i < depth; ++i ) padding = u3nc(u3k(padding), padding);
+    u3_noun test = u3nt(5, _slot(14), _lit(0));
+    u3_noun fol = u3nq(6, test, u3nc(_slot(15), padding), _slot(7));
+    _check(_at_axis(14, 0), u3k(fol));
+    _check(_at_axis(14, 1), fol);
+  }
+  // The trailing literal pool puts the equality operand above index 255.
+  u3_noun padding = _lit(1000000);
+  for ( unsigned i = 0; i < 9; ++i ) padding = u3nc(u3k(padding), padding);
+  u3_noun test = u3nt(5, _slot(14), _lit(u3k(values[7])));
+  u3_noun fol = u3nc(u3nq(6, test, _slot(15), _slot(7)), padding);
+  _check(_at_axis(14, u3i_string("an indirect atom on either loom")), u3k(fol));
+  _check(_at_axis(14, u3nc(42, 42)), fol);
+  for ( size_t i = 0; i < sizeof(values)/sizeof(*values); ++i ) u3z(values[i]);
+}
+
 static void
 _mixed(void)
 {
@@ -1300,10 +1354,71 @@ _bench(c3_w arms, const char* mode)
   u3z(u3m_love(0));
 }
 
+// Select a payload by tag, or follow up to four heads in a variable-depth noun.
+static void
+_projection_bench(c3_t nested)
+{
+  const c3_h bases[] = {6, 30, 510};
+  for ( size_t i = 0; i < sizeof(bases)/sizeof(*bases); ++i ) {
+    c3_h base = bases[i];
+    u3_noun subjects[512];
+    for ( c3_h j = 0; j < 512; ++j ) {
+      u3_noun payload = j;
+      if ( nested ) {
+        for ( c3_h d = 0; d < j % 5; ++d ) payload = u3nc(payload, d);
+      }
+      else payload = u3nt(j & 1, j + 1000, j + 2000);
+      subjects[j] = _at_axis(base, payload);
+    }
+    u3_noun fol;
+    if ( nested ) {
+      fol = _slot(base << 4);
+      for ( unsigned d = 4; d-- > 0; ) {
+        c3_h axis = base << d;
+        fol = u3nq(6, u3nc(3, _slot(axis)), fol, _slot(axis));
+      }
+    }
+    else {
+      u3_noun test = u3nt(5, _slot(2 * base), _lit(0));
+      fol = u3nq(6, test, _slot(4 * base + 2), _slot(4 * base + 3));
+    }
+    u3p(u3n_prog) prog = u3n_find(0, fol);
+    const c3_h count = 4000000;
+    double start = _seconds();
+    for ( c3_h j = 0; j < count; ++j ) {
+      c3_h index = (j * 1877) & 511;
+      u3_noun value = u3n_burn(prog, u3k(subjects[index]));
+      c3_h expected = nested ? index : index + ((index & 1) ? 2000 : 1000);
+      if ( value != expected ) abort();
+    }
+    printf("%u %.3f\n", base, 1e9 * (_seconds() - start) / count);
+    u3z(fol);
+    for ( c3_h j = 0; j < 512; ++j ) u3z(subjects[j]);
+  }
+}
+
 int
 main(void)
 {
   u3m_boot_lite(1 << 27);
+  if ( getenv("U3_PROJECTION_MICRO") ) {
+    _projection_bench(getenv("U3_PROJECTION_NESTED") != NULL);
+    return 0;
+  }
+  if ( getenv("U3_PROJECTION_CHECK") ) {
+    trace = getenv("U3_CASE_TRACE") != NULL;
+    if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
+    _projection_cases();
+    fprintf(stderr, "projection-test: %u cases, %u products, %u exits\n",
+            cases, cases - exits, exits);
+#if defined(U3_PROJECTION_STATS) && defined(U3_COMPILED_PROJECTIONS)
+    extern void u3n_projection_report(const char*);
+    extern unsigned u3n_projection_widths(void);
+    u3n_projection_report("test");
+    if ( u3n_projection_widths() != 7 ) abort();
+#endif
+    return 0;
+  }
   if ( getenv("U3_SHORT_AXIS_CHECK") ) {
     if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
     _check_short_axes();

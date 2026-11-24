@@ -415,6 +415,11 @@ _n_nock_on(u3_noun bus, u3_noun fol)
 // Note that we use an X macro (https://en.wikipedia.org/wiki/X_Macro) to unify
 // the opcode's enum name, string representation, and computed goto into a
 // single structure.
+#ifdef U3_COMPILED_PROJECTIONS
+# define PROJECTION_OPS X(PFRD, "pfrd", &&do_pfrd), X(PFHD, "pfhd", &&do_pfrd),
+#else
+# define PROJECTION_OPS
+#endif
 #define OPCODES                                                                \
   /* non-nock bytecodes */                                                     \
   X(HALT, "halt", &&do_halt),  /*  0: terminator, end of bytcode program */    \
@@ -536,7 +541,8 @@ _n_nock_on(u3_noun bus, u3_noun fol)
   X(KUTS, "kuts", &&do_kuts),  /* 92: c3_s */                                  \
   X(KITB, "kitb", &&do_kitb),  /* 93: c3_b */                                  \
   X(KITS, "kits", &&do_kits),  /* 94: c3_s */                                  \
-  X(LAST,   NULL,      NULL),  /* 95 */
+  PROJECTION_OPS                                                               \
+  X(LAST,   NULL,      NULL),
 
 // Opcodes. Define X to select the enum name from OPCODES.
 #define X(opcode, name, indirect_jump) opcode
@@ -549,6 +555,9 @@ static inline c3_y
 _n_arg(c3_y cod_y)
 {
   switch ( cod_y ) {
+#ifdef U3_COMPILED_PROJECTIONS
+    case PFRD: case PFHD: return 4;
+#endif
     case FABK: case FABL: case FIBL: case FIBK:
     case LILB: case LITB: case LIBL: case LIBK:
     case SAMB: case SANB: case SBIP: case SBIN:
@@ -925,6 +934,9 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
         }
 
         /* 31-bit direct args */
+#ifdef U3_COMPILED_PROJECTIONS
+        case PFRD:
+#endif
         case SWIP: case SWIN: {
           c3_w off_l   = u3t(op);
           buf_y[i_w--] = (c3_y) (off_l >> 24);
@@ -932,6 +944,15 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
           buf_y[i_w--] = (c3_y) (off_l >> 8);
           buf_y[i_w--] = (c3_y) off_l;
           buf_y[i_w]   = (c3_y) cod;
+#ifdef U3_COMPILED_PROJECTIONS
+          // DEEP proves that the selected noun owns a head. The yes arm can
+          // read it immediately. Keep the original test as a branch target.
+          if ( cod == PFRD && ((off_l >> 16) & 7) == 1 &&
+               ((off_l >> 19) & 7) == 2 && buf_y[i_w + 5] == DEEP &&
+               buf_y[i_w + 6] == SBIN ) {
+            buf_y[i_w] = PFHD;
+          }
+#endif
           break;
         }
 
@@ -1007,6 +1028,10 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
 #include "nock_jumps.inc"
 #endif
 
+#ifdef U3_COMPILED_PROJECTIONS
+#include "nock_projection.inc"
+#endif
+
 /* _n_prog_from_ops(): new program from _n_comp() product
  */
 static u3n_prog*
@@ -1023,7 +1048,10 @@ _n_prog_from_ops(u3_noun ops)
 #ifdef U3_DECISION_BENCH
   ops = _n_thread(ops);
 #endif
-  sip   = _n_melt(ops, &byc_w, &cal_w, &reg_w, &lit_w, &mem_w);
+#ifdef U3_COMPILED_PROJECTIONS
+  ops = _n_proj_compile(ops);
+#endif
+  sip = _n_melt(ops, &byc_w, &cal_w, &reg_w, &lit_w, &mem_w);
   pog_u = _n_prog_new(byc_w, cal_w, reg_w, lit_w, mem_w);
   _n_prog_asm(ops, pog_u, sip);
 #ifdef U3_GATE_FIELDS
@@ -1981,7 +2009,7 @@ _cn_intlen(c3_w num_w)
 }
 
 /* _cn_is_indexed(): return true if bop_w is an opcodes that uses pog_u->lit_u.non
-**            bop_w: opcode (assumed 0-94)
+**            bop_w: opcode
 */
 c3_b
 _cn_is_indexed(c3_w bop_w)
@@ -2440,8 +2468,18 @@ typedef struct __attribute__((__packed__)) {
   c3_w     ip_w;
 } burnframe;
 
-#ifdef U3_DECISION_BENCH
+#if defined(U3_DECISION_BENCH) || defined(U3_COMPILED_PROJECTIONS)
 #include "nock_slots.inc"
+#endif
+
+#ifdef U3_COMPILED_PROJECTIONS
+static inline u3_noun
+_n_proj_small(c3_h axis, u3_noun noun)
+{
+  if ( axis == 1 ) return noun;
+  if ( axis >= 4 ) noun = _n_step(noun, (axis >> 1) & 1);
+  return _n_step(noun, axis & 1);
+}
 #endif
 
 /* _n_burn(): pog: program
@@ -2653,6 +2691,96 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       u3z(o);
       BURN();
 
+#ifdef U3_COMPILED_PROJECTIONS
+    do_pfrd: {
+      c3_y code = pog[ip_w - 1];
+      c3_h plan = _n_rewo(pog, &ip_w), edge;
+      top = _n_peek(off);
+      u3_noun subject = *top;
+      c3_h base = plan & 65535;
+      u3_noun anchor = base < 8 ? _n_proj_small(base, subject) : _n_path3(base, subject);
+      o = _n_proj_small((plan >> 16) & 7, anchor);
+    projection_test:
+#ifdef U3_PROJECTION_STATS
+      ++_n_proj_calls;
+      if ( code == PFHD ) _n_proj_widths |= 1;
+#endif
+      edge = (plan >> 19) & 63;
+      if ( code == PFHD ) {
+        c3_y skip = pog[ip_w + 2];
+        ip_w += 3;
+        if ( c3y == u3du(anchor) ) {
+          o = u3h(anchor);
+          goto projection_ready;
+        }
+        ip_w += skip;
+        edge = plan >> 25;
+        goto projection_edge;
+      }
+      c3_y test = pog[ip_w++];
+      if ( test == SWAP ) {
+        _n_push(mov, off, u3k(o));
+        top = _n_swap(mov, off);
+      }
+      else {
+        c3_t miss;
+        switch ( test ) {
+          case DEEP: miss = c3n == u3du(o); break;
+          case SAM0: case SAM1: miss = o != (test == SAM1); break;
+          case SAMB: miss = o != pog[ip_w++]; break;
+          default: miss = o != _n_resh(pog, &ip_w); break; // SAMS
+        }
+        c3_y jump = pog[ip_w++];
+#ifdef U3_PROJECTION_STATS
+        _n_proj_widths |= 1U << (jump - SBIN);
+#endif
+        c3_h delta = jump == SBIN ? pog[ip_w++] :
+                     jump == SINS ? _n_resh(pog, &ip_w) : _n_rewo(pog, &ip_w);
+        if ( miss ) { ip_w += delta; edge = plan >> 25; }
+      }
+    projection_edge:
+      if ( !edge ) { BURN(); }
+      o = _n_proj_small(edge & 7, anchor);
+    projection_ready:
+#ifdef U3_PROJECTION_STATS
+      ++_n_proj_edges;
+      _n_proj_steps += u3x_dep(plan & 65535);
+#endif
+      if ( !(edge >> 4) ) {
+        // This successor is itself a planned read. Its test already has the
+        // right operand. Its anchor is recoverable from this one whenever
+        // its suffix fits in the incoming edge.
+        code = pog[ip_w++];
+        c3_h next = _n_rewo(pog, &ip_w);
+        c3_h first = (next >> 16) & 7, suffix = edge & 7;
+        if ( first == 1 ) anchor = o;
+        else {
+          unsigned shift = first < 4 ? 1 : 2;
+          c3_h relative = suffix >> shift;
+          if ( !relative ) goto projection_keep;
+          anchor = _n_proj_small(relative, anchor);
+#ifdef U3_PROJECTION_STATS
+          _n_proj_steps -= u3x_dep(relative);
+#endif
+        }
+        plan = next;
+        goto projection_test;
+      }
+      ip_w += edge >> 4;
+      if ( edge & 8 ) goto projection_keep;
+      *top = u3k(o);
+      u3z(subject);
+      BURN();
+
+    projection_keep:
+#ifdef U3_DECISION_BENCH
+      goto borrowed_test;
+#else
+      _n_push(mov, off, u3k(o));
+      BURN();
+#endif
+    }
+#endif
     do_fisk:
       x = pog_u->lit_u.non[_n_resh(pog, &ip_w)];
       goto frag_in;
