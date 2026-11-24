@@ -1,0 +1,11 @@
+=jnums (gulf 1 80.000)
+=jpairs (turn jnums |=(i=@ [i +(i)]))
+=jrepeat (turn jnums |=(i=@ [(mod i 64) (mod i 31)]))
+=jshare (reap 80.000 [55 66 77])
+=jblob (lsh [3 1.000.000] 1)
+
+?>(=([500 jnums] (cue ~>(%bout (jam [500 jnums])))) 782)
+?>(=([500 jpairs] (cue ~>(%bout (jam [500 jpairs])))) 782)
+?>(=([500 jrepeat] (cue ~>(%bout (jam [500 jrepeat])))) 782)
+?>(=([500 jshare] (cue ~>(%bout (jam [500 jshare])))) 782)
+?>(=([500 jblob] (cue ~>(%bout (jam [500 jblob])))) 782)

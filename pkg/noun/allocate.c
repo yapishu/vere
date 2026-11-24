@@ -652,6 +652,12 @@ _ca_defer_lose_cold(u3_noun dog)
   return _ca_defer_on() && _ca_defer_seen(dog) && _ca_defer_lose(dog);
 }
 
+c3_t
+u3a_defer_active(void)
+{
+  return _ca_defer_u.ope_t;
+}
+
 /* u3a_defer_open(): defer home-road refcount gains (see above).
 **
 **   pass to u3m_soft_with(), which runs it only on success, back on the

@@ -1,7 +1,7 @@
 /// @file
 
 #include "noun.h"
-#include "../ur/bitstream.h"
+#include "../ur/ur.h"
 
 /* _setup(): prepare for tests.
 */
@@ -44,7 +44,7 @@ _test_jam_spec(const c3_c* cap_c,
   {
     u3s_jam_xeno(ref, &out_d, &out_y);
 
-    if ( 0 != memcmp(out_y, byt_y, len_w) ) {
+    if ( out_d != len_w || 0 != memcmp(out_y, byt_y, len_w) ) {
       fprintf(stderr, "\033[31mjam xeno %s fail\033[0m\r\n", cap_c);
       _byte_print(out_d, out_y, len_w, byt_y);
       ret_i = 0;
@@ -62,7 +62,7 @@ _test_jam_spec(const c3_c* cap_c,
     //
     out_y = sab_u.buf_y;
 
-    if ( 0 != memcmp(out_y, byt_y, len_w) ) {
+    if ( out_d != len_w || 0 != memcmp(out_y, byt_y, len_w) ) {
       fprintf(stderr, "\033[31mjam fib %s fail\033[0m\r\n", cap_c);
       _byte_print(out_d, out_y, len_w, byt_y);
       ret_i = 0;
@@ -122,11 +122,71 @@ _test_cue_spec(const c3_c* cap_c,
   return ret_i;
 }
 
+// The independent ur arena interns its own nodes and runs its own jam traversal.
+static void
+_check_canonical(ur_root_t* arena, ur_nref ref, u3_noun noun)
+{
+  c3_d len, size;
+  c3_y *gold, *bytes;
+  c3_d bits = ur_jam(arena, ref, &len, &gold);
+  u3_assert(bits == u3s_jam_xeno(noun, &size, &bytes));
+  u3_assert(size == len && !memcmp(gold, bytes, len));
+  c3_free(bytes);
+  u3i_slab slab;
+  u3_assert(bits == u3s_jam_fib(&slab, noun));
+  u3_assert(!memcmp(gold, slab.buf_y, len));
+  u3i_slab_free(&slab);
+  c3_free(gold);
+}
+
+static void
+_test_shared_jam(ur_root_t* arena)
+{
+  c3_d value = UINT64_C(0xc001d00d89abcdef);
+  ur_nref ref = ur_coin64(arena, value);
+  u3_noun a = u3i_chub(value), b = u3i_chub(value);
+  // Both towers share within themselves, but are allocated independently.
+  for ( unsigned i = 0; i < 72; ++i ) {
+    a = u3nc(u3k(a), a);
+    b = u3nc(u3k(b), b);
+    ref = ur_cons(arena, ref, ref);
+  }
+  u3_assert(a != b);
+  u3_noun root = u3nt(a, b, 173);
+  ref = ur_cons(arena, ref, ur_cons(arena, ref, 173));
+  _check_canonical(arena, ref, root);
+  u3a_defer_open();
+  u3_noun twice = u3nc(u3k(root), u3k(root));
+  _check_canonical(arena, ur_cons(arena, ref, ref), twice);
+  u3z(twice);
+  u3a_defer_close();
+  u3m_hate(0);
+  _check_canonical(arena, ref, root);
+  u3z(u3m_love(0));
+  u3z(root);
+
+  // Distinct equal-length heap atoms have the same 31-bit mug on both looms.
+  c3_d x = UINT64_C(0xc001d00d0000b33f), y = UINT64_C(0xc001d00d00012a3e);
+  a = u3i_chub(x); b = u3i_chub(y);
+  u3_assert(u3r_mug(a) == u3r_mug(b) && c3n == u3r_sing(a, b));
+  root = u3nc(u3nc(u3k(a), u3k(b)), u3nc(b, a));
+  ur_nref ax = ur_coin64(arena, x), ay = ur_coin64(arena, y);
+  ref = ur_cons(arena, ur_cons(arena, ax, ay), ur_cons(arena, ay, ax));
+  // Deep input also crosses successive class-table growth boundaries.
+  for ( unsigned i = 0; i < 4096; ++i ) {
+    root = u3nc(root, i);
+    ref = ur_cons(arena, ref, i);
+  }
+  _check_canonical(arena, ref, root);
+  u3z(root);
+}
+
 /* Check both cue entry points against a noun built independently of the
 ** bitstream. Reuse the external dictionary across successes and exits.
 */
 typedef struct {
   u3_cue_xeno* decoder;
+  ur_root_t* arena;
 #ifdef U3_CUE_VIEW
   u3_cue_view* view;
 #endif
@@ -138,6 +198,11 @@ _check_stream(_cue_test* test, ur_bsw_t* writer, u3_weak expected)
   c3_d len;
   c3_y* bytes;
   ur_bsw_done(writer, &len, &bytes);
+  if ( expected != u3_none ) {
+    ur_nref ref;
+    u3_assert(ur_cue_good == ur_cue(test->arena, len, bytes, &ref));
+    _check_canonical(test->arena, ref, expected);
+  }
   u3_noun result = u3m_soft(0, u3s_cue_atom, u3i_bytes(len, bytes));
   u3_weak external = u3s_cue_xeno_with(test->decoder, len, bytes);
 #ifdef U3_CUE_VIEW
@@ -216,7 +281,8 @@ _write_tree(ur_bsw_t* writer, _cue_generator* gen, unsigned depth)
 static void
 _test_cue_positions(void)
 {
-  _cue_test test = { .decoder = u3s_cue_xeno_init_with(1, 2) };
+  _cue_test test = { .decoder = u3s_cue_xeno_init_with(1, 2), .arena = ur_root_init() };
+  _test_shared_jam(test.arena);
 #ifdef U3_CUE_VIEW
   test.view = u3s_cue_view_new();
 #endif
@@ -292,6 +358,7 @@ _test_cue_positions(void)
     _check_stream(&test, &bits, expected);
     u3z(expected);
   }
+  ur_root_free(test.arena);
   u3s_cue_xeno_done(test.decoder);
 #ifdef U3_CUE_VIEW
   // Cue supplies missing high bits of a final atom as zeros.

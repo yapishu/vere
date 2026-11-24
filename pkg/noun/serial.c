@@ -203,6 +203,10 @@ _cs_jam_fib_cell_cb(u3_noun a, void* ptr_v)
   }
 }
 
+#ifdef U3_JAM_CLASSES
+static void _jam_emit_classes(u3_noun, ur_bsw_t*, struct _cs_jam_fib*);
+#endif
+
 /* u3s_jam_fib(): jam without atom allocation.
 **
 **   returns atom-suitable words, and *bit_w will have
@@ -211,22 +215,17 @@ _cs_jam_fib_cell_cb(u3_noun a, void* ptr_v)
 c3_w
 u3s_jam_fib(u3i_slab* sab_u, u3_noun a)
 {
-  struct _cs_jam_fib fib_u;
+  struct _cs_jam_fib fib_u = { .sab_u = sab_u };
+#ifdef U3_JAM_CLASSES
+  _jam_emit_classes(a, 0, &fib_u);
+#else
   fib_u.har_p = u3h_new();
-  fib_u.sab_u = sab_u;
-
-  //  fib(12) is small enough to be reasonably fast to allocate.
-  //  fib(11) is needed to get fib(13).
-  //
-  //
-  fib_u.a_w   = ur_fib12;
-  fib_u.b_w   = ur_fib11;
-  fib_u.bit_w = 0;
+  fib_u.a_w = ur_fib12;
+  fib_u.b_w = ur_fib11;
   u3i_slab_init(sab_u, 0, fib_u.a_w);
-
   u3a_walk_fore(a, &fib_u, _cs_jam_fib_atom_cb, _cs_jam_fib_cell_cb);
-
   u3h_free(fib_u.har_p);
+#endif
   return fib_u.bit_w;
 }
 
@@ -323,18 +322,25 @@ _cs_jam_xeno_cell(u3_noun a, void* ptr_v)
   }
 }
 
+#ifdef U3_JAM_CLASSES
+#include "jam_classes.inc"
+#endif
+
 /* u3s_jam_xeno(): jam with off-loom buffer (re-)allocation.
 */
 c3_d
 u3s_jam_xeno(u3_noun a, c3_d* len_d, c3_y** byt_y)
 {
   _jam_xeno_t jam_u = {0};
+#ifdef U3_JAM_CLASSES
+  _jam_emit_classes(a, &jam_u.rit_u, 0);
+#else
   ur_bsw_init(&jam_u.rit_u, ur_fib11, ur_fib12);
   jam_u.har_p = u3h_new();
-
   u3a_walk_fore(a, &jam_u, _cs_jam_xeno_atom, _cs_jam_xeno_cell);
 
   u3h_free(jam_u.har_p);
+#endif
   return ur_bsw_done(&jam_u.rit_u, len_d, byt_y);
 }
 
