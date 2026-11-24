@@ -1096,9 +1096,21 @@ _test_bulk_trees(void)
     u3_noun built_map = u3qdb_gas(u3_nul, pairs);
     u3_assert(c3y == u3r_sing(set, built_set));
     u3_assert(c3y == u3r_sing(map, built_map));
+    u3_noun projected = u3qdb_key(map);
+    u3_assert(c3y == u3r_sing(projected, set));
+    u3z(projected);
     u3z(built_set); u3z(built_map);
     u3z(set); u3z(map); u3z(keys); u3z(pairs);
   }
+  // A noncanonical map can place the same key on either side.
+  u3_noun list = u3nc(4, u3nc(7, 0));
+  u3_noun expected = u3qdi_gas(0, list);
+  u3_noun tree = u3nt(u3nc(7, 0), u3nt(u3nc(7, 1), 0, 0),
+                                    u3nt(u3nc(4, 2), 0, 0));
+  u3_noun actual = u3qdb_key(tree);
+  u3_assert(c3y == u3r_sing(expected, actual));
+  u3z(list); u3z(expected); u3z(tree); u3z(actual);
+
 }
 
 static c3_i
