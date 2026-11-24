@@ -867,6 +867,11 @@ fn buildBinary(
                 .nix = true,
             },
             .{
+                .name = "tree-bench",
+                .file = "pkg/noun/tree_bench.c",
+                .deps = noun_test_deps,
+            },
+            .{
                 .name = "jam-bench",
                 .file = "pkg/noun/jam_bench.c",
                 .deps = noun_test_deps,

@@ -1102,6 +1102,17 @@ _test_bulk_trees(void)
     u3z(built_set); u3z(built_map);
     u3z(set); u3z(map); u3z(keys); u3z(pairs);
   }
+  // Equal heap priorities for different mugs. gor places 136618 first,
+  // while the mor tie is decided by dor in favor of 114115.
+  u3_noun x = 114115, y = 136618;
+  u3_assert(u3r_mug(x) > u3r_mug(y));
+  u3_assert(u3r_mug_word(u3r_mug(x)) == u3r_mug_word(u3r_mug(y)));
+  u3_noun tie_keys = u3nc(y, u3nc(x, 0));
+  u3_noun tie_set = u3qdi_gas(0, tie_keys);
+  u3_noun tie_want = u3nt(x, u3nt(y, 0, 0), 0);
+  u3_assert(c3y == u3r_sing(tie_set, tie_want));
+  u3z(tie_keys); u3z(tie_set); u3z(tie_want);
+
   // A noncanonical map can place the same key on either side.
   u3_noun list = u3nc(4, u3nc(7, 0));
   u3_noun expected = u3qdi_gas(0, list);
