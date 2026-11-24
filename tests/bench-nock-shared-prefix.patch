@@ -1,0 +1,175 @@
+diff --git a/pkg/noun/nock.c b/pkg/noun/nock.c
+--- a/pkg/noun/nock.c
++++ b/pkg/noun/nock.c
+@@ -1820,6 +1820,48 @@
+ }
+ #endif
+
++#ifdef U3_PROJECTION_PROBE
++static uint64_t axis_reads, axis_steps, axis_pairs[2], axis_common[2], axis_shared[2];
++
++void
++u3n_axis_pair_report(const char* where)
++{
++  fprintf(stderr, "axes %s reads=%" PRIu64 " steps=%" PRIu64
++          " swap_pairs=%" PRIu64 " swap_common=%" PRIu64 " swap_steps=%" PRIu64
++          " branch_pairs=%" PRIu64 " branch_common=%" PRIu64 " branch_steps=%" PRIu64 "\n",
++          where, axis_reads, axis_steps, axis_pairs[0], axis_common[0], axis_shared[0],
++          axis_pairs[1], axis_common[1], axis_shared[1]);
++}
++
++static inline void
++axis_read(u3_noun axis)
++{
++  if ( axis && axis <= 65535 ) {
++    ++axis_reads;
++    axis_steps += u3x_dep((c3_w)axis);
++  }
++}
++
++static void
++axis_pair(u3_noun first, const c3_y* pc, unsigned branch)
++{
++  if ( !first || first > 65535 ) return;
++  c3_w second;
++  switch ( *pc ) {
++    case FABK: case FABL: second = pc[1]; break;
++    case FASK: case FASL: second = pc[1] | (pc[2] << 8); break;
++    default: return;
++  }
++  if ( !second ) return;
++  unsigned a = u3x_dep((c3_w)first), b = u3x_dep(second);
++  unsigned depth = a < b ? a : b;
++  unsigned diff = (first >> (a-depth)) ^ (second >> (b-depth));
++  unsigned shared = depth - (diff ? 32u - __builtin_clz(diff) : 0);
++  ++axis_pairs[branch];
++  axis_common[branch] += !!shared;
++  axis_shared[branch] += shared;
++}
++#endif
+ #include "nock_tail.inc"
+
+ /* _n_bite(): compile a nock formula to bytecode. RETAIN.
+@@ -2442,6 +2484,13 @@
+
+ #ifdef U3_DECISION_BENCH
+ #include "nock_slots.inc"
++#ifdef U3_PREFIX_PAIR
++static inline c3_t
++_n_pair_slot(c3_y op)
++{
++  return op == FABK || op == FASK || op == FABL || op == FASL;
++}
++#endif
+ #endif
+
+ /* _n_burn(): pog: program
+@@ -2468,6 +2517,9 @@
+   u3_noun x, o;
+   u3p(void) empty;
+   burnframe* fam;
++#ifdef U3_PROJECTION_PROBE
++  u3_noun prior_axis;
++#endif
+
+   empty = u3R->cap_p;
+   _n_push(mov, off, bus);
+@@ -2512,7 +2564,11 @@
+       top = _n_peek(off);
+ #ifdef U3_DECISION_BENCH
+       o = *top;
++#ifdef U3_PROJECTION_PROBE
++      goto borrowed_copy;
++#else
+       goto borrowed_test;
++#endif
+ #else
+       _n_push(mov, off, u3k(*top));
+       BURN();
+@@ -2668,9 +2724,65 @@
+     do_fabk:
+       x = pog[ip_w++];
+     frag_in:
++#ifdef U3_PREFIX_PAIR
++      if ( x >= 4 && x <= 65535 ) {
++        // A swap or consumed test leaves the original subject available.
++        // Keep its ancestor in a local for the immediately following slot.
++        const c3_y* next = pog + ip_w;
++        c3_t swap = *next == SWAP;
++        c3_t test = (*next == DEEP || *next == SAM0 || *next == SAM1) && next[1] == SBIN;
++        if ( (swap && _n_pair_slot(next[1])) ||
++             (test && (_n_pair_slot(next[3]) || _n_pair_slot(next[3 + next[2]]))) ) {
++          top = _n_peek(off);
++          u3_noun subject = *top;
++          unsigned cut = x >= 8 ? 2 : 1;
++          c3_w prefix = x >> cut;
++          u3_noun anchor = _n_path3(prefix, subject);
++          o = cut == 2 ? _n_step(_n_step(anchor, x & 2), x & 1) : _n_step(anchor, x & 1);
++          if ( swap ) {
++            _n_push(mov, off, u3k(o));
++            top = _n_swap(mov, off);
++            ++ip_w;
++          }
++          else {
++            c3_t yes = *next == DEEP ? c3y == u3du(o) : o == (u3_noun)(*next == SAM1);
++            ip_w += 3 + (yes ? 0 : next[2]);
++            if ( !_n_pair_slot(pog[ip_w]) ) BURN();
++          }
++          c3_y op = pog[ip_w++];
++          c3_w axis = op == FASK || op == FASL ? _n_resh(pog, &ip_w) : pog[ip_w++];
++          unsigned prefix_depth = u3x_dep(prefix), depth = u3x_dep(axis);
++          if ( depth >= prefix_depth && (axis >> (depth - prefix_depth)) == prefix ) {
++            c3_w lead = 1U << (depth - prefix_depth);
++            o = _n_path3(lead | (axis & (lead - 1)), anchor);
++          }
++          else o = _n_path3(axis, subject);
++          if ( op == FABK || op == FASK ) {
++#ifdef U3_PROJECTION_PROBE
++            prior_axis = axis;
++#endif
++            goto borrowed_test;
++          }
++          *top = u3k(o);
++          u3z(subject);
++          BURN();
++        }
++      }
++#endif
++#ifdef U3_PROJECTION_PROBE
++      // SWAP moves the live original subject back to the top.
++      prior_axis = x;
++      axis_read(x);
++      if ( pog[ip_w] == SWAP ) axis_pair(x, pog + ip_w + 1, 0);
++#endif
+       top = _n_peek(off);
+ #ifdef U3_DECISION_BENCH
+       o = (x && x <= 65535) ? _n_path3(x, *top) : u3x_at(x, *top);
++#ifdef U3_PROJECTION_PROBE
++      goto borrowed_test;
++    borrowed_copy:
++      prior_axis = 0;
++#endif
+     borrowed_test:
+       // The subject on the stack owns the selected noun. The next test
+       // consumes its temporary operand and produces a direct boolean.
+@@ -2692,6 +2804,10 @@
+         sip_w = pog[ip_w + 1];
+         ip_w += 2;
+         if ( c3n == x ) ip_w += sip_w;
++#ifdef U3_PROJECTION_PROBE
++        // The test and branch consume the projected field and keep the subject.
++        axis_pair(prior_axis, pog + ip_w, 1);
++#endif
+         BURN();
+       }
+       _n_push(mov, off, x);
+@@ -2715,6 +2831,9 @@
+     do_fabl:
+       x = pog[ip_w++];
+     flag_in:
++#ifdef U3_PROJECTION_PROBE
++      axis_read(x);
++#endif
+       top  = _n_peek(off);
+       o    = *top;
+ #ifdef U3_DECISION_BENCH

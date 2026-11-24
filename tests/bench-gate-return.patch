@@ -1,0 +1,811 @@
+diff --git a/pkg/noun/decision_tests.c b/pkg/noun/decision_tests.c
+index d220462b082076893d352254ef042c427cbe8b7e..b311b77cde9c7fc2e7ef110d5a5eb7db7e0cfc93 100644
+--- a/pkg/noun/decision_tests.c
++++ b/pkg/noun/decision_tests.c
+@@ -66,6 +66,7 @@ _ref_edit(u3_noun old, u3_atom axis, c3_w depth, u3_noun value)
+ static u3_weak
+ _eval(u3_noun bus, u3_noun fol)
+ {
++  if ( c3n == u3du(fol) ) return u3_none;
+   u3_noun op = u3h(fol), arg = u3t(fol), a, b;
+   if ( c3y == u3du(op) ) {
+     if ( (a = _eval(bus, op)) == u3_none ) return a;
+@@ -124,6 +125,14 @@ _eval(u3_noun bus, u3_noun fol)
+       b = _eval(a, u3t(arg));
+       u3z(a);
+       return b;
++    case 9: {
++      a = _eval(bus, u3t(arg));
++      if ( a == u3_none ) return a;
++      u3_weak arm = u3r_at(u3h(arg), a);
++      b = arm == u3_none ? u3_none : _eval(a, arm);
++      u3z(a);
++      return b;
++    }
+     case 10: {
+       u3_noun spec = u3h(arg), axis = u3h(spec);
+       if ( (a = _eval(bus, u3t(arg))) == u3_none ) return a;
+@@ -1139,6 +1148,46 @@ _gate_effects(void)
+ }
+ #endif
+
++// The factory and sample are evaluated by separate calls. Changing the
++// receiver at one call site exercises both the field and whole-core entries.
++static void
++_gate_returns(void)
++{
++  u3_noun arms[] = {
++    _slot(6), _slot(7), _slot(2), _slot(1), _slot(3),
++    u3nc(_slot(6), _slot(15)),
++    u3nq(6, u3nc(3, _slot(6)), _slot(12), _slot(7)),
++    u3nq(6, u3nt(5, _slot(6), _lit(0)), _slot(1), _slot(6)),
++    _slot(60)
++  };
++  for ( unsigned mode = 0; mode < 10; mode++ ) {
++    u3_noun make = u3nt(9, 2, _slot(2));
++    u3_noun sample;
++    switch ( mode % 5 ) {
++      case 0: sample = _slot(3); break;
++      case 1: sample = u3nt(9, 2, _slot(3)); break;
++      case 2: sample = u3nc(_slot(3), _slot(7)); break;
++      case 3: sample = u3nt(5, _slot(2), _slot(3)); break;
++      default: sample = u3nc(u3nt(5, _slot(2), _slot(3)), _slot(3)); break;
++    }
++    u3_noun call = u3nt(9, 2, u3nt(10, u3nc(6, sample), make));
++    if ( mode >= 5 ) call = u3nc(call, _slot(3));
++    for ( unsigned arm = 0; arm < sizeof(arms)/sizeof(*arms); arm++ ) {
++      u3_noun factory = u3nt(8, _lit(17), u3nc(_lit(u3k(arms[arm])), _slot(1)));
++      for ( unsigned j = 0; j < 4; j++ ) {
++        u3_noun value = j & 1 ? u3nc(70 + j, 19) : j;
++        if ( mode % 5 == 1 ) value = u3nc(_slot(j == 3 ? 0 : 3), value);
++        u3_noun producer = j & 2 ? u3nt(7, _slot(3), u3k(factory)) : u3k(factory);
++        u3_noun bus = u3nc(u3nc(producer, u3nc(9, 11)), value);
++        _check(bus, u3k(call));
++      }
++      u3z(factory);
++    }
++    u3z(call);
++  }
++  for ( unsigned i = 0; i < sizeof(arms)/sizeof(*arms); i++ ) u3z(arms[i]);
++}
++
+ // Exercise a single compiled kick site with changing samples, contexts and
+ // batteries. The reference evaluates the body on a separately built core.
+ static void
+@@ -1304,6 +1353,18 @@ int
+ main(void)
+ {
+   u3m_boot_lite(1 << 27);
++  if ( getenv("U3_GATE_RETURN_CHECK") ) {
++    trace = getenv("U3_CASE_TRACE") != 0;
++    _gate_returns();
++#if defined(U3_GATE_RETURN) && defined(U3_GATE_RETURN_STATS)
++    extern uint64_t u3n_gate_crossed;
++    extern void u3n_gate_return_report(const char*);
++    u3n_gate_return_report("tests");
++    u3_assert(u3n_gate_crossed > 0);
++#endif
++    fprintf(stderr, "gate returns: %u cases, %u exits\n", cases, exits);
++    return 0;
++  }
+   if ( getenv("U3_SHORT_AXIS_CHECK") ) {
+     if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
+     _check_short_axes();
+diff --git a/pkg/noun/jets.c b/pkg/noun/jets.c
+index d1251382d153693c8a98f955b49611e725164ed6..389ae617697500a81de1e0b2d2b249e1fcbd83d4 100644
+--- a/pkg/noun/jets.c
++++ b/pkg/noun/jets.c
+@@ -7,6 +7,9 @@
+ #include "imprison.h"
+ #include "jets/k.h"
+ #include "jets/q.h"
++#ifdef U3_GATE_RETURN_NATIVE
++#include "jets/w.h"
++#endif
+ #include "log.h"
+ #include "manage.h"
+ #include "nock.h"
+@@ -730,6 +733,60 @@ _cj_fine(u3_noun cor, u3p(u3j_fink) fin_p)
+   return u3r_sing(fin_u->sat, cor);
+ }
+
++#ifdef U3_GATE_RETURN
++// Check a registered core whose first parent lies in the context at axis 7.
++c3_o
++u3j_gate_parent(u3p(u3j_fink) fin_p, u3_noun battery, u3_noun context)
++{
++  if ( !fin_p ) return c3n;
++  const u3j_fink* fin = u3to(u3j_fink, fin_p);
++  if ( !fin->len_w || fin->fis_u[0].pax != 7 ||
++       fin->fis_u[0].bat != battery ) return c3n;
++  for ( c3_w i = 1; i < fin->len_w; i++ ) {
++    if ( c3n == u3du(context) || c3n == u3r_sing(fin->fis_u[i].bat, u3h(context)) )
++      return c3n;
++    context = u3r_at(fin->fis_u[i].pax, context);
++    if ( context == u3_none ) return c3n;
++  }
++  return u3r_sing(fin->sat, context);
++}
++#ifdef U3_GATE_RETURN_NATIVE
++// These wrappers only project their operands before calling their noun
++// primitive. The primitive retains its inputs. On an unsupported sample
++// the ordinary wrapper supplies the jet's usual type checks and bail.
++u3_weak
++u3j_gate_native(const u3j_site* site, u3_noun battery, u3_noun sample, u3_noun context)
++{
++  u3j_harm* harm = site->ham_u;
++  if ( site->loc == u3_none || site->jet_o != c3y || site->axe != 2 ||
++       !harm || harm->liv != c3y || harm->ice != c3y ||
++       c3n == u3j_gate_parent(site->fin_p, battery, context) ) return u3_none;
++  u3_noun (*wrapper)(u3_noun) = harm->fun_f;
++  if ( wrapper == u3wdi_uni || wrapper == u3wdi_put || wrapper == u3wdi_has ) {
++    u3_weak set = u3r_at(6, context);
++    if ( set == u3_none ) return u3_none;
++    if ( wrapper == u3wdi_uni ) return u3qdi_uni(set, sample);
++    if ( wrapper == u3wdi_put ) return u3qdi_put(set, sample);
++    return u3qdi_has(set, sample);
++  }
++  if ( wrapper == u3wb_lent ) return u3qb_lent(sample);
++  if ( c3y == u3ud(sample) ) {
++    if ( wrapper == u3wc_cap ) return u3qc_cap(sample);
++    if ( wrapper == u3wc_mas ) return u3qc_mas(sample);
++  }
++  else {
++    u3_noun a = u3h(sample), b = u3t(sample);
++    if ( wrapper == u3wb_weld ) return u3qb_weld(a, b);
++    if ( c3y == u3ud(a) && c3y == u3ud(b) ) {
++      if ( wrapper == u3wc_peg ) return u3qc_peg(a, b);
++      if ( wrapper == u3wa_gth ) return u3qa_gth(a, b);
++    }
++  }
++  return u3_none;
++}
++#endif
++#endif
++
+ /* _cj_nail(): resolve hot state for arm at axis within cores located
+  *             at loc. a label will be PRODUCED at *lab, unconditionally.
+  *             Arguments are RETAINED. Return value is yes if a jet driver
+@@ -2238,7 +2295,7 @@ _cj_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+   }
+ }
+
+-#ifdef U3_NOUN_SHAPES
++#if defined(U3_NOUN_SHAPES) || defined(U3_GATE_RETURN_FUSE)
+ void
+ u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+ {
+diff --git a/pkg/noun/jets.h b/pkg/noun/jets.h
+index ef235a64e74393c3d0b86e28463710f9e0f9f72a..f3256a7f6dc1706937c09d7c7255d6bb79d8eb0b 100644
+--- a/pkg/noun/jets.h
++++ b/pkg/noun/jets.h
+@@ -127,6 +127,9 @@
+         c3_o          fon_o;          //  site owns fink?
+ #ifdef U3_GATE_SAMPLE
+         c3_y          sample_y;       //  entry selected by gate preparation
++#endif
++#ifdef U3_GATE_RETURN
++        c3_y          span_y;         // distance from a head kick return to its sample edit
+ #endif
+         u3_weak       lab;            //  label (for tracing)
+         u3j_core*     cop_u;          //  jet core
+@@ -247,7 +250,7 @@
+         u3a_jets
+         u3j_take(u3a_jets jed_u);
+
+-#ifdef U3_NOUN_SHAPES
++#if defined(U3_NOUN_SHAPES) || defined(U3_GATE_RETURN_FUSE)
+       /* Register a core with both clue and core retained by the caller. */
+         void
+         u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor);
+@@ -291,6 +294,13 @@
+         void
+         u3j_site_ream(u3j_site* sit_u);
+
++#ifdef U3_GATE_RETURN
++#ifdef U3_GATE_RETURN_NATIVE
++      u3_weak u3j_gate_native(const u3j_site* site, u3_noun battery,
++                              u3_noun sample, u3_noun context);
++#endif
++      c3_o u3j_gate_parent(u3p(u3j_fink) fin_p, u3_noun battery, u3_noun context);
++#endif
+ #ifdef U3_GATE_FIELDS
+       c3_o u3j_gate_fields_ok(const u3j_site* site, u3_noun gate);
+ #endif
+diff --git a/pkg/noun/nock.c b/pkg/noun/nock.c
+index cf1ca4c2793c113e25a084af02c45ae228777e42..69fa52f7751b6a9495aa310d70e5edecfa7ff84f 100644
+--- a/pkg/noun/nock.c
++++ b/pkg/noun/nock.c
+@@ -708,10 +708,15 @@ _n_melt(u3_noun ops, c3_w* byc_w, c3_w* cal_w,
+   return u3kb_flop(sip);
+ }
+
+-#ifdef U3_GATE_FIELDS
++#if defined(U3_GATE_FIELDS) || defined(U3_GATE_RETURN)
+ _Static_assert(offsetof(u3n_prog, byc_u.len_w) == 4, "bytecode header layout");
+ #include "nock_fields.inc"
+ #endif
++#ifdef U3_GATE_RETURN
++_Static_assert(offsetof(u3j_site, lab) == offsetof(u3j_site, loc) + 2 * sizeof(u3_noun),
++               "call-site metadata fits in the alignment gap");
++#include "nock_gate_return.inc"
++#endif
+
+ /* _n_prog_dat(): return pointer to program's data segment
+  */
+@@ -775,6 +780,9 @@ _n_prog_old(u3n_prog* sep_u)
+   u3n_prog* pog_u     = u3a_malloc(sizeof(u3n_prog) + dat_w);
+   pog_u->byc_u.own_o = c3n;
+   pog_u->byc_u.len_w = sep_u->byc_u.len_w;
++#ifdef U3_GATE_RETURN
++  pog_u->byc_u.factory_y = sep_u->byc_u.factory_y;
++#endif
+ #ifdef U3_GATE_FIELDS
+   pog_u->byc_u.fields_y = sep_u->byc_u.fields_y;
+ #endif
+@@ -1026,6 +1034,9 @@ _n_prog_from_ops(u3_noun ops)
+   sip   = _n_melt(ops, &byc_w, &cal_w, &reg_w, &lit_w, &mem_w);
+   pog_u = _n_prog_new(byc_w, cal_w, reg_w, lit_w, mem_w);
+   _n_prog_asm(ops, pog_u, sip);
++#ifdef U3_GATE_RETURN
++  _n_gate_prepare(pog_u);
++#endif
+ #ifdef U3_GATE_FIELDS
+   pog_u->byc_u.fields_y = _n_field_eligible(pog_u->byc_u.ops_y);
+ #endif
+@@ -2468,6 +2479,14 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
+   u3_noun x, o;
+   u3p(void) empty;
+   burnframe* fam;
++#ifdef U3_GATE_RETURN
++#ifdef U3_GATE_RETURN_STATS
++  c3_t pending_crossed = 0;
++#endif
++  const c3_y* sample_edit = NULL;
++  const u3_noun* battery_slot = NULL;
++  u3p(void) sample_cap = 0;
++#endif
+
+   empty = u3R->cap_p;
+   _n_push(mov, off, bus);
+@@ -2495,6 +2514,9 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
+         pog_u = fam->pog_u;
+         pog   = pog_u->byc_u.ops_y;
+         ip_w  = fam->ip_w;
++#ifdef U3_GATE_RETURN_SUFFIX
++        if ( pog_u->byc_u.len_w < (1U << 24) ) ip_w &= 0xffffff;
++#endif
+
+         u3R->cap_p = u3of(burnframe, fam - (mov+off));
+         _n_push(mov, off, x);
+@@ -2553,6 +2575,34 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
+           ip_w = cursor + 2;
+           x = _n_pep(mov, off);
+           top = _n_peek(off);
++#ifdef U3_GATE_RETURN_SUFFIX
++          // A small caller can carry the edit distance in its return address.
++          // At a terminal constructor, the two operands sit directly above
++          // the frame. The default sample has already been evaluated.
++          if ( !keep && pog[ip_w] == HALT && !sample_edit &&
++               u3R->cap_p - mov != empty && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
++            fam = u3to(burnframe, u3R->cap_p - mov) + off;
++            if ( fam->pog_u->byc_u.len_w < (1U << 24) && (fam->ip_w >> 24) ) {
++              c3_w span = fam->ip_w >> 24;
++              battery_slot = &pog_u->lit_u.non[literal];
++              u3z(x);
++              x = *top;
++              pog_u = fam->pog_u;
++              pog = pog_u->byc_u.ops_y;
++              ip_w = fam->ip_w & 0xffffff;
++              u3R->cap_p = u3of(burnframe, fam - (mov + off));
++              _n_push(mov, off, x);
++              sample_edit = pog + ip_w + span;
++              sample_cap = u3R->cap_p - (*sample_edit == MUSM ? mov : 0);
++              GATE_COUNT(gate_deferred);
++              GATE_COUNT(gate_suffix);
++#ifdef U3_GATE_RETURN_STATS
++              pending_crossed = 0;
++#endif
++              BURN();
++            }
++          }
++#endif
+           u3_noun context = keep ? u3k(*top) : *top;
+           u3_noun product = u3nt(u3k(pog_u->lit_u.non[literal]), x, context);
+
+@@ -2961,17 +3011,70 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
+     do_kicb:
+       x = pog[ip_w++];
+     kick_in:
++#ifdef U3_GATE_RETURN_STATS
++      if ( sample_edit ) pending_crossed = 1;
++#endif
+       sit_u = &(pog_u->cal_u.sit_u[x]);
+       top   = _n_peek(off);
+       o     = *top;
+       *top = _n_kick(o, sit_u);
+       if ( u3_none == *top ) {
++#ifdef U3_GATE_RETURN
++        if ( sit_u->span_y && !sample_edit &&
++             !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
++          const u3n_prog* factory = u3to(u3n_prog, sit_u->pog_p);
++          if ( factory->byc_u.factory_y && (battery_slot = _n_gate_literal(factory, o)) ) {
++            sample_edit = pog + ip_w + sit_u->span_y;
++            sample_cap = u3R->cap_p - (*sample_edit == MUSM ? mov : 0);
++            *top = o;
++            GATE_COUNT(gate_deferred);
++#ifdef U3_CPU_DEBUG
++            ++u3R->pro.nox_d;
++#endif
++#ifdef U3_GATE_RETURN_STATS
++            pending_crossed = 0;
++#endif
++#ifdef U3_GATE_RETURN_FUSE
++            const c3_y* load = pog + ip_w + 1;
++            if ( load + 1 + _n_arg(*load) == sample_edit ) {
++              u3_noun subject = *_n_peet(mov, off);
++              u3_weak sample = _n_gate_sample(pog_u, load, subject);
++              if ( sample != u3_none ) {
++                x = u3k(sample);
++                if ( *sample_edit == MUSM ) {
++                  _n_pop(mov);
++                  top = _n_peek(off);
++                  *top = o;
++                  u3z(subject);
++                }
++                ip_w += sit_u->span_y + 1;
++                goto musm_in;
++              }
++            }
++#endif
++            BURN();
++          }
++        }
++#ifdef U3_GATE_RETURN_FUSE
++        const u3n_prog* factory = u3to(u3n_prog, sit_u->pog_p);
++        if ( factory->byc_u.factory_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
++#ifdef U3_CPU_DEBUG
++          ++u3R->pro.nox_d;
++#endif
++          *top = _n_gate_make(factory, o);
++          BURN();
++        }
++#endif
++#endif
+         _n_pop(mov);
+
+         fam         = u3to(burnframe, u3R->cap_p) + off + mov;
+         u3R->cap_p  = u3of(burnframe, fam - off);
+         fam->ip_w   = ip_w;
+         fam->pog_u  = pog_u;
++#ifdef U3_GATE_RETURN_SUFFIX
++        if ( pog_u->byc_u.len_w < (1U << 24) ) fam->ip_w |= (c3_w)sit_u->span_y << 24;
++#endif
+
+         pog_u = u3to(u3n_prog, sit_u->pog_p);
+         pog   = pog_u->byc_u.ops_y;
+@@ -3326,49 +3429,106 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
+     do_musm:
+       x    = _n_pep(mov, off);
+       top  = _n_peek(off);
+-    musm_in:
++    musm_in: {
+       o    = *top;
++#if defined(U3_GATE_RETURN) || defined(U3_GATE_FIELDS)
++      _n_field_entry entry;
++      u3n_prog* arm;
++      c3_y call = pog[ip_w];
++#endif
++#ifdef U3_GATE_RETURN
++      if ( sample_edit == pog + ip_w - 1 && sample_cap == u3R->cap_p ) {
++        // The context occupies the gate's slot. Its battery is owned by a
++        // program literal, which can be reaped from a child road during a call.
++        // Read that slot after the caller finishes evaluating the replacement.
++        u3_noun battery = *battery_slot;
++        sample_edit = NULL;
++        sit_u = &pog_u->cal_u.sit_u[_n_field_arg(pog + ip_w)];
++#if defined(U3_GATE_RETURN_NATIVE) && !defined(U3_MEMORY_DEBUG)
++        if ( sit_u->loc != u3_none && sit_u->jet_o == c3y ) {
++          u3t_off(noc_o);
++          u3_weak product = u3j_gate_native(sit_u, battery, x, o);
++          u3t_on(noc_o);
++          if ( product != u3_none ) {
++            GATE_COUNT(gate_native);
++#ifdef U3_GATE_RETURN_STATS
++            u3n_gate_crossed += pending_crossed;
++#endif
++            u3z(x);
++            u3z(o);
++            *top = product;
++            ip_w += 1 + _n_arg(call);
++            BURN();
++          }
++        }
++#endif
++        if ( sit_u->axe == 2 && sit_u->bat == battery && sit_u->pog_p ) {
++          c3_o ok = (sit_u->loc == u3_none) ? u3j_site_unregistered(sit_u)
++                  : (sit_u->jet_o == c3y) ? c3n
++                  : u3j_gate_parent(sit_u->fin_p, battery, o);
++          if ( c3y == ok ) {
++            arm = u3to(u3n_prog, sit_u->pog_p);
++            if ( _n_field_enter(arm, battery, x, o, &entry) ) {
++              GATE_COUNT(gate_entered);
++#ifdef U3_GATE_RETURN_STATS
++              u3n_gate_crossed += pending_crossed;
++#endif
++              goto field_entered;
++            }
++            GATE_COUNT(gate_whole);
++          }
++          else GATE_COUNT(gate_guard);
++        }
++        else GATE_COUNT(gate_cold);
++        *top = u3nt(u3k(battery), x, o);
++        BURN();
++      }
++#endif
+ #ifdef U3_GATE_FIELDS
+       if ( pog[ip_w] >= KICB && pog[ip_w] <= TICS &&
+            !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) &&
+            c3y == u3du(o) && c3y == u3du(u3t(o)) ) {
+-        c3_y call = pog[ip_w];
+         sit_u = &pog_u->cal_u.sit_u[_n_field_arg(pog + ip_w)];
+         if ( sit_u->axe == 2 && sit_u->pog_p && sit_u->bat == u3h(o) ) {
+-          u3n_prog* arm = u3to(u3n_prog, sit_u->pog_p);
+-          _n_field_entry entry;
++          arm = u3to(u3n_prog, sit_u->pog_p);
+           if ( arm->byc_u.fields_y && c3y == u3j_gate_fields_ok(sit_u, o) &&
+-               _n_field_enter(arm, o, x, &entry) ) {
++               _n_field_enter(arm, u3h(o), x, u3t(u3t(o)), &entry) ) {
+ #ifdef U3_FIELD_STATS
+             ++u3n_field_hits;
+ #endif
++            goto field_entered;
++          }
++        }
++      }
++#endif
++#if defined(U3_GATE_RETURN) || defined(U3_GATE_FIELDS)
++      goto edit_gate;
++    field_entered:
+ #ifdef U3_CPU_DEBUG
+-            ++u3R->pro.nox_d;
++      ++u3R->pro.nox_d;
+ #endif
+-            u3z(x);
+-            u3z(o);
+-            ip_w += 1 + _n_arg(call);
+-            if ( call == KICB || call == KICS ) {
+-              if ( entry.second == u3_none && arm->byc_u.ops_y[entry.ip] == HALT ) {
+-                *top = entry.first;
+-                BURN();
+-              }
+-              _n_pop(mov);
+-              fam = u3to(burnframe, u3R->cap_p) + off + mov;
+-              u3R->cap_p = u3of(burnframe, fam - off);
+-              fam->ip_w = ip_w;
+-              fam->pog_u = pog_u;
+-              _n_push(mov, off, entry.first);
+-            }
+-            else *top = entry.first;
+-            if ( entry.second != u3_none ) _n_push(mov, off, entry.second);
+-            pog_u = arm;
+-            pog = arm->byc_u.ops_y;
+-            ip_w = entry.ip;
+-            BURN();
+-          }
++      u3z(x);
++      u3z(o);
++      ip_w += 1 + _n_arg(call);
++      if ( call == KICB || call == KICS ) {
++        if ( entry.second == u3_none && arm->byc_u.ops_y[entry.ip] == HALT ) {
++          *top = entry.first;
++          BURN();
+         }
++        _n_pop(mov);
++        fam = u3to(burnframe, u3R->cap_p) + off + mov;
++        u3R->cap_p = u3of(burnframe, fam - off);
++        fam->ip_w = ip_w;
++        fam->pog_u = pog_u;
++        _n_push(mov, off, entry.first);
+       }
++      else *top = entry.first;
++      if ( entry.second != u3_none ) _n_push(mov, off, entry.second);
++      pog_u = arm;
++      pog = arm->byc_u.ops_y;
++      ip_w = entry.ip;
++      BURN();
++    edit_gate:
+ #endif
+ #ifdef U3_REUSE_BENCH
+       if ( c3y == u3a_is_mutable(u3R, o) ) {
+@@ -3379,6 +3539,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
+       *top = u3nt(u3k(u3h(o)), x, u3k(u3t(u3t(o))));
+       u3z(o);
+       BURN();
++    }
+
+     do_kitb:
+       x = pog_u->lit_u.non[pog[ip_w++]];
+@@ -3502,6 +3663,9 @@ _cn_take_prog_dat(u3n_prog* dst_u, u3n_prog* src_u)
+   for ( i_w = 0; i_w < src_u->cal_u.len_w; ++i_w ) {
+     u3j_site_take(&(dst_u->cal_u.sit_u[i_w]),
+                   &(src_u->cal_u.sit_u[i_w]));
++#ifdef U3_GATE_RETURN
++    dst_u->cal_u.sit_u[i_w].span_y = src_u->cal_u.sit_u[i_w].span_y;
++#endif
+   }
+
+   for ( i_w = 0; i_w < src_u->reg_u.len_w; ++i_w ) {
+@@ -3533,6 +3697,9 @@ _cn_take_prog_cb(c3_w pog_w)
+
+ #ifdef U3_GATE_FIELDS
+   gop_u->byc_u.fields_y = pog_u->byc_u.fields_y;
++#endif
++#ifdef U3_GATE_RETURN
++  gop_u->byc_u.factory_y = pog_u->byc_u.factory_y;
+ #endif
+   _cn_take_prog_dat(gop_u, pog_u);
+   // _n_prog_take_dat(gop_u, pog_u, c3n);
+@@ -3578,6 +3745,9 @@ _cn_reap_prog_dat(u3n_prog* dst_u, u3n_prog* src_u)
+   for ( i_w = 0; i_w < src_u->cal_u.len_w; ++i_w ) {
+     u3j_site_reap(&(dst_u->cal_u.sit_u[i_w]),
+                   &(src_u->cal_u.sit_u[i_w]));
++#ifdef U3_GATE_RETURN
++    dst_u->cal_u.sit_u[i_w].span_y = src_u->cal_u.sit_u[i_w].span_y;
++#endif
+   }
+
+   for ( i_w = 0; i_w < src_u->reg_u.len_w; ++i_w ) {
+@@ -3724,6 +3894,9 @@ _n_ream(u3_noun kev)
+   pog_u->cal_u.sit_u = (u3j_site*) (pog_u->mem_u.sot_u + pog_u->mem_u.len_w + ped_w);
+   pog_u->reg_u.rit_u = (u3j_rite*) (pog_u->cal_u.sit_u + pog_u->cal_u.len_w);
+
++#ifdef U3_GATE_RETURN
++  _n_gate_prepare(pog_u);
++#endif
+ #ifdef U3_GATE_FIELDS
+   pog_u->byc_u.fields_y = _n_field_eligible(pog_u->byc_u.ops_y);
+ #endif
+diff --git a/pkg/noun/nock.h b/pkg/noun/nock.h
+index 22cbfadb499c8d4272bfa9a8a22e3e2a6c59ca76..e11e8821563aa0eb1890a70bc53a601907922da9 100644
+--- a/pkg/noun/nock.h
++++ b/pkg/noun/nock.h
+@@ -29,6 +29,9 @@
+       c3_o      own_o;                // program owns ops_y?
+ #ifdef U3_GATE_FIELDS
+       c3_y      fields_y;             // field entry available in this program
++#endif
++#ifdef U3_GATE_RETURN
++      c3_y      factory_y;            // offset of the gate battery literal
+ #endif
+       c3_h      len_w;                // length of bytecode (bytes)
+       c3_y*     ops_y;                // actual array of bytes
+diff --git a/pkg/noun/nock_fields.inc b/pkg/noun/nock_fields.inc
+index 1e29473f915ba8e0e245bc1800ca9bb0ef443710..06b39b4da227680374e506ec774465e89dee103b 100644
+--- a/pkg/noun/nock_fields.inc
++++ b/pkg/noun/nock_fields.inc
+@@ -61,12 +61,12 @@ _n_field_eligible(const c3_y* pc)
+ }
+
+ static u3_weak
+-_n_field_load(const u3n_prog* arm, const c3_y* pc, u3_noun gate, u3_noun sample)
++_n_field_load(const u3n_prog* arm, const c3_y* pc, u3_noun battery, u3_noun sample, u3_noun context)
+ {
+   c3_w arg = _n_field_arg(pc);
+   u3_noun axis;
+   switch ( *pc ) {
+-    case HEAD: case HELD: return u3h(gate);
++    case HEAD: case HELD: return battery;
+     case LIT0: case LIL0: return 0;
+     case LIT1: case LIL1: return 1;
+     case LITB: case LITS: case LILB: case LILS: return arg;
+@@ -74,25 +74,27 @@ _n_field_load(const u3n_prog* arm, const c3_y* pc, u3_noun gate, u3_noun sample)
+     case FIBK: case FISK: case FIBL: case FISL: axis = arm->lit_u.non[arg]; break;
+     default: axis = arg; break;
+   }
+-  if ( axis < 4 || axis > 0xffff ) return u3_none;
+-  unsigned shift = u3x_dep(axis) - 2;
+-  c3_w root = 1U << shift;
+-  if ( (axis >> shift) == 6 ) {
+-    return axis == 6 ? sample : u3r_at(root | (axis & (root - 1)), sample);
++  if ( axis < 2 || axis > 0xffff || axis == 3 ) return u3_none;
++  unsigned depth = u3x_dep(axis);
++  c3_w root = 1U << (depth - 1);
++  u3_noun field;
++  if ( !(axis & root) ) field = battery;
++  else {
++    root >>= 1;
++    field = (axis & root) ? context : sample;
+   }
+-  // The battery and context still belong to the template.
+-  return u3r_at(axis, gate);
++  return root == 1 ? field : u3r_at(root | (axis & (root - 1)), field);
+ }
+
+ static c3_t
+-_n_field_enter(const u3n_prog* arm, u3_noun gate, u3_noun sample, _n_field_entry* entry)
++_n_field_enter(const u3n_prog* arm, u3_noun battery, u3_noun sample, u3_noun context, _n_field_entry* entry)
+ {
+   const c3_y* start = arm->byc_u.ops_y;
+   const c3_y* pc = start;
+   for ( unsigned steps = 0; steps < _n_field_steps; steps++ ) {
+     c3_y op = *pc;
+     if ( !_n_field_keep(op) && !_n_field_lose(op) ) return 0;
+-    u3_weak first = _n_field_load(arm, pc, gate, sample);
++    u3_weak first = _n_field_load(arm, pc, battery, sample, context);
+     if ( first == u3_none ) return 0;
+     pc += 1 + _n_arg(op);
+     if ( _n_field_lose(op) ) {
+@@ -101,7 +103,7 @@ _n_field_enter(const u3n_prog* arm, u3_noun gate, u3_noun sample, _n_field_entry
+     }
+     if ( *pc == SWAP && _n_field_lose(pc[1]) ) {
+       ++pc;
+-      u3_weak second = _n_field_load(arm, pc, gate, sample);
++      u3_weak second = _n_field_load(arm, pc, battery, sample, context);
+       if ( second == u3_none ) return 0;
+       pc += 1 + _n_arg(*pc);
+       *entry = (_n_field_entry){u3k(first), u3k(second), pc - start};
+diff --git a/pkg/noun/nock_gate_return.inc b/pkg/noun/nock_gate_return.inc
+new file mode 100644
+index 0000000000000000000000000000000000000000..0052acd903b967f4e737280729f7675b051b8361
+--- /dev/null
++++ b/pkg/noun/nock_gate_return.inc
+@@ -0,0 +1,157 @@
++// A factory returns [literal-battery [literal-sample subject]]. Its bytecode
++// already contains the literal and registration indices. Keep their offsets.
++static c3_y
++_n_gate_factory(const u3n_prog* prog)
++{
++  const c3_y* ops = prog->byc_u.ops_y;
++  size_t length = prog->byc_u.len_w;
++  if ( ops[0] < LIT0 || ops[0] > LISK ) return 0;
++  size_t field = 2 + _n_arg(ops[0]);
++  if ( field + 4 >= length || ops[field-1] != SNOL ||
++       (ops[field] != LIBK && ops[field] != LISK) ) return 0;
++  size_t end = field + 1 + _n_arg(ops[field]);
++  if ( end + 2 >= length || ops[end] != SWAP || ops[end+1] != AULT ) return 0;
++  end += 2;
++  if ( end + 1 == length && ops[end] == HALT ) return field;
++  if ( ops[end] != LIBK && ops[end] != LISK ) return 0;
++  end += 1 + _n_arg(ops[end]);
++  if ( end + 2 >= length || ops[end] != SWAP ||
++       (ops[end+1] != BALT && ops[end+1] != SALT) ) return 0;
++  end += 2 + _n_arg(ops[end+1]);
++  return end + 1 == length && ops[end] == HALT ? 128 | field : 0;
++}
++
++// After SWAP the gate stays in one stack slot while the caller evaluates
++// its sample. A head kick can consume another operand and return to this
++// continuation. An instruction which might touch the gate ends the proof.
++static c3_y
++_n_gate_continuation(const c3_y* start, const c3_y* end)
++{
++  if ( start == end || *start != SWAP ) return 0;
++  unsigned depth = 1;
++  for ( const c3_y* pc = start + 1; pc < end && pc - start <= 255;
++        pc += 1 + _n_arg(*pc) ) {
++    c3_y op = *pc;
++    if ( (op == MUSM && depth == 1) || (op == KUSM && depth == 2) )
++      return pc + 1 < end && pc[1] >= KICB && pc[1] <= TICS ? pc - start : 0;
++    if ( op == SWAP ) {
++      if ( depth < 2 ) return 0;
++    }
++    else if ( op == COPY || op == HEAD || op == TAIL ||
++              (op >= FABK && op <= FISK) || (op >= LIT0 && op <= LISK) ) depth++;
++    else if ( op == HELD || op == TALL || (op >= FABL && op <= FISL) ||
++              (op >= LIL0 && op <= LISL) || (op >= DEEP && op <= SANS) ||
++              op == KICB || op == KICS ) continue;
++    else if ( op == TOSS || op == SNOL || op == AULT || op == SALM ||
++              op == MUSM || op == MUTH || op == MUTT ) {
++      if ( depth < 2 ) return 0;
++      depth--;
++    }
++    else if ( op == AUTO || op == SAME || op == KUSM || op == KUTH || op == KUTT ) {
++      if ( depth < 3 ) return 0;
++      depth--;
++    }
++    else if ( op != SNOC || depth < 2 ) return 0;
++  }
++  return 0;
++}
++
++static void
++_n_gate_prepare(u3n_prog* prog)
++{
++  prog->byc_u.factory_y = _n_gate_factory(prog);
++#ifdef U3_GATE_FACTORY_ONLY
++  // Measure direct factory execution with every sample edit on the ordinary path.
++  for ( c3_w i = 0; i < prog->cal_u.len_w; ++i ) prog->cal_u.sit_u[i].span_y = 0;
++  return;
++#endif
++  const c3_y* pc = prog->byc_u.ops_y;
++  const c3_y* end = pc + prog->byc_u.len_w;
++  while ( pc < end ) {
++    const c3_y* next = pc + 1 + _n_arg(*pc);
++    if ( *pc == KICB || *pc == KICS ) {
++      prog->cal_u.sit_u[_n_field_arg(pc)].span_y = _n_gate_continuation(next, end);
++    }
++    else if ( *pc == TICB || *pc == TICS ) {
++      prog->cal_u.sit_u[_n_field_arg(pc)].span_y = 0;
++    }
++    pc = next;
++  }
++}
++
++static const u3_noun*
++_n_gate_literal(const u3n_prog* factory, u3_noun context)
++{
++  c3_y kind = factory->byc_u.factory_y;
++  const c3_y* literal = factory->byc_u.ops_y + (kind & 127);
++  const u3_noun* battery = &factory->lit_u.non[_n_field_arg(literal)];
++  if ( kind & 128 ) {
++    const c3_y* clue = literal + 3 + _n_arg(*literal);
++    const c3_y* reg = clue + 2 + _n_arg(*clue);
++    u3j_rite* rite = &factory->reg_u.rit_u[_n_field_arg(reg)];
++    if ( rite->clu != factory->lit_u.non[_n_field_arg(clue)] ||
++         c3n == u3j_gate_parent(rite->fin_p, *battery, context) ) return NULL;
++  }
++  return battery;
++}
++
++#ifdef U3_GATE_RETURN_FUSE
++// One projection supplies the replacement sample. Its reference is acquired
++// before the caller releases the subject, including when the two alias.
++static u3_weak
++_n_gate_sample(const u3n_prog* caller, const c3_y* pc, u3_noun subject)
++{
++  c3_w arg = _n_field_arg(pc);
++  switch ( *pc ) {
++    case HEAD: case HELD: return u3r_at(2, subject);
++    case TAIL: case TALL: return u3r_at(3, subject);
++    case FABK: case FABL: case FASK: case FASL: return arg ? u3r_at(arg, subject) : u3_none;
++    case FIBK: case FIBL: case FISK: case FISL: {
++      u3_noun axis = caller->lit_u.non[arg];
++      return axis ? u3r_at(axis, subject) : u3_none;
++    }
++    case LIT0: case LIL0: return 0;
++    case LIT1: case LIL1: return 1;
++    case LITB: case LITS: case LILB: case LILS: return arg;
++    case LIBK: case LISK: case LIBL: case LISL: return caller->lit_u.non[arg];
++    case COPY: return subject;
++    default: return u3_none;
++  }
++}
++
++static u3_noun
++_n_gate_make(const u3n_prog* factory, u3_noun context)
++{
++  const c3_y* code = factory->byc_u.ops_y;
++  c3_y kind = factory->byc_u.factory_y;
++  const c3_y* literal = code + (kind & 127);
++  u3_noun sample = _n_gate_sample(factory, code, context);
++  u3_noun gate = u3nt(u3k(factory->lit_u.non[_n_field_arg(literal)]), u3k(sample), context);
++  if ( kind & 128 ) {
++    const c3_y* clue = literal + 3 + _n_arg(*literal);
++    const c3_y* reg = clue + 2 + _n_arg(*clue);
++    u3t_off(noc_o);
++    u3j_rite_mine_keep(&factory->reg_u.rit_u[_n_field_arg(reg)],
++                       factory->lit_u.non[_n_field_arg(clue)], gate);
++    u3t_on(noc_o);
++  }
++  return gate;
++}
++#endif
++
++#ifdef U3_GATE_RETURN_STATS
++static uint64_t gate_deferred, gate_entered, gate_cold, gate_guard;
++static uint64_t gate_whole, gate_native, gate_suffix;
++uint64_t u3n_gate_crossed;
++
++void
++u3n_gate_return_report(const char* phase)
++{
++  fprintf(stderr, "gate %s deferred=%" PRIu64 " entered=%" PRIu64 " cold=%" PRIu64
++          " guard=%" PRIu64 " whole=%" PRIu64 " native=%" PRIu64 " crossed=%" PRIu64 " suffix=%" PRIu64 "\n",
++          phase, gate_deferred, gate_entered, gate_cold, gate_guard, gate_whole, gate_native, u3n_gate_crossed, gate_suffix);
++}
++#define GATE_COUNT(counter) (++counter)
++#else
++#define GATE_COUNT(counter) ((void)0)
++#endif
