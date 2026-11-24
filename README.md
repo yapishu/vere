@@ -30,6 +30,9 @@ defined in its own package:
 
 See [INSTALL.md](INSTALL.md).
 
+For compiler, ship replay, and live application measurements against upstream
+develop, see the [Nock and noun runtime benchmarks](tests/noun-runtime.md).
+
 ## Contributing
 
 Contributions of any form are more than welcome. Please take a look at our
