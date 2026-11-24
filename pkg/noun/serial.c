@@ -715,6 +715,7 @@ u3s_cue_xeno_with(u3_cue_xeno* sil_u,
   som = _cs_cue_xeno(sil_u, len_d, byt_y);
 #ifdef U3_CUE_RANK
   sil_u->dic_u.noun_count = sil_u->dic_u.page_count = 0;
+  if ( sil_u->dic_u.directory ) sil_u->dic_u.directory->height = 0;
 #else
   ur_dictn_wipe(&sil_u->dic_u);
 #endif

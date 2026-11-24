@@ -6,6 +6,7 @@ struct _u3_cue_view {
   const c3_y* bytes;
   c3_d len;
   _cue_page* pages;
+  _cue_directory* directory;
   size_t page_count, page_capacity;
   c3_d* tails;
   size_t count, capacity;
@@ -30,7 +31,8 @@ _cue_view_start(u3_cue_view* v, c3_d bit, c3_d entry)
   if ( !v->page_count || v->pages[v->page_count - 1].number != number ) {
     if ( v->page_count == v->page_capacity )
       v->pages = _cue_view_grow(v->pages, &v->page_capacity, sizeof(*v->pages));
-    v->pages[v->page_count++] = (_cue_page){ .number = number };
+    _cue_page_init(v->pages, v->page_count++, number, v->count,
+                   &v->directory, 1);
   }
   if ( v->count == v->capacity )
     v->tails = _cue_view_grow(v->tails, &v->capacity, sizeof(*v->tails));
@@ -51,6 +53,7 @@ u3s_cue_view_open(u3_cue_view* v, c3_d len, const c3_y* bytes)
 {
   u3_assert(u3R == &u3H->rod_u);
   v->bytes = 0;
+  if ( v->directory ) v->directory->height = 0;
   v->page_count = v->count = 0;
   ur_bsr_t reader = {0};
   if ( !len || len > (CUE_COMPLETE - 1) / 8 ||
@@ -66,7 +69,7 @@ u3s_cue_view_open(u3_cue_view* v, c3_d len, const c3_y* bytes)
       *(size_t*)u3a_push(&stack) = _cue_view_start(v, bit, 0);
     if ( token.tag == ur_jam_cell ) continue;
     if ( token.tag == ur_jam_back ) {
-      size_t slot = _cue_page_find(v->pages, v->page_count, token.value);
+      size_t slot = _cue_page_find(v->pages, v->page_count, v->directory, token.value);
       if ( slot == SIZE_MAX || !(v->tails[slot] & CUE_COMPLETE) ) break;
     }
     else {
@@ -96,14 +99,14 @@ u3s_cue_view_open(u3_cue_view* v, c3_d len, const c3_y* bytes)
 static size_t
 _cue_view_node(u3_cue_view* v, c3_d* bit)
 {
-  size_t slot = _cue_page_find(v->pages, v->page_count, *bit);
+  size_t slot = _cue_page_find(v->pages, v->page_count, v->directory, *bit);
   if ( slot == SIZE_MAX ) {
     ur_bsr_t r = { .bits = *bit + 2, .left = v->len - ((*bit + 2) >> 3),
                    .off = (*bit + 2) & 7, .bytes = v->bytes + ((*bit + 2) >> 3) };
     c3_d width;
     u3_assert(ur_cue_good == ur_bsr_rub_len(&r, &width));
     *bit = ur_bsr64_any(&r, width);
-    slot = _cue_page_find(v->pages, v->page_count, *bit);
+    slot = _cue_page_find(v->pages, v->page_count, v->directory, *bit);
     u3_assert(slot != SIZE_MAX);
   }
   return slot;
@@ -191,6 +194,7 @@ u3s_cue_view_at(u3_cue_view* v, u3_atom axis)
 void
 u3s_cue_view_free(u3_cue_view* v)
 {
+  _cue_directory_free(v->directory, 1);
   c3_free(v->pages);
   c3_free(v->tails);
   if ( v->full ) u3s_cue_xeno_done(v->full);

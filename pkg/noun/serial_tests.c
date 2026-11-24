@@ -314,6 +314,43 @@ _test_short_cue(_cue_test* test)
   }
 }
 
+#if defined(U3_CUE_RANK) || defined(U3_CUE_VIEW)
+#include "cue_pages.inc"
+
+// Exercise all directory heights without allocating the intervening jam bytes.
+// Each page has two starts. Missing pages, unset bits and future pages have no rank.
+static void
+_test_cue_page_ranks(void)
+{
+  const c3_d numbers[] = {
+    0, 1, 4, 5, 67, 68, 69, 130, 4099, 4100, 4101,
+    (UINT64_C(1) << 30) + 4, (UINT64_C(1) << 54) + 4
+  };
+  size_t count = sizeof(numbers) / sizeof(numbers[0]);
+  _cue_directory* dir = 0;
+  _cue_page pages[sizeof(numbers) / sizeof(numbers[0])];
+  for ( unsigned pass = 0; pass < 2; ++pass ) {
+    if ( dir ) dir->height = 0;
+    for ( size_t i = 0; i < count; ++i ) {
+      c3_d bit = numbers[i] << 9;
+      _cue_page_init(pages, i, numbers[i], 2 * i, &dir, 1);
+      _cue_page_mark(&pages[i], bit, 2 * i);
+      _cue_page_mark(&pages[i], bit + 511, 2 * i + 1);
+      for ( size_t j = 0; j <= i; ++j ) {
+        c3_d at = numbers[j] << 9;
+        u3_assert(_cue_page_find(pages, i + 1, dir, at) == 2 * j);
+        u3_assert(_cue_page_find(pages, i + 1, dir, at + 511) == 2 * j + 1);
+        u3_assert(_cue_page_find(pages, i + 1, dir, at + 510) == SIZE_MAX);
+        if ( j && numbers[j] > numbers[j - 1] + 1 )
+          u3_assert(_cue_page_find(pages, i + 1, dir, at - 1) == SIZE_MAX);
+      }
+      u3_assert(_cue_page_find(pages, i + 1, dir, bit + 512) == SIZE_MAX);
+    }
+  }
+  _cue_directory_free(dir, 1);
+}
+#endif
+
 static void
 _test_cue_positions(void)
 {
@@ -321,6 +358,9 @@ _test_cue_positions(void)
   _test_shared_jam(test.arena);
 #ifdef U3_CUE_VIEW
   test.view = u3s_cue_view_new();
+#endif
+#if defined(U3_CUE_RANK) || defined(U3_CUE_VIEW)
+  _test_cue_page_ranks();
 #endif
   _test_short_cue(&test);
   // A wide encoded payload can represent a direct atom on either loom.

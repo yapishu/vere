@@ -1,5 +1,6 @@
 typedef struct {
   _cue_page* pages;
+  _cue_directory* directory;
   u3_noun*   nouns;
   size_t     page_count, page_capacity;
   size_t     noun_count, noun_capacity;
@@ -12,6 +13,7 @@ static void
 _cue_refs_init(_cue_refs* refs)
 {
   refs->external = 0;
+  refs->directory = 0;
   refs->pages = refs->local_pages;
   refs->nouns = refs->local_nouns;
   refs->page_count = refs->noun_count = 0;
@@ -52,17 +54,23 @@ _cue_refs_grow(_cue_refs* refs, void* old, void* local, size_t* cap, size_t widt
   return next;
 }
 
-static inline c3_d
+static void
+_cue_refs_add_page(_cue_refs* refs, c3_d number)
+{
+  if ( refs->page_count == refs->page_capacity ) {
+    refs->pages = _cue_refs_grow(refs, refs->pages, refs->local_pages,
+                                 &refs->page_capacity, sizeof(_cue_page));
+  }
+  _cue_page_init(refs->pages, refs->page_count++, number, refs->noun_count,
+                 &refs->directory, refs->external);
+}
+
+static inline __attribute__((always_inline)) c3_d
 _cue_refs_open(_cue_refs* refs, c3_d bit)
 {
   c3_d number = bit >> 9;
-  if ( !refs->page_count || refs->pages[refs->page_count - 1].number != number ) {
-    if ( refs->page_count == refs->page_capacity ) {
-      refs->pages = _cue_refs_grow(refs, refs->pages, refs->local_pages,
-                                   &refs->page_capacity, sizeof(_cue_page));
-    }
-    refs->pages[refs->page_count++] = (_cue_page){ .number = number };
-  }
+  if ( !refs->page_count || refs->pages[refs->page_count - 1].number != number )
+    _cue_refs_add_page(refs, number);
   if ( refs->noun_count == refs->noun_capacity ) {
     refs->nouns = _cue_refs_grow(refs, refs->nouns, refs->local_nouns,
                                  &refs->noun_capacity, sizeof(u3_noun));
@@ -85,7 +93,7 @@ _cue_refs_finish(_cue_refs* refs, c3_d slot, u3_noun value)
 static inline u3_weak
 _cue_refs_get(_cue_refs* refs, c3_d bit)
 {
-  size_t slot = _cue_page_find(refs->pages, refs->page_count, bit);
+  size_t slot = _cue_page_find(refs->pages, refs->page_count, refs->directory, bit);
   if ( slot == SIZE_MAX ) return u3_none;
   u3_weak value = refs->nouns[slot];
   return value == u3_none ? u3_none : u3k(value);
@@ -94,6 +102,7 @@ _cue_refs_get(_cue_refs* refs, c3_d bit)
 static void
 _cue_refs_free(_cue_refs* refs)
 {
+  _cue_directory_free(refs->directory, refs->external);
   if ( refs->pages != refs->local_pages ) _cue_refs_dispose(refs, refs->pages);
   if ( refs->nouns != refs->local_nouns ) _cue_refs_dispose(refs, refs->nouns);
 }
