@@ -995,6 +995,7 @@ u3m_stacktrace()
 c3_i
 u3m_bail(u3_noun how)
 {
+  u3n_arm_reset();
   //  printf some metadata
   //
   switch ( how ) {
@@ -1096,6 +1097,7 @@ u3m_error(c3_c* str_c)
 void
 u3m_leap(c3_w pad_w)
 {
+  u3n_arm_reset();
   u3_road* rod_u;
 
   _rod_vaal(u3R);
@@ -1229,6 +1231,7 @@ _print_diff(c3_c* cap_c, c3_w a, c3_w b)
 void
 u3m_fall(void)
 {
+  u3n_arm_reset();
   u3_assert(0 != u3R->par_p);
 
 #if 0
@@ -2979,6 +2982,7 @@ _cm_pack_rewrite(void)
 c3_w
 u3m_pack(void)
 {
+  u3n_arm_reset();
   c3_w pre_w = u3a_open(u3R);
   c3_y pha_y = u3e_Phase;
 

@@ -1899,6 +1899,7 @@ u3n_find(u3_noun key, u3_noun fol)
 static void
 _cn_prog_free(u3n_prog* pog_u)
 {
+  u3n_arm_reset();
   c3_w dex_w;
   for (dex_w = 0; dex_w < pog_u->lit_u.len_w; ++dex_w) {
     u3z(pog_u->lit_u.non[dex_w]);
@@ -2306,6 +2307,91 @@ _n_hint_hind(u3_noun tok, u3_noun pro)
   u3z(tok);
 }
 
+// The road memo owns one [core product] pair. Only the interpreter owns
+// the conditions under which that pair can be reused.
+enum { _arm_empty, _arm_recording, _arm_ready };
+static struct {
+  c3_y          state;
+  c3_d          generation;
+  c3_d          sites[128];
+  u3a_road*     road;
+  u3p(u3n_prog) program;
+  u3_atom       axis;
+  c3_h          flags;
+} _arm;
+
+// An address collision invalidates both sites conservatively.
+static inline c3_h
+_n_arm_bit(const void* site)
+{
+  uintptr_t p = (uintptr_t)site;
+  return ((p >> 3) ^ (p >> 16) ^ (p >> 24)) & (sizeof(_arm.sites) * 8 - 1);
+}
+
+void
+u3n_arm_watch(const void* site)
+{
+  if ( _arm_recording == _arm.state ) {
+    c3_h bit = _n_arm_bit(site);
+    _arm.sites[bit >> 6] |= UINT64_C(1) << (bit & 63);
+  }
+}
+
+void
+u3n_arm_change(const void* site)
+{
+  if ( _arm_empty != _arm.state ) {
+    c3_h bit = _n_arm_bit(site);
+    if ( _arm.sites[bit >> 6] & (UINT64_C(1) << (bit & 63)) ) {
+      _arm.state = _arm_empty;
+    }
+  }
+}
+
+void
+u3n_arm_effect(void)
+{
+  if ( _arm_recording == _arm.state ) {
+    _arm.state = _arm_empty;
+  }
+}
+
+void
+u3n_arm_reset(void)
+{
+  _arm.state = _arm_empty;
+}
+
+// Inspect a callee before recording its result. Only straight-line noun
+// operations, ordinary kicks, and observed %fast sites qualify.
+static void
+_n_check_arm(const u3n_prog* prog)
+{
+  const c3_y* ops = prog->byc_u.ops_y;
+  for ( c3_w i = 0; i < prog->byc_u.len_w; ) {
+    c3_y op = ops[i++];
+    switch ( op ) {
+      case HALT: case COPY: case SWAP: case TOSS:
+      case AUTO: case AULT: case SNOC: case SNOL:
+      case HEAD: case HELD: case TAIL: case TALL:
+      case FABK: case FASK: case FIBK: case FISK:
+      case FABL: case FASL: case FIBL: case FISL:
+      case LIT0: case LIT1: case LITB: case LITS: case LIBK: case LISK:
+      case LIL0: case LIL1: case LILB: case LILS: case LIBL: case LISL:
+      case KICB: case KICS: case TICB: case TICS:
+      case BAST: case SAST: case BALT: case SALT:
+      case MUTH: case KUTH: case MUTT: case KUTT: case MUSM: case KUSM:
+      case MUTB: case MUTS: case MITB: case MITS:
+      case KUTB: case KUTS: case KITB: case KITS:
+        break;
+      default:
+        u3n_arm_effect();
+        return;
+    }
+    i += _n_arg(op);
+  }
+}
+
 /* _n_kick(): stop tracing noc and kick a u3j_site.
  */
 static u3_weak
@@ -2318,11 +2404,15 @@ _n_kick(u3_noun cor, u3j_site* sit_u)
   if ( pro == u3_none && sit_u->axe == 2 ) {
     const u3n_prog* arm = u3to(u3n_prog, sit_u->pog_p);
     if ( arm->byc_u.ops_y[0] == SBIP && arm->byc_u.ops_y[1] == 0 ) {
+      u3n_arm_effect();
       pro = _n_fold_try(cor, arm);
       if ( pro != u3_none ) u3z(cor);
     }
   }
 #endif
+  if ( pro == u3_none && _arm.state == _arm_recording ) {
+    _n_check_arm(u3to(u3n_prog, sit_u->pog_p));
+  }
   u3t_on(noc_o);
   return pro;
 }
@@ -2379,13 +2469,78 @@ _n_proj_small(c3_h axis, u3_noun noun)
   return _n_step(noun, axis & 1);
 }
 
+// Select substantial gate builders by their first non-tail kick and final
+// tail kick. Every callee must also pass _n_check_arm() before reuse.
+static inline c3_t
+_n_arm_candidate(const u3j_site* site)
+{
+#if defined(U3_CPU_DEBUG) || defined(U3_MEMORY_DEBUG) || defined(VERBOSE_BYTECODE)
+  return 0;
+#else
+  if ( site->axe == 2 || c3n == u3a_is_cat(site->axe) ) return 0;
+  const u3n_prog* prog = u3to(u3n_prog, site->pog_p);
+  const c3_y* ops = prog->byc_u.ops_y;
+  c3_h len = prog->byc_u.len_w;
+  return prog->cal_u.len_w >= 8 && !prog->mem_u.len_w && len >= 5 &&
+         ops[0] == FABK && ops[2] == KICB && ops[len - 3] == TICB &&
+         u3R->par_p && !u3R->ski.gul &&
+         !(u3C.wag_h & (u3o_debug_cpu | u3o_debug_ram | u3o_trace | u3o_verbose));
+#endif
+}
+
+static u3_noun
+_n_burn(u3n_prog* prog, u3_noun subject, c3_ys mov, c3_ys off, c3_t in_arm);
+
+/* _n_arm_result(): reuse or evaluate this gate builder. TRANSFER cor.
+*/
+static u3_noun
+_n_arm_result(u3_noun cor, u3j_site* sit_u, c3_ys mov, c3_ys off)
+{
+  // Ordinary memo keys are cells. A bare atom names this road's one slot.
+  const c3_m key = c3_s4('a','r','m','r');
+  u3n_prog* prog = u3to(u3n_prog, sit_u->pog_p);
+  if ( _arm.state == _arm_ready && _arm.road == u3R &&
+       _arm.program == sit_u->pog_p && _arm.axis == sit_u->axe &&
+       _arm.flags == u3C.wag_h ) {
+    u3_weak old = u3z_find(u3z_memo_toss, key);
+    if ( old != u3_none ) {
+      if ( c3y == u3r_sing(u3h(old), cor) ) {
+        u3_noun result = u3k(u3t(old));
+        u3z(old);
+        u3z(cor);
+        return result;
+      }
+      u3z(old);
+    }
+  }
+  // A nested evaluation can replace this observation after it is invalidated.
+  c3_d generation = ++_arm.generation;
+  memset(_arm.sites, 0, sizeof(_arm.sites));
+  _arm.road = u3R;
+  _arm.flags = u3C.wag_h;
+  _arm.program = sit_u->pog_p;
+  _arm.axis = sit_u->axe;
+  _arm.state = _arm_recording;
+  u3n_arm_watch(sit_u);
+  _n_check_arm(prog);
+  u3_noun result = _n_burn(prog, u3k(cor), mov, off, 1);
+  if ( _arm.state == _arm_recording && _arm.generation == generation ) {
+    u3_noun pair = u3nc(u3k(cor), u3k(result));
+    u3z_save(u3z_memo_toss, key, pair);
+    u3z(pair);
+    _arm.state = _arm_ready;
+  }
+  u3z(cor);
+  return result;
+}
+
 /* _n_burn(): pog: program
  *            bus: subject (TRANSFER)
  *            mov: -1 north, 1 south
  *            off: 0 north, -1 south
  */
 static u3_noun
-_n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
+_n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
 {
 
   // Opcode jump table. Define X to select the opcode computed goto from
@@ -2927,6 +3082,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       o     = *top;
       *top = _n_kick(o, sit_u);
       if ( u3_none == *top ) {
+        if ( !in_arm && _n_arm_candidate(sit_u) ) {
+          *top = _n_arm_result(o, sit_u, mov, off);
+          BURN();
+        }
         _n_pop(mov);
 
         fam         = u3to(burnframe, u3R->cap_p) + off + mov;
@@ -2961,7 +3120,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
         o = *top;
         *top = _n_kick(o, sit_u);
         if ( *top != u3_none ) { BURN(); }
-        if ( u3to(u3n_prog, sit_u->pog_p) == pog_u ) o = _n_tail_batch(o, sit_u);
+        if ( u3to(u3n_prog, sit_u->pog_p) == pog_u ) {
+          u3n_arm_effect();
+          o = _n_tail_batch(o, sit_u);
+        }
         goto tick_resume;
       }
       goto tick_in;
@@ -3330,7 +3492,7 @@ _n_burn_out(u3_noun bus, u3n_prog* pog_u)
     mov = 1;
     off = -1;
   }
-  return _n_burn(pog_u, bus, mov, off);
+  return _n_burn(pog_u, bus, mov, off, 0);
 }
 
 /* u3n_burn(): execute u3n_prog with bus as subject.
@@ -3595,6 +3757,7 @@ u3n_meas(c3_d* num_d, c3_d* byt_d, c3_d* ded_d, c3_d* use_d)
 void
 u3n_reap(u3p(u3h_root) har_p)
 {
+  u3n_arm_reset();
   u3h_walk_with(har_p, _cn_reap_prog_cb, &u3R->byc.har_p);
 }
 
@@ -3625,6 +3788,7 @@ _n_ream(u3_noun kev)
 void
 u3n_ream()
 {
+  u3n_arm_reset();
   u3_assert(u3R == &(u3H->rod_u));
   u3h_walk(u3R->byc.har_p, _n_ream);
 }

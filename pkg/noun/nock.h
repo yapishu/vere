@@ -118,6 +118,15 @@
       u3_noun
       u3n_nock_an(u3_noun bus, u3_noun fol);
 
+    /* Interpreted arm memo. Watch the sites read by a candidate, and
+    ** invalidate reuse when one changes. Native calls disqualify the
+    ** current evaluation. Road and registry changes discard all watches.
+    */
+      void u3n_arm_watch(const void* site);
+      void u3n_arm_change(const void* site);
+      void u3n_arm_effect(void);
+      void u3n_arm_reset(void);
+
     /* u3n_reap(): promote junior bytecode state [har_p], in place.
     **             call after u3m_fall(), before the junior heap is dropped.
      */

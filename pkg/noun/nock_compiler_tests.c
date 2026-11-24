@@ -1298,10 +1298,97 @@ _fold_check(void)
   u3z(bat);
 }
 
+static c3_w _arm_punts;
+
+static u3_weak
+_arm_punt(u3_noun core)
+{
+  ++_arm_punts;
+  return u3_none;
+}
+
+// Each pushed value calls an interpreted leaf. The last call supplies the
+// product, so changing the leaf can change both the value and its effects.
+static void
+_arm_result_cases(void)
+{
+  u3m_hate(0);
+  u3_noun arm = u3nt(9, 2, _slot(2047));
+  for ( c3_w i = 8; i-- > 0; ) {
+    arm = u3nt(8, u3nt(9, 2, _slot((8u << i) - 1)), arm);
+  }
+  u3_noun caller = u3nc(u3nt(9, 4, _slot(1)), _lit(0));
+  u3p(u3n_prog) ref = u3n_find(0, caller);
+  u3_noun battery = u3nc(arm, 0);
+  u3_noun leaf = u3nc(_slot(3), _slot(3));
+  for ( c3_w value = 41; value < 43; ++value ) {
+    u3_weak previous = u3_none;
+    for ( c3_w pass = 0; pass < 4; ++pass ) {
+      u3_noun core = u3nt(u3k(battery), 0, u3nc(u3k(leaf), value));
+      u3_noun product = u3n_burn(ref, core);
+      u3_assert(u3t(product) == 0 && u3h(u3h(product)) == value &&
+                u3t(u3h(product)) == value);
+      // Keep the earlier cell alive to distinguish reuse from reallocation.
+      if ( previous != u3_none ) {
+#if !defined(U3_CPU_DEBUG) && !defined(U3_MEMORY_DEBUG) && !defined(VERBOSE_BYTECODE)
+        if ( pass == 3 ) u3_assert(previous == u3h(product));
+#endif
+        u3z(previous);
+      }
+      previous = u3k(u3h(product));
+      u3z(product);
+    }
+    u3z(previous);
+  }
+  // Relocking any inner call site invalidates the recorded execution.
+  u3j_site* outer = u3to(u3n_prog, ref)->cal_u.sit_u;
+  u3n_prog* builder = u3to(u3n_prog, outer->pog_p);
+  u3j_site* site = &builder->cal_u.sit_u[0];
+  u3j_site_ream(site);
+
+  // A native punt still executes, even when fallback yields the same noun.
+  u3j_site saved = *site;
+  u3j_harm jet = { .fun_f = _arm_punt, .liv = c3y, .ice = c3y };
+  u3j_core driver = { .cos_c = "arm-punt" };
+  u3j_fink* fine = u3a_malloc(sizeof(*fine));
+  fine->len_w = 0;
+  fine->sat = u3nc(u3k(leaf), 42);
+  site->loc = 0;
+  site->fin_p = u3of(u3j_fink, fine);
+  site->jet_o = c3y;
+  site->cop_u = &driver;
+  site->ham_u = &jet;
+  _arm_punts = 0;
+  for ( c3_w pass = 0; pass < 3; ++pass ) {
+    u3_noun product = u3n_burn(ref, u3nt(u3k(battery), 0, u3k(fine->sat)));
+    u3_assert(u3h(u3h(product)) == 42 && _arm_punts == pass + 1);
+    u3z(product);
+  }
+  *site = saved;
+  u3z(fine->sat);
+  u3a_free(fine);
+
+  u3_noun logging = u3nt(11, u3nc(c3__slog, _lit(88)), leaf);
+  u3_noun core = u3nt(battery, 0, u3nc(logging, 43));
+  _fold_logs = 0;
+  u3C.slog_f = _fold_log;
+  for ( c3_w pass = 0; pass < 3; ++pass ) {
+    u3_noun product = u3n_burn(ref, u3k(core));
+    u3_assert(u3h(u3h(product)) == 43 && u3t(u3h(product)) == 43);
+    u3_assert(_fold_logs == 9 * (pass + 1));
+    u3z(product);
+  }
+  u3C.slog_f = 0;
+  u3z(core);
+  u3z(caller);
+  u3z(u3m_love(0));
+}
+
 int
 main(void)
 {
   u3m_boot_lite(1 << 27);
+  _arm_result_cases();
   _list_masks();
   _test_list_weld();
   u3m_hate(0);

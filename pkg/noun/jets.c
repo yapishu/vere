@@ -650,6 +650,7 @@ _cj_spot(u3_noun cor, u3_weak* bas)
         reg = _cj_gust(reg, _cj_loc_axe(loc), _cj_loc_pel(loc), u3k(loc));
         u3_noun bat_dedup = u3m_dedup(u3k(u3h(cor)));
         u3_noun val = u3m_dedup(u3nc(u3k(*bas), u3k(reg)));
+        u3n_arm_reset();
         u3h_put(u3R->jed.cod_p, bat_dedup, val);
         u3z(bat_dedup);
         /* caution: could overwrites old value, debug batteries etc.
@@ -810,6 +811,7 @@ _cj_hot_mean(c3_l par_l, u3_noun nam)
 c3_w
 u3j_boot(c3_o nuu_o)
 {
+  u3n_arm_reset();
   u3_assert(u3R == &(u3H->rod_u));
 
   u3D.len_l = _cj_count(0, u3D.dev_u);
@@ -852,6 +854,7 @@ _cj_soft(u3_noun cor, u3_noun axe)
 static u3_weak
 _cj_kick_z(u3_noun cor, u3j_core* cop_u, u3j_harm* ham_u, u3_atom axe)
 {
+  u3n_arm_effect();
   if ( 0 == ham_u->fun_f ) {
     return u3_none;
   }
@@ -1437,6 +1440,7 @@ u3j_site_take(u3j_site* dst_u, u3j_site* src_u)
 void
 u3j_site_merge(u3j_site* dst_u, u3j_site* src_u)
 {
+  u3n_arm_change(dst_u);
   u3z(dst_u->axe);
   dst_u->axe = src_u->axe;
 
@@ -1466,6 +1470,7 @@ u3j_site_merge(u3j_site* dst_u, u3j_site* src_u)
 void
 u3j_rite_reap(u3j_rite* dst_u, u3j_rite* src_u)
 {
+  u3n_arm_change(dst_u);
   if ( u3_none == src_u->clu ) {
     return;
   }
@@ -1500,6 +1505,7 @@ u3j_rite_reap(u3j_rite* dst_u, u3j_rite* src_u)
 void
 u3j_site_reap(u3j_site* dst_u, u3j_site* src_u)
 {
+  u3n_arm_change(dst_u);
   if ( dst_u->axe != src_u->axe ) {
     u3_noun axe = u3a_take(src_u->axe);
     u3z(dst_u->axe);
@@ -1553,6 +1559,7 @@ u3j_site_reap(u3j_site* dst_u, u3j_site* src_u)
 void
 u3j_site_ream(u3j_site* sit_u)
 {
+  u3n_arm_change(sit_u);
   if ( u3_none != sit_u->loc ) {
     u3z(sit_u->lab);
     sit_u->jet_o = _cj_nail(sit_u->loc, sit_u->axe,
@@ -1569,6 +1576,7 @@ _cj_site_lock(u3_noun loc, u3_noun cor, u3j_site* sit_u)
        (c3y == u3r_sing(sit_u->bat, u3h(cor))) ) {
     return;
   }
+  u3n_arm_change(sit_u);
   sit_u->pog_p = _cj_prog(loc, u3x_at(sit_u->axe, cor));
   if ( u3_none != sit_u->bat ) {
     u3z(sit_u->bat);
@@ -1647,6 +1655,7 @@ _cj_site_kick_hot(u3_noun loc, u3_noun cor, u3j_site* sit_u, c3_o lok_o)
 static u3_weak
 _cj_site_kick(u3_noun cor, u3j_site* sit_u)
 {
+  u3n_arm_watch(sit_u);
   u3_weak loc, pro;
 
   loc = pro = u3_none;
@@ -1659,6 +1668,9 @@ _cj_site_kick(u3_noun cor, u3j_site* sit_u)
   }
 
   if ( u3_none == loc ) {
+    if ( u3_none == sit_u->bas ) {
+      u3n_arm_change(sit_u);
+    }
     loc = _cj_spot(cor, &(sit_u->bas));
     if ( u3_none != loc ) {
       u3p(u3j_fink) fon_p = 0;
@@ -1673,6 +1685,7 @@ _cj_site_kick(u3_noun cor, u3j_site* sit_u)
         }
       }
 
+      u3n_arm_change(sit_u);
       sit_u->loc   = loc;
       sit_u->fin_p = _cj_cast(cor, loc);
       sit_u->fon_o = c3y;
@@ -2088,6 +2101,7 @@ _cj_mine(u3_noun cey, u3_noun cor, u3_noun bas)
     hap   = _cj_warm_hump(jax_l, u3t(u3t(loc)));
     u3_noun bat_dedup = u3m_dedup(u3k(bat));
     act   = u3nq(jax_l, hap, bal, _cj_jit(jax_l, bat_dedup));
+    u3n_arm_reset();
     u3h_put(u3R->jed.cod_p, bat_dedup, u3m_dedup(u3nc(u3k(bas), reg)));
     u3h_put(u3R->jed.war_p, loc, u3m_dedup(act)); // see note in _cj_spot
     u3z(pel); u3z(axe); u3z(bat_dedup);
@@ -2188,6 +2202,7 @@ u3j_mine(u3_noun clu, u3_noun cor)
 static inline void
 _cj_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
 {
+  u3n_arm_watch(rit_u);
   c3_t non_t;
 
   non_t = (u3_none == rit_u->clu);
@@ -2195,6 +2210,7 @@ _cj_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
   if ( non_t ||
        c3n == u3r_sing(rit_u->clu, clu) ||
        c3n == _cj_fine(cor, rit_u->fin_p) ) {
+    u3n_arm_change(rit_u);
     u3_weak loc = _cj_mile(u3k(clu), u3k(cor));
     if ( u3_none != loc ) {
       u3p(u3j_fink) fon_p = rit_u->fin_p;
@@ -2311,6 +2327,7 @@ _cj_merge_hank_cb(u3_noun kev, void* wit)
 void
 u3j_reap(u3a_jets jed_u)
 {
+  u3n_arm_reset();
   u3h_uni(u3R->jed.war_p, jed_u.war_p);
   u3h_free(jed_u.war_p);
 
@@ -2435,6 +2452,7 @@ _cj_ream_hank(u3_noun kev)
 void
 u3j_ream(void)
 {
+  u3n_arm_reset();
   u3_noun rel = u3_nul;
   u3_assert(u3R == &(u3H->rod_u));
   u3h_free(u3R->jed.war_p);
@@ -2553,6 +2571,7 @@ _cj_prune_drop(u3_noun kev, void* ptr_v)
 c3_w
 u3j_prune(c3_w* tot_w, c3_w* dea_w)
 {
+  u3n_arm_reset();
   _cj_prune_ctx ctx_u;
   c3_w          num_w = 0;
 
@@ -2638,6 +2657,7 @@ u3j_stay(void)
 void
 u3j_load(u3_noun rel)
 {
+  u3n_arm_reset();
   u3_noun ler = rel;
   u3_noun lor;
 
@@ -2876,6 +2896,7 @@ u3j_free_hank(u3_noun kev)
 void
 u3j_free(void)
 {
+  u3n_arm_reset();
   u3h_walk(u3R->jed.han_p, u3j_free_hank);
   u3h_free(u3R->jed.war_p);
   u3h_free(u3R->jed.cod_p);
@@ -2891,6 +2912,7 @@ u3j_free(void)
 void
 u3j_reclaim(void)
 {
+  u3n_arm_reset();
   //  re-establish the warm jet state
   //
   //    XX might this reduce fragmentation?
