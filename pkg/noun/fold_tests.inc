@@ -83,14 +83,14 @@ _fold_tables(u3_noun bat, u3_noun fire, unsigned depth_limit, c3_t timing)
         gate = u3nt(arm, u3k(tree), 0);
       }
       else gate = u3nt(u3k(bat), u3k(tree), _fold_context(merge));
-#if defined(U3_DAG_FOLD) && defined(U3_FOLD_STATS) && !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+#if defined(U3_FOLD_STATS) && !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
       extern c3_d u3n_fold_hits;
       c3_d before = u3n_fold_hits;
 #endif
       double start = _seconds();
       u3_assert(u3n_nock_on(gate, u3k(fire)) == b);
       if ( timing ) printf("%u,%u,%.9f\n", table, direct, _seconds() - start);
-#if defined(U3_DAG_FOLD) && defined(U3_FOLD_STATS) && !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+#if defined(U3_FOLD_STATS) && !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
       u3_assert(u3n_fold_hits > before);
 #endif
     }

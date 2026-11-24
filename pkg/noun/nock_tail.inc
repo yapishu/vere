@@ -9,48 +9,6 @@ _n_tail_path(unsigned parent, unsigned axis)
   return (axis >> depth) == parent ? root | (axis & (root - 1)) : 0;
 }
 
-#ifdef U3_TAIL_BENCH
-// A pure self-tail call replaces a pair below axis 6. Keep both fields
-// borrowed from the original subject until the next bytecode iteration.
-typedef struct {
-  unsigned field;  // 0 for the left field, 1 for the right
-  unsigned axis;   // projection within that field
-  unsigned bumps;
-} _n_tail_update;
-
-static c3_t
-_n_tail_update_read(u3_noun expr, unsigned pair, _n_tail_update* out)
-{
-  u3_noun arg;
-  out->bumps = 0;
-  while ( c3y == u3r_p(expr, 4, &arg) ) {
-    if ( ++out->bumps > 16 ) return 0;
-    expr = arg;
-  }
-  if ( c3n == u3r_p(expr, 0, &arg) || !arg || arg > 65535 ) return 0;
-  unsigned path = _n_tail_path(pair, arg);
-  if ( path < 2 ) return 0;
-  unsigned bit = 1U << (u3x_dep(path) - 1);
-  out->field = !!(path & bit);
-  out->axis = bit | (path & (bit - 1));
-  return 1;
-}
-
-static u3_weak
-_n_tail_value(const _n_tail_update* op, const u3_noun fields[2])
-{
-  u3_noun val = fields[op->field];
-  if ( op->axis != 1 ) val = u3r_at(op->axis, val);
-  if ( op->bumps ) {
-    // Only unboxed additions. Bytecode handles larger atoms and invalid bumps.
-    if ( val > 0x7fffffffU - op->bumps ) return u3_none;
-    val += op->bumps;
-  }
-  return val;
-}
-
-#endif
-
 #ifdef U3_TAIL_STATS
 static uint64_t _n_tail_batches, _n_tail_steps;
 static void
@@ -76,11 +34,7 @@ _n_tail_count(c3_d steps)
 typedef struct {
   unsigned axis;
   u3_noun compare;
-  enum { tail_counter, tail_successor, tail_pair } kind;
-#ifdef U3_TAIL_BENCH
-  unsigned field;
-  _n_tail_update left, right;
-#endif
+  c3_t successor;
 } _n_tail_plan;
 
 // Match a slot or its successor without traversing or unifying the formula.
@@ -93,7 +47,7 @@ _n_tail_counter_test(u3_noun test, unsigned axis, _n_tail_plan* plan)
   if ( c3n == u3r_p(successor ? slot : test, 0, &source) || source != axis ) {
     return 0;
   }
-  plan->kind = successor ? tail_successor : tail_counter;
+  plan->successor = successor;
   return 1;
 }
 
@@ -115,34 +69,11 @@ _n_tail_read(u3_noun bat, _n_tail_plan* plan)
 
   // Increment one counter until it or its successor equals a fixed bound.
   u3_noun slot, counter;
-  if ( c3y == u3r_p(update, 4, &slot) &&
-       c3y == u3r_p(slot, 0, &counter) && counter == edited ) {
-    if ( _n_tail_counter_test(lhs, edited, plan) ) {
-      compare = rhs;
-    }
-    else if ( _n_tail_counter_test(rhs, edited, plan) ) {
-      compare = lhs;
-    }
-    else return 0;
-  }
-  else {
-#ifdef U3_TAIL_BENCH
-    if ( c3y == u3r_p(lhs, 0, &axis) && (axis >> 1) == edited ) {
-      plan->field = axis & 1;
-      compare = rhs;
-    }
-    else if ( c3y == u3r_p(rhs, 0, &axis) && (axis >> 1) == edited ) {
-      plan->field = axis & 1;
-      compare = lhs;
-    }
-    else return 0;
-    if ( !_n_tail_update_read(u3h(update), edited, &plan->left) ||
-         !_n_tail_update_read(u3t(update), edited, &plan->right) ) return 0;
-    plan->kind = tail_pair;
-#else
-    return 0;
-#endif
-  }
+  if ( c3n == u3r_p(update, 4, &slot) ||
+       c3n == u3r_p(slot, 0, &counter) || counter != edited ) return 0;
+  if ( _n_tail_counter_test(lhs, edited, plan) ) compare = rhs;
+  else if ( _n_tail_counter_test(rhs, edited, plan) ) compare = lhs;
+  else return 0;
 
   if ( c3y == u3r_p(compare, 0, &source) ) {
     if ( !source || source > 65535 ||
@@ -154,9 +85,7 @@ _n_tail_read(u3_noun bat, _n_tail_plan* plan)
   return 1;
 }
 
-// The ordinary kick resolves before entry. Guard misses retain the original
-// core or materialize the last complete iteration. Bytecode then handles
-// the first unsupported step with its original input and bail behavior.
+// The ordinary kick resolves before entry. Guard misses return the original core.
 static __attribute__((noinline)) u3_noun
 _n_tail_batch(u3_noun cor, u3j_site* site)
 {
@@ -167,31 +96,9 @@ _n_tail_batch(u3_noun cor, u3j_site* site)
   u3_weak limit = u3h(plan.compare) ? source : u3r_at(source, cor);
   if ( c3n == u3a_is_cat(limit) ) return cor;
   u3_weak start = u3r_at(plan.axis, cor);
-  if ( plan.kind != tail_pair ) {
-    if ( c3n == u3a_is_cat(start) || limit <= start ) return cor;
-    u3_noun stop = limit - (plan.kind == tail_successor);
-    if ( stop == start || c3n == u3j_site_unregistered(site) ) return cor;
-    _n_tail_count(stop - start);
-    return u3i_edit(cor, plan.axis, stop);
-  }
-#ifdef U3_TAIL_BENCH
-  if ( start == u3_none || c3n == u3du(start) ||
-       c3n == u3j_site_unregistered(site) ) return cor;
-
-  u3_noun fields[2] = {u3h(start), u3t(start)};
-  unsigned steps = 0;
-  while ( fields[plan.field] != limit && steps < 4096 ) {
-    u3_weak x = _n_tail_value(&plan.left, fields);
-    u3_weak y = _n_tail_value(&plan.right, fields);
-    if ( x == u3_none || y == u3_none ) break;
-    fields[0] = x;
-    fields[1] = y;
-    ++steps;
-  }
-  if ( !steps ) return cor;
-  _n_tail_count(steps);
-  return u3i_edit(cor, plan.axis, u3nc(u3k(fields[0]), u3k(fields[1])));
-#else
-  return cor;
-#endif
+  if ( c3n == u3a_is_cat(start) || limit <= start ) return cor;
+  u3_noun stop = limit - plan.successor;
+  if ( stop == start || c3n == u3j_site_unregistered(site) ) return cor;
+  _n_tail_count(stop - start);
+  return u3i_edit(cor, plan.axis, stop);
 }

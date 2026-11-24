@@ -632,7 +632,6 @@ u3i_defcons(u3_noun** hed, u3_noun** tel)
   return pro;
 }
 
-#ifdef U3_LIST_SHARING
 /* Copy a borrowed list prefix. Each source cell supplies one head and
  * each new cell owns that head. The caller fills the final tail. */
 u3_noun*
@@ -654,7 +653,6 @@ u3i_list_prefix(u3_noun* out, u3_noun list, u3_noun stop)
   }
   return out;
 }
-#endif
 
 /* u3i_cell(): Produce the cell `[a b]`.
 */
@@ -685,7 +683,6 @@ u3i_cell(u3_noun a, u3_noun b)
 u3_noun
 u3i_trel(u3_noun a, u3_noun b, u3_noun c)
 {
-#ifdef U3_NOUN_SHAPES
   // Pop the two cells in ordinary allocation order. A depleted pool takes
   // the regular allocation path, including its refill and accounting.
   if ( u3R->cel.cel_p && u3R->cel.hav_w >= 2 ) {
@@ -710,7 +707,6 @@ u3i_trel(u3_noun a, u3_noun b, u3_noun c)
     u3t_off(mal_o);
     return u3a_to_pom(outer);
   }
-#endif
   return u3i_cell(a, u3i_cell(b, c));
 }
 

@@ -11,12 +11,6 @@ _n_index_hint(u3_noun op)
 {
   if ( c3n == u3du(op) || u3h(op) != HILB ) return 0;
   u3_noun tag = u3h(u3t(op));
-#ifdef U3_BORROW_BENCH
-  if ( tag == N_BORROW_TAG ) return 1;
-#endif
-#ifdef U3_MIXED_BENCH
-  if ( tag == N_MIXED_TAG ) return 1;
-#endif
   return tag == N_CASE_TAG;
 }
 

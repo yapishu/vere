@@ -10,7 +10,7 @@ The first tail call resolves normally. When it reaches the same program and batt
 
 ## Live Dojo timings
 
-All three binaries use Zig 0.15.2, ReleaseFast, x86-64 Linux musl and a 32-bit loom on an i7-12700K. The upstream control is `697fc95ddd`. The starting branch is `ec95989c9e` (runtime `c234e064f9`). Both branch binaries use the develop benchmark helper's flags plus `U3_CUE_VIEW` and `U3_JAM_CLASSES`. The counter optimization is enabled in the default build as well. [Build flags](bench-develop-build.sh)
+All three binaries use Zig 0.15.2, ReleaseFast, x86-64 Linux musl and a 32-bit loom on an i7-12700K. The upstream control is `697fc95ddd`. The starting branch is `ec95989c9e` (runtime `c234e064f9`). Both branch binaries use the flags in the develop benchmark helper at `097606de80` plus `U3_CUE_VIEW` and `U3_JAM_CLASSES`. The counter optimization is enabled in the default build as well. [Build flags](bench-develop-build.sh)
 
 Each build runs in a separate live fakezod from the same checkpoint. The commands run sequentially on CPU 4. Build order rotates and workload order alternates between rounds. The table gives medians across eight rounds after one warm-up. The Dojo `%bout` timer includes the Nock evaluation and the check against the expected product. [Per-trial samples](nock-counter-samples.jsonl)
 

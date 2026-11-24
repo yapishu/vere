@@ -1,6 +1,6 @@
 # Canonical map construction, key sets and Nock equality
 
-The upstream control is `697fc95ddd`. The starting branch is `a0d701540a`, the bulk builder is `09790fe7b7`, the key projection is `b129508ea9`, and the cumulative runtime is `c234e064f9`. The three changes apply by default. The timing binaries use ReleaseFast, Zig 0.15.2 and a 32-bit loom. All branch builds use the feature flags in the develop build helper plus `U3_CUE_VIEW` and `U3_JAM_CLASSES`. The host is a shared Linux i7-12700K. [Build helper](bench-develop-build.sh) · [Per-trial timings, memory and replay hashes](noun-tree-samples.jsonl)
+The upstream control is `697fc95ddd`. The starting branch is `a0d701540a`, the bulk builder is `09790fe7b7`, the key projection is `b129508ea9`, and the cumulative runtime is `c234e064f9`. The three changes apply by default. The timing binaries use ReleaseFast, Zig 0.15.2 and a 32-bit loom. All branch builds use the feature flags in the develop build helper at `097606de80` plus `U3_CUE_VIEW` and `U3_JAM_CLASSES`. The host is a shared Linux i7-12700K. [Build helper](bench-develop-build.sh) · [Per-trial timings, memory and replay hashes](noun-tree-samples.jsonl)
 
 ## Live ship operations
 

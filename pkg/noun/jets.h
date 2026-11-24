@@ -4,9 +4,6 @@
 #define U3_JETS_H
 
 /* List sharing uses the prepared sample entry for each callback. */
-#if defined(U3_LIST_SHARING) && !defined(U3_GATE_SAMPLE)
-#define U3_GATE_SAMPLE
-#endif
 
 #include "allocate.h"
 #include "c3/c3.h"
@@ -125,21 +122,15 @@
         u3_weak       loc;            //  location (for reaming)
         c3_o          jet_o;          //  have jet driver?
         c3_o          fon_o;          //  site owns fink?
-#ifdef U3_GATE_SAMPLE
         c3_y          sample_y;       //  entry selected by gate preparation
-#endif
         u3_weak       lab;            //  label (for tracing)
         u3j_core*     cop_u;          //  jet core
         u3j_harm*     ham_u;          //  jet arm
-#ifdef U3_GATE_SAMPLE
         union {
           u3p(u3j_fink) fin_p;        //  ordinary call site
           c3_w          sample_axis;  //  prepared slot on the sample
           u3p(struct _u3n_prog) sample_p; //  prepared program on the sample
         };
-#else
-        u3p(u3j_fink) fin_p;          //  fine check
-#endif
       } u3j_site;
 
       /* u3j_hank: cached hook information.
@@ -247,11 +238,9 @@
         u3a_jets
         u3j_take(u3a_jets jed_u);
 
-#ifdef U3_NOUN_SHAPES
       /* Register a core with both clue and core retained by the caller. */
         void
         u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor);
-#endif
 
       /* u3j_rite_mine(): mine cor with clu, using u3j_rite for caching
       */
@@ -291,9 +280,6 @@
         void
         u3j_site_ream(u3j_site* sit_u);
 
-#ifdef U3_GATE_FIELDS
-      c3_o u3j_gate_fields_ok(const u3j_site* site, u3_noun gate);
-#endif
       c3_o
       u3j_site_unregistered(const u3j_site* site);
 
@@ -307,11 +293,9 @@
         void
         u3j_gate_prep(u3j_site* sit_u, u3_noun cor);
 
-#ifdef U3_LIST_SHARING
       /* Can this prepared gate run while borrowing interior noun pointers? */
         c3_o
         u3j_gate_read_only(const u3j_site* site);
-#endif
 
       /* u3j_gate_slam(): slam a site prepared by u3j_gate_prep() with sample.
        */

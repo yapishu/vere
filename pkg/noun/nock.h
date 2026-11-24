@@ -27,9 +27,6 @@
   typedef struct _u3n_prog {
     struct {
       c3_o      own_o;                // program owns ops_y?
-#ifdef U3_GATE_FIELDS
-      c3_y      fields_y;             // field entry available in this program
-#endif
       c3_h      len_w;                // length of bytecode (bytes)
       c3_y*     ops_y;                // actual array of bytes
     } byc_u;                          // bytecode

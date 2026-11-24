@@ -11,7 +11,6 @@ _n_step(u3_noun b, c3_w bit)
 static inline u3_noun
 _n_path3(u3_noun a, u3_noun b)
 {
-#ifdef U3_SPINE_BENCH
   // A right-nested subject puts a field at a run of tails followed by a
   // short suffix. Select the entire path once. Each case falls through
   // to the same suffix with one fewer tail left to read.
@@ -61,7 +60,6 @@ _n_path3(u3_noun a, u3_noun b)
 #undef LAST2
 #undef STEP
 #undef CODE
-#endif
 
 #define STEP(B, K) _n_step((B), (K))
 #define TWO(B, K) STEP(STEP(B, ((K) >> 1) & 1), (K) & 1)
@@ -91,95 +89,3 @@ _n_path3(u3_noun a, u3_noun b)
 #undef STEP
   return b;
 }
-
-
-#ifdef U3_MIXED_BENCH
-// The subject on the VM stack owns the borrowed selector. Both the matched
-// arm and the default start after the TOSS that discards the fallback's copy.
-static inline c3_w
-_n_mixed_target(u3_atom table, u3_noun subject)
-{
-  const uint32_t* words = (const uint32_t*)((u3a_atom*)u3a_to_ptr(table))->buf_w;
-  u3_noun val = _n_path3(words[1], subject);
-  unsigned cell = c3y == u3du(val);
-  u3_noun tag = cell ? u3h(val) : val;
-#ifdef U3_MIXED_STATS
-  _n_start_mixed_stats();
-  if ( cell ) ++_n_mixed_cells;
-  else ++_n_mixed_atoms;
-#endif
-  if ( tag <= 0x7fffffff ) {
-    uint32_t key = (uint32_t)tag | ((uint32_t)cell << 31);
-    uint32_t mask = words[0], slot = _n_bucket(key, mask);
-    while ( words[5 + 2*slot] ) {
-      if ( words[4 + 2*slot] == key ) return words[5 + 2*slot] + 1;
-      slot = (slot + 1) & mask;
-    }
-  }
-  return words[2 + cell] + 1;
-}
-#endif
-
-#ifdef U3_BORROW_BENCH
-#ifdef U3_BORROW_STATS
-static uint64_t _n_borrow_calls[7], _n_borrow_pairs, _n_borrow_heap;
-static c3_t _n_borrow_reporting;
-static void
-_n_borrow_report(void)
-{
-  fprintf(stderr, "borrow eq=%" PRIu64 " pair=%" PRIu64 " head=%" PRIu64
-          " tail=%" PRIu64 " sample=%" PRIu64 " pairs=%" PRIu64 " heap=%" PRIu64 "\n",
-          _n_borrow_calls[0], _n_borrow_calls[1], _n_borrow_calls[2],
-          _n_borrow_calls[3], _n_borrow_calls[6], _n_borrow_pairs, _n_borrow_heap);
-}
-static void
-_n_borrow_count(u3_noun noun)
-{
-  ++_n_borrow_pairs;
-  if ( c3n == u3a_is_cat(noun) ) ++_n_borrow_heap;
-}
-#endif
-
-static inline u3_noun
-_n_borrow_run(const c3_h* plan, u3_noun subject)
-{
-  c3_w kind = plan[1] & ~N_BORROW_KEEP;
-#ifdef U3_BORROW_STATS
-  if ( !_n_borrow_reporting ) { atexit(_n_borrow_report); _n_borrow_reporting = 1; }
-  ++_n_borrow_calls[kind];
-#endif
-  u3_noun base = _n_path3(plan[2], subject);
-  u3_noun root = kind == 1 ? base : subject;
-  u3_noun left = _n_path3(plan[3], root);
-  if ( kind == 0 ) {
-    // Structural equality can unify children. Pin both operands across that
-    // call, including when one is reachable through the other.
-    if ( base != left && c3n == u3a_is_cat(base) && c3n == u3a_is_cat(left) ) {
-      u3k(base); u3k(left);
-      u3_noun same = u3r_sing(left, base);
-      u3z(left); u3z(base);
-      return same;
-    }
-#ifdef U3_BORROW_STATS
-    _n_borrow_count(base);
-    _n_borrow_count(left);
-#endif
-    return __(base == left);
-  }
-#ifdef U3_BORROW_STATS
-  _n_borrow_count(base);
-#endif
-  u3_noun value;
-  if ( plan[4] ) {
-    u3_noun right = _n_path3(plan[4], root);
-    value = u3nc(u3k(left), u3k(right));
-  }
-  else value = u3k(left);
-  switch ( kind ) {
-    case 1: return value;
-    case 2: return u3nc(value, u3k(u3t(base)));
-    case 3: return u3nc(u3k(u3h(base)), value);
-    default: return u3nt(u3k(u3h(base)), value, u3k(u3t(u3t(base))));
-  }
-}
-#endif

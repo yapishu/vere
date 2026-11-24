@@ -187,9 +187,7 @@ _test_shared_jam(ur_root_t* arena)
 typedef struct {
   u3_cue_xeno* decoder;
   ur_root_t* arena;
-#ifdef U3_CUE_VIEW
   u3_cue_view* view;
-#endif
 } _cue_test;
 
 static void
@@ -205,7 +203,6 @@ _check_stream(_cue_test* test, ur_bsw_t* writer, u3_weak expected)
   }
   u3_noun result = u3m_soft(0, u3s_cue_atom, u3i_bytes(len, bytes));
   u3_weak external = u3s_cue_xeno_with(test->decoder, len, bytes);
-#ifdef U3_CUE_VIEW
   u3_cue_view* view = test->view;
   c3_o opened = u3s_cue_view_open(view, len, bytes);
   u3_assert((opened == c3y) == (expected != u3_none));
@@ -218,7 +215,6 @@ _check_stream(_cue_test* test, ur_bsw_t* writer, u3_weak expected)
       u3z(got);
     }
   }
-#endif
   if ( expected == u3_none ) {
     u3_assert(u3h(result) == c3__exit && external == u3_none);
   }
@@ -291,7 +287,6 @@ _test_short_cue(_cue_test* test)
       u3_weak noun = u3s_cue_xeno_with(test->decoder, len, bytes);
       u3_assert((status == ur_cue_good) == (noun != u3_none));
       if ( noun != u3_none ) _check_canonical(test->arena, ref, noun);
-#ifdef U3_CUE_VIEW
       c3_o open = u3s_cue_view_open(test->view, len, bytes);
       u3_assert((open == c3y) == (noun != u3_none));
       if ( open == c3y ) {
@@ -299,7 +294,6 @@ _test_short_cue(_cue_test* test)
         u3_assert(c3y == u3r_sing(noun, copy));
         u3z(copy);
       }
-#endif
       // The atom entry point obtains its byte length from its highest bit.
       if ( bytes[len - 1] ) {
         u3_noun result = u3m_soft(0, u3s_cue_atom, word);
@@ -314,7 +308,6 @@ _test_short_cue(_cue_test* test)
   }
 }
 
-#if defined(U3_CUE_RANK) || defined(U3_CUE_VIEW)
 #include "cue_pages.inc"
 
 // Exercise all directory heights without allocating the intervening jam bytes.
@@ -349,19 +342,14 @@ _test_cue_page_ranks(void)
   }
   _cue_directory_free(dir, 1);
 }
-#endif
 
 static void
 _test_cue_positions(void)
 {
   _cue_test test = { .decoder = u3s_cue_xeno_init_with(1, 2), .arena = ur_root_init() };
   _test_shared_jam(test.arena);
-#ifdef U3_CUE_VIEW
   test.view = u3s_cue_view_new();
-#endif
-#if defined(U3_CUE_RANK) || defined(U3_CUE_VIEW)
   _test_cue_page_ranks();
-#endif
   _test_short_cue(&test);
   // A wide encoded payload can represent a direct atom on either loom.
   {
@@ -452,7 +440,6 @@ _test_cue_positions(void)
   }
   ur_root_free(test.arena);
   u3s_cue_xeno_done(test.decoder);
-#ifdef U3_CUE_VIEW
   // Cue supplies missing high bits of a final atom as zeros.
   {
     ur_bsw_t writer = {0};
@@ -495,7 +482,6 @@ _test_cue_positions(void)
   }
   u3_assert(u3h(at) == 1001 && u3t(at) == 1002);
   u3z(product);
-#endif
 }
 
 static c3_i

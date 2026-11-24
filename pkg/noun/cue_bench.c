@@ -39,30 +39,22 @@ _slam(u3_noun pair)
  * opening the index, inside the interval. Hash only the extracted output. */
 static u3_noun
 _project(u3_cue_xeno* decoder,
-#ifdef U3_CUE_VIEW
          u3_cue_view* view,
-#endif
          const c3_y* bytes, c3_d len, const c3_w* axes, size_t count)
 {
   u3_noun root = u3_none, list = u3_nul;
-#ifdef U3_CUE_VIEW
   if ( view ) {
     if ( c3n == u3s_cue_view_open(view, len, bytes) ) return u3_none;
   }
-  else
-#endif
-  {
+  else {
     root = u3s_cue_xeno_with(decoder, len, bytes);
     if ( root == u3_none ) return u3_none;
   }
   while ( count ) {
     c3_w axis = axes[--count];
     u3_weak value;
-#ifdef U3_CUE_VIEW
     if ( view ) value = u3s_cue_view_at(view, axis);
-    else
-#endif
-    {
+    else {
       value = u3r_at(axis, root);
       if ( value != u3_none ) value = u3k(value);
     }
@@ -77,10 +69,8 @@ main(int argc, char** argv)
 {
   if ( argc == 1 ) return 0;
   c3_t project = !strcmp(argv[1], "project");
-#ifdef U3_CUE_VIEW
   c3_t indexed = !strcmp(argv[1], "view");
   project |= indexed;
-#endif
   if ( argc < 4 || (!project && strcmp(argv[1], "nock") && strcmp(argv[1], "xeno")) ) {
     fprintf(stderr, "usage: cue-bench nock|xeno|project|view IVORY.jam [AXIS,...] INPUT.jam...\n");
     return 1;
@@ -110,20 +100,14 @@ main(int argc, char** argv)
   c3_free(bytes);
   u3_noun gate = u3v_wish("cue");
   u3_cue_xeno* decoder = u3s_cue_xeno_init();
-#ifdef U3_CUE_VIEW
   u3_cue_view* view = indexed ? u3s_cue_view_new() : 0;
-#endif
   for ( int i = project ? 4 : 3; i < argc; ++i ) {
     bytes = _read_file(argv[i], &len);
     u3_noun product;
     c3_d start, elapsed;
     if ( project ) {
       start = _now();
-      product = _project(decoder,
-#ifdef U3_CUE_VIEW
-                         view,
-#endif
-                         bytes, len, axes, count);
+      product = _project(decoder, view, bytes, len, axes, count);
       elapsed = _now() - start;
       if ( product == u3_none ) { fprintf(stderr, "invalid jam: %s\n", argv[i]); return 1; }
     }
@@ -155,9 +139,7 @@ main(int argc, char** argv)
     c3_free(jam);
     u3z(product);
   }
-#ifdef U3_CUE_VIEW
   if ( view ) u3s_cue_view_free(view);
-#endif
   u3s_cue_xeno_done(decoder);
   u3z(gate);
   return 0;

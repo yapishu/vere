@@ -1,6 +1,6 @@
 # Guarded Nock product benchmark
 
-The experiment caches one computed field of a cell and fills the other field from the current subject. The compiler discovers eligible formulas in the autocons path. A slot analysis finds a common ancestor for every input read by the computed field. A hit requires that the ancestor be the same live noun and the hole axis be valid. The road's transient memo table holds the most recent entry per recipe. Compilation and execution use existing hint bytecodes. The experiment is compile-time opt-in.
+The experiment caches one computed field of a cell and fills the other field from the current subject. The compiler discovers eligible formulas in the autocons path. A slot analysis finds a common ancestor for every input read by the computed field. A hit requires that the ancestor be the same live noun and the hole axis be valid. The road's transient memo table holds the most recent entry per recipe. Compilation and execution use existing hint bytecodes. The benchmark implementation and the commands below use the source at `1f2cf9bb5c`.
 
 The analysis handles slots, literals, pairs, shape, increment, equality, conditional, composition, and a statically closed form of recursive Nock 2. Its budget is 256 visited formula nodes. Opaque calls, jets, scries, and hints end analysis of that field. The experiment measures same-road reuse. Shadow mode reconstructs each predicted product, runs the ordinary code, and checks noun equality. The changed counter compares the current hole with the hole at the last cache fill.
 

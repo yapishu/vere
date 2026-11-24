@@ -825,12 +825,6 @@ fn buildBinary(
                 .deps = noun_test_deps,
             },
             .{
-                .name = "guarded-bench",
-                .file = "pkg/noun/guarded_bench.c",
-                .deps = noun_test_deps,
-                .nix = true,
-            },
-            .{
                 .name = "decision-test",
                 .file = "pkg/noun/decision_tests.c",
                 .deps = noun_test_deps,

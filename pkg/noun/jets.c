@@ -1712,19 +1712,6 @@ u3j_site_unregistered(const u3j_site* site)
   return c3n;
 }
 
-#ifdef U3_GATE_FIELDS
-/* A parent at axis 7 makes the cached fine check independent of the sample. */
-c3_o
-u3j_gate_fields_ok(const u3j_site* site, u3_noun gate)
-{
-  if ( site->loc == u3_none ) return u3j_site_unregistered(site);
-  if ( site->jet_o == c3y ) return c3n;
-  u3j_fink* fin = u3to(u3j_fink, site->fin_p);
-  if ( !fin->len_w || fin->fis_u[0].pax != 7 ) return c3n;
-  return _cj_fine(gate, site->fin_p);
-}
-#endif
-
 /* u3j_site_kick(): kick a core with a u3j_site cache.
  */
 u3_weak
@@ -1782,7 +1769,6 @@ u3j_kink(u3_noun cor, u3_noun axe)
   }
 }
 
-#ifdef U3_GATE_SAMPLE
 enum { gate_full, gate_slot, gate_literal, gate_program, gate_borrow_program };
 
 typedef struct {
@@ -1844,13 +1830,11 @@ _cj_sample_formula(u3_noun fol, _cj_sample_check* check)
     u3z(a);
     return b;
   }
-#ifdef U3_LIST_SHARING
   // Cell equality can rewrite interior pointers through unification.
   if ( op == 5 && !(u3h(left) == 1 && c3y == u3ud(u3t(left)))
                && !(u3h(right) == 1 && c3y == u3ud(u3t(right))) ) {
     check->may_unify = 1;
   }
-#endif
   return op == 5 ? u3nt(5, a, b) : u3nc(a, b);
 }
 
@@ -1876,15 +1860,12 @@ _cj_sample_prep(u3j_site* site)
     if ( body != u3_none ) {
       site->sample_p = _cj_prog(u3_none, body);
       site->sample_y = gate_program;
-#ifdef U3_LIST_SHARING
       if ( !check.may_unify ) site->sample_y = gate_borrow_program;
-#endif
       u3z(body);
     }
   }
 }
 
-#ifdef U3_LIST_SHARING
 c3_o
 u3j_gate_read_only(const u3j_site* site)
 {
@@ -1896,8 +1877,6 @@ u3j_gate_read_only(const u3j_site* site)
     default: return c3n;
   }
 }
-#endif
-#endif
 
 /* u3j_gate_prep(): prepare a locally cached gate to call repeatedly.
  *                  core is TRANSFERRED.
@@ -1935,9 +1914,7 @@ u3j_gate_prep(u3j_site* sit_u, u3_noun cor)
     }
     u3z(pam); u3z(pax);
   }
-#ifdef U3_GATE_SAMPLE
   _cj_sample_prep(sit_u);
-#endif
   u3t_off(glu_o);
 }
 
@@ -1951,7 +1928,6 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   u3_noun cor;
 
   u3t_on(glu_o);
-#ifdef U3_GATE_SAMPLE
   if ( sit_u->sample_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
     switch ( sit_u->sample_y ) {
       case gate_program:
@@ -1978,7 +1954,6 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
       return pro;
     }
   }
-#endif
   pro = u3_none;
   cor = u3nt(u3k(u3h(sit_u->bat)),
              sam,
@@ -2238,7 +2213,6 @@ _cj_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
   }
 }
 
-#ifdef U3_NOUN_SHAPES
 void
 u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
 {
@@ -2246,7 +2220,6 @@ u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
   _cj_rite_mine(rit_u, clu, cor);
   u3t_off(glu_o);
 }
-#endif
 
 /* u3j_rite_mine(): mine cor with clue, using u3j_rite for caching
 */

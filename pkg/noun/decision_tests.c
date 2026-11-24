@@ -576,7 +576,6 @@ _project_pair(void)
   }
 }
 
-#ifdef U3_LIST_SHARING
 static u3_noun (*const _list_jets[])(u3_noun, u3_noun) = {
   u3qb_turn, u3qb_skim, u3qb_skip, u3qb_murn
 };
@@ -691,7 +690,6 @@ _list_guards(void)
   if ( c3n == u3j_gate_read_only(&site) ) abort();
   u3j_gate_lose(&site);
 }
-#endif
 
 /* Compare a prepared gate with the oracle on [battery [sample context]].
  * Reuse the prepared site for two calls to exercise sample ownership. */
@@ -702,9 +700,7 @@ _prepared_twice(u3_noun input)
   u3x_trel(input, &gate, &sample, &specialized);
   u3j_site site;
   u3j_gate_prep(&site, u3k(gate));
-#ifdef U3_GATE_SAMPLE
   if ( !!site.sample_y != specialized ) abort();
-#endif
   u3_noun a = u3j_gate_slam(&site, u3k(sample));
   u3_noun b = u3j_gate_slam(&site, u3k(sample));
   if ( c3n == u3r_sing(a, b) ) abort();
@@ -746,7 +742,6 @@ _sample_expression(c3_w depth, c3_h key)
   }
 }
 
-#ifdef U3_LIST_SHARING
 /* Evaluate each gate on the full core, then apply the list operation to
  * those products. No prepared site or optimized list jet enters the oracle. */
 static u3_weak
@@ -793,7 +788,6 @@ _list_expressions(void)
   }
   u3z(list);
 }
-#endif
 
 static void
 _prepared_cases(void)
@@ -861,7 +855,7 @@ _prepared_ownership(void)
   u3j_gate_lose(&site);
 }
 
-#if defined(U3_CPU_DEBUG) && defined(U3_GATE_SAMPLE)
+#if defined(U3_CPU_DEBUG)
 static void
 _prepared_profile(void)
 {
@@ -871,9 +865,7 @@ _prepared_profile(void)
   c3_w saved = u3C.wag_h;
   for ( unsigned i = 0; i < 4; ++i ) {
     u3C.wag_h = saved | flags[i];
-#ifdef U3_LIST_SHARING
     if ( u3j_gate_read_only(&site) != __(flags[i] == 0) ) abort();
-#endif
     c3_d before = u3R->pro.cel_d;
     if ( 42 != u3j_gate_slam(&site, 42) ) abort();
     if ( u3R->pro.cel_d - before != (flags[i] ? 2 : 0) ) abort();
@@ -1158,172 +1150,8 @@ _seconds(void)
   return (double)ts.tv_sec + 1e-9 * ts.tv_nsec;
 }
 
-#ifdef U3_GATE_FIELDS
-static u3_noun
-_gate_missing(u3_noun call)
-{
-  u3_noun body = _slot(12);
-  u3_noun gate = u3nt(body, 0, 77);
-  u3p(u3n_prog) prog = u3n_find(0, call);
-  u3_assert(18 == u3n_burn(prog, u3nc(u3k(gate), u3nc(18, 19))));
-  return u3n_burn(prog, u3nc(gate, 22));
-}
-
-static void
-_gate_effects(void)
-{
-  u3_noun call = u3nt(9, 2, u3nt(10, u3nc(6, _slot(3)), _slot(2)));
-  u3_noun fail = u3m_soft(0, _gate_missing, u3k(call));
-  u3_assert(c3__exit == u3h(fail));
-  u3z(fail);
-
-  u3_noun hint = u3nt(11, u3nc(c3__slog, _lit(71)), _slot(1));
-  u3_noun gate = u3nt(u3nt(7, _slot(6), hint), 999, 77);
-  u3p(u3n_prog) prog = u3n_find(0, call);
-  logs = 0;
-  u3C.slog_f = _log;
-  for ( unsigned i = 0; i < 4; i++ ) {
-    u3_assert(i == u3n_burn(prog, u3nc(u3k(gate), i)));
-    u3_assert(logs == i + 1 && logged[i] == 71);
-  }
-  u3C.slog_f = 0;
-  logs = 0;
-  u3z(gate);
-  u3z(call);
-}
-#endif
-
 // Exercise a single compiled kick site with changing samples, contexts and
 // batteries. The reference evaluates the body on a separately built core.
-static void
-_gate_fields(c3_t bench)
-{
-  u3_noun pair = u3nc(_slot(6), _slot(7));
-  u3_noun cell = u3nq(6, u3nc(3, _slot(6)), _slot(12), _slot(7));
-  u3_noun equal = u3nq(6, u3nt(5, _slot(6), _lit(42)), _slot(7), _slot(6));
-  u3_noun opaque = u3nq(6, u3nc(3, _slot(6)), _slot(1), _slot(6));
-  u3_noun arms[] = {pair, cell, equal, opaque, _slot(6), _slot(7)};
-  const char* names[] = {"pair", "cell", "equal", "escape", "sample", "context"};
-  u3_noun call = u3nt(9, 2, u3nt(10, u3nc(6, _slot(3)), _slot(2)));
-  for ( unsigned nested = 0; nested < 2; nested++ ) {
-    u3_noun formula = nested ? u3nc(u3k(call), _lit(42)) : u3k(call);
-    u3p(u3n_prog) program = u3n_find(0, formula);
-    for ( unsigned a = 0; a < sizeof(arms)/sizeof(*arms); a++ ) {
-      u3_noun inputs[8], expected[8];
-      for ( unsigned i = 0; i < 8; i++ ) {
-        u3_noun sample = i & 1 ? u3nc(i, i+1) : i == 2 ? 42 : i;
-        u3_noun context = u3nc(100+i, 101+i);
-        u3_noun core = u3nt(u3k(arms[a]), u3k(sample), u3k(context));
-        expected[i] = _eval(core, arms[a]);
-        if ( nested ) expected[i] = u3nc(expected[i], 42);
-        u3z(core);
-        inputs[i] = u3nc(u3nt(u3k(arms[a]), 998, context), sample);
-      }
-      unsigned repetitions = bench ? 500000 : 32;
-      double start = _seconds();
-      for ( unsigned i = 0; i < repetitions; i++ ) {
-        unsigned j = i % 8;
-        u3_noun product = u3n_burn(program, u3k(inputs[j]));
-        u3_assert(c3y == u3r_sing(product, expected[j]));
-        u3z(product);
-      }
-      if ( bench ) printf("%s,%s,%.3f\n", names[a], nested ? "call" : "tail",
-                          1e9 * (_seconds() - start) / repetitions);
-      for ( unsigned i = 0; i < 8; i++ ) { u3z(inputs[i]); u3z(expected[i]); }
-    }
-    u3z(formula);
-  }
-  u3z(call);
-  for ( unsigned i = 0; i < sizeof(arms)/sizeof(*arms); i++ ) u3z(arms[i]);
-}
-
-static void
-_borrow_bench(void)
-{
-  const char* names[] = {"equal", "equal-heap", "pair", "edit", "sample", "owner-edit"};
-  u3_noun formulas[] = {
-    _borrow_formula(0, 4, 6, 0), _borrow_formula(0, 2, 3, 0),
-    _borrow_formula(1, 2, 2, 3), _borrow_formula(3, 2, 6, 0),
-    _borrow_formula(6, 2, 3, 2), u3nt(10, u3nc(6, u3nc(4, _slot(4))), _slot(1)),
-  };
-  u3m_hate(0);
-  for ( unsigned k = 0; k < 6; ++k ) {
-    u3p(u3n_prog) pg = u3n_find(0, formulas[k]);
-    u3_noun inputs[16], expected[16];
-    for ( unsigned j = 0; j < 16; ++j ) {
-      inputs[j] = u3nc(u3nt(j, j+1, j+2), u3nt(j, j + (j&1), j+2));
-      expected[j] = _eval(inputs[j], formulas[k]);
-      if ( expected[j] == u3_none ) abort();
-    }
-    unsigned n = 750000;
-    double start = _seconds();
-    for ( unsigned j = 0; j < n; ++j ) {
-      unsigned ix = j & 15;
-      u3_noun out = u3n_burn(pg, u3k(inputs[ix]));
-      if ( c3n == u3r_sing(out, expected[ix]) ) abort();
-      u3z(out);
-    }
-    printf("%s,%.3f\n", names[k], 1e9 * (_seconds()-start)/n);
-    for ( unsigned j = 0; j < 16; ++j ) { u3z(expected[j]); u3z(inputs[j]); }
-  }
-  // Carry the only owning reference to the next iteration. The other
-  // measurements retain their prepared subjects while each call runs.
-  u3_noun update = u3nt(10, u3nc(6, u3nc(4, _slot(6))), _slot(1));
-  u3p(u3n_prog) edit = u3n_find(0, update);
-  u3_noun core = u3nt(41, 0, u3nc(97, 98));
-  unsigned n = 750000;
-  double start = _seconds();
-  for ( unsigned j = 0; j < n; ++j ) {
-    core = u3n_burn(edit, core);
-    if ( u3h(u3t(core)) != j + 1 ) abort();
-  }
-  printf("unique-sample,%.3f\n", 1e9 * (_seconds()-start)/n);
-  if ( u3h(core) != 41 || u3h(u3t(u3t(core))) != 97 ||
-       u3t(u3t(u3t(core))) != 98 ) abort();
-  u3z(core);
-  u3z(update);
-  u3z(u3m_love(0));
-  for ( unsigned k = 0; k < 6; ++k ) u3z(formulas[k]);
-}
-
-static void
-_mixed_bench(c3_w axis)
-{
-  const c3_w tags[] = {c3__void, c3__noun, c3__atom, c3__cell,
-                       c3__core, c3__face, c3__fork, c3__hold};
-  u3m_hate(0);
-  u3_noun fol = _lit(8);
-  for ( unsigned i = 8; i-- > 0; ) {
-    c3_t cell = i >= 2;
-    u3_noun test = _mixed_test(axis, cell ? 2*axis : axis, cell, i & 1, tags[i]);
-    fol = u3nq(6, test, _lit(i), fol);
-  }
-  u3p(u3n_prog) prog = u3n_find(0, fol);
-  u3_noun subjects[10];
-  for ( unsigned i = 0; i < 10; ++i ) {
-    u3_noun key = i < 8 ? tags[i] : 77;
-    if ( i >= 2 && i != 8 ) key = u3nc(key, u3nc(0, i));
-    subjects[i] = _at_axis(axis, key);
-    if ( u3n_burn(prog, u3k(subjects[i])) != (i < 8 ? i : 8) ) abort();
-  }
-  // Fixed inputs expose the first-arm cost. The cycle covers all eight
-  // winners plus the default on both atom and cell subjects.
-  const char* names[] = {"first-atom", "last-cell", "miss-atom", "miss-cell", "cycle"};
-  const unsigned inputs[] = {0, 7, 8, 9};
-  const unsigned n = 2000000;
-  for ( unsigned which = 0; which < 5; ++which ) {
-    double start = _seconds();
-    for ( unsigned i = 0; i < n; ++i ) {
-      unsigned k = which == 4 ? i % 10 : inputs[which];
-      if ( u3n_burn(prog, u3k(subjects[k])) != (k < 8 ? k : 8) ) abort();
-    }
-    printf("%u,%s,%.2f\n", (unsigned)axis, names[which], 1e9 * (_seconds()-start) / n);
-  }
-  for ( unsigned i = 0; i < 10; ++i ) u3z(subjects[i]);
-  u3z(fol);
-  u3z(u3m_love(0));
-}
-
 static void
 _bench(c3_w arms, const char* mode)
 {
@@ -1430,7 +1258,7 @@ main(void)
     _projection_cases();
     fprintf(stderr, "projection-test: %u cases, %u products, %u exits\n",
             cases, cases - exits, exits);
-#if defined(U3_PROJECTION_STATS) && defined(U3_COMPILED_PROJECTIONS)
+#if defined(U3_PROJECTION_STATS)
     extern void u3n_projection_report(const char*);
     extern unsigned u3n_projection_widths(void);
     u3n_projection_report("test");
@@ -1443,13 +1271,6 @@ main(void)
     _check_short_axes();
     return 0;
   }
-  if ( getenv("U3_FIELD_MICRO") ) { _gate_fields(1); return 0; }
-  if ( getenv("U3_BORROW_MICRO") ) { _borrow_bench(); return 0; }
-  if ( getenv("U3_MIXED_MICRO") ) {
-    _mixed_bench(126);
-    _mixed_bench(510);
-    return 0;
-  }
   const char* mode = getenv("U3_CASE_BENCH");
   if ( mode ) {
     for ( c3_w rep = 0; rep < 5; ++rep ) {
@@ -1459,7 +1280,6 @@ main(void)
   }
   trace = getenv("U3_CASE_TRACE") != 0;
   if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
-#ifdef U3_LIST_SHARING
   _list_masks();
   _list_weld();
   u3m_hate(0);
@@ -1468,23 +1288,10 @@ main(void)
   u3z(u3m_love(0));
   _list_guards();
   _list_expressions();
-#endif
-#ifdef U3_GATE_FIELDS
-  u3m_hate(0);
-  _gate_fields(0);
-  u3z(u3m_love(0));
-  _gate_effects();
-#ifdef U3_FIELD_STATS
-  extern c3_d u3n_field_hits;
-  u3_assert(u3n_field_hits > 0);
-#endif
-#endif
-#ifdef U3_DAG_FOLD
   _fold_check();
-#endif
   _effects();
   _prepared_cases();
-#if defined(U3_CPU_DEBUG) && defined(U3_GATE_SAMPLE)
+#if defined(U3_CPU_DEBUG)
   _prepared_profile();
 #endif
   _prepared_ownership();

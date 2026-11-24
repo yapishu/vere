@@ -12,23 +12,7 @@ u3qb_weld(u3_noun a, u3_noun b)
   u3_noun  pro;
   u3_noun* lit = &pro;
 
-#if defined(U3_LIST_SHARING) && defined(U3_NOUN_SHAPES)
   lit = u3i_list_prefix(lit, a, u3_nul);
-#else
-  {
-    u3_noun* hed;
-    u3_noun* tel;
-    u3_noun    i, t = a;
-
-    while ( u3_nul != t ) {
-      u3x_cell(t, &i, &t);
-
-      *lit = u3i_defcons(&hed, &tel);
-      *hed = u3k(i);
-      lit  = tel;
-    }
-  }
-#endif
 
   *lit = u3k(b);
 

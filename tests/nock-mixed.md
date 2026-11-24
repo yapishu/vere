@@ -6,7 +6,7 @@ With `U3_DECISION_BENCH` and `U3_MIXED_BENCH`, the compiler partitions a contigu
 
 The compiler emits ordinary bytecode for both paths. For runs of three through 128 rows at axes up to 65,535, it also emits a private literal hint. The assembler reads the final bytecode, checks the two comparison blocks and their jump destinations, and builds one lookup table. A key contains the 31-bit literal and a bit distinguishing an atom from a cell head. Duplicate keys retain their first arm. The table holds immediate keys, the slot axis and byte offsets into its own program. The interpreter borrows the selector from the subject and jumps straight into the selected arm. Stock Vere executes the ordinary bytecode. Programs exceeding the compiler's indexing budget use that fallback.
 
-The mixed lookup takes about half the time of indexed dispatch on a cycle through eight hits and two misses. Live Dojo folds over mixed inputs take 6.0% less time. Full startup replay changes by less than 1% on average in opposite directions across the two comparisons below. The feature stays opt-in.
+The mixed lookup takes about half the time of indexed dispatch on a cycle through eight hits and two misses. Live Dojo folds over mixed inputs take 6.0% less time. Full startup replay changes by less than 1% on average in opposite directions across the two comparisons below.
 
 ## Isolated lookup cost
 

@@ -194,7 +194,7 @@ _jam_number(_jam_classes* c, u3_noun noun)
 }
 
 static void
-_jam_emit_classes(u3_noun root, ur_bsw_t* writer, struct _cs_jam_fib* fib)
+_jam_emit_classes(u3_noun root, ur_bsw_t* writer, struct _cs_jam_slab* slab)
 {
   _jam_classes c = {0};
   c.deferred = u3a_defer_active();
@@ -215,19 +215,19 @@ _jam_emit_classes(u3_noun root, ur_bsw_t* writer, struct _cs_jam_fib* fib)
   }
   else {
     if ( c.bits > c3_w_max ) u3m_bail(c3__fail);
-    fib->a_w = c.bits;
-    u3i_slab_init(fib->sab_u, 0, c.bits);
+    slab->len_w = c.bits;
+    u3i_slab_init(slab->sab_u, 0, c.bits);
   }
   u3a_pile stack;
   u3a_pile_prep(&stack, sizeof(c3_w), alignof(c3_w));
   for (;;) {
     _jam_class* n = &c.nodes[id - 1];
-    c3_d pos = writer ? writer->bits : fib->bit_w;
+    c3_d pos = writer ? writer->bits : slab->bit_w;
     c3_d first = n->first;
     c3_w width = n->right ? 0 : u3r_met(0, n->left);
     if ( pos == first && n->right ) {
       if ( writer ) ur_bsw_cell(writer);
-      else _cs_jam_fib_chop(fib, 2, 1);
+      else _cs_jam_slab_chop(slab, 2, 1);
       *(c3_w*)u3a_push(&stack) = n->right;
       id = n->left;
       continue;
@@ -236,20 +236,20 @@ _jam_emit_classes(u3_noun root, ur_bsw_t* writer, struct _cs_jam_fib* fib)
       if ( writer ) ur_bsw_back64(writer, c3_bits_chub(first), first);
       else {
         u3_atom at = _cs_coin_chub(first);
-        _cs_jam_fib_chop(fib, 2, 3);
-        _cs_jam_fib_mat(fib, at);
+        _cs_jam_slab_chop(slab, 2, 3);
+        _cs_jam_slab_mat(slab, at);
         u3z(at);
       }
     }
     else if ( writer ) _cs_jam_bsw_atom(writer, width, n->left);
     else {
-      _cs_jam_fib_chop(fib, 1, 0);
-      _cs_jam_fib_mat(fib, n->left);
+      _cs_jam_slab_chop(slab, 1, 0);
+      _cs_jam_slab_mat(slab, n->left);
     }
     if ( c3y == u3a_pile_done(&stack) ) break;
     id = *(c3_w*)u3a_peek(&stack);
     u3a_pop(&stack);
   }
-  u3_assert(c.bits == (writer ? writer->bits : fib->bit_w));
+  u3_assert(c.bits == (writer ? writer->bits : slab->bit_w));
   _jam_dispose(c.nodes, c.local_nodes);
 }

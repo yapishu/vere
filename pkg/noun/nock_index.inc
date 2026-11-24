@@ -14,9 +14,6 @@ _n_report_tables(void)
 // This private HILB literal is emitted only by _n_comp_cases. A stock VM
 // executes the ordinary hint and its cleanup, then walks the same case arms.
 #define N_CASE_TAG c3_s4('j','m','p','s')
-#ifdef U3_MIXED_BENCH
-#define N_MIXED_TAG c3_s4('m','x','d','s')
-#endif
 
 static inline c3_h
 _n_bucket(c3_h key, c3_h mask)
@@ -130,71 +127,3 @@ _n_case_target(u3_atom table, u3_noun key)
 #endif
   return words[1];
 }
-
-#ifdef U3_MIXED_BENCH
-#ifdef U3_MIXED_STATS
-static uint64_t _n_mixed_plans, _n_mixed_tables, _n_mixed_atoms, _n_mixed_cells;
-static void
-_n_report_mixed(void)
-{
-  fprintf(stderr, "mixed plans=%" PRIu64 " tables=%" PRIu64 " atoms=%" PRIu64 " cells=%" PRIu64 "\n",
-          _n_mixed_plans, _n_mixed_tables, _n_mixed_atoms, _n_mixed_cells);
-}
-
-// A restored program can execute a table before this process compiles one.
-static void
-_n_start_mixed_stats(void)
-{
-  static c3_t started;
-  if ( !started ) {
-    started = 1;
-    atexit(_n_report_mixed);
-  }
-}
-#endif
-
-// Decode the selector, the atom/cell split and both runs of comparisons
-// from the final bytecode. All offsets address this same immutable program.
-static u3_atom
-_n_mixed_table(u3n_prog* prog, c3_w pc, u3_noun counts)
-{
-#ifdef U3_MIXED_STATS
-  _n_start_mixed_stats();
-  ++_n_mixed_plans;
-#endif
-  c3_y* code = prog->byc_u.ops_y;
-  c3_w end = prog->byc_u.len_w, atoms = u3h(counts), cells = u3t(counts);
-  if ( !atoms || !cells || atoms + cells > 128 || pc >= end || end - pc < 10 ||
-       code[pc] != TOSS || code[pc+1] != SWAP || code[pc+2] != TOSS ) return 0;
-  pc += 3;
-  uint32_t axis;
-  switch ( code[pc++] ) {
-    case COPY: axis = 1; break;
-    case HEAD: axis = 2; break;
-    case TAIL: axis = 3; break;
-    case FABK: axis = code[pc++]; break;
-    case FASK: axis = _n_operand(code + pc, 2); pc += 2; break;
-    default: return 0;
-  }
-  if ( !axis || code[pc++] != COPY || code[pc++] != DEEP ) return 0;
-  c3_y branch = code[pc++];
-  if ( branch < SBIN || branch > SWIN ) return 0;
-  c3_w width = 1U << (branch - SBIN);
-  if ( end - pc <= width ) return 0;
-  uint32_t delta = _n_operand(code + pc, width);
-  pc += width;
-  if ( delta >= end - pc || code[pc] != HELD ) return 0;
-  c3_w atom_pc = pc + delta, cell_pc = pc + 1;
-  uint32_t cap = 8;
-  while ( cap < 2 * (atoms + cells) ) cap *= 2;
-  uint32_t words[4 + 2*256 + 1] = {cap - 1, axis};
-  words[2] = _n_index_rows(prog, atom_pc, atoms, cap - 1, words + 4, 0);
-  words[3] = _n_index_rows(prog, cell_pc, cells, cap - 1, words + 4, 0x80000000U);
-  if ( !words[2] || !words[3] ) return 0;
-  words[4 + 2*cap] = 1;
-#ifdef U3_MIXED_STATS
-  ++_n_mixed_tables;
-#endif
-  return u3i_halfs(5 + 2*cap, words);
-}
-#endif

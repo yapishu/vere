@@ -2,7 +2,7 @@
 
 The two changes reduce median Hoon compilation time by 3.9% and prelude compilation time by 4.0% on top of the previous optimized build. Seven workloads running in Dojo take 5.6–14.1% less time. Against stock Vere 4.6, the combined build takes 22.0% less time for Hoon and 22.1% less for the prelude.
 
-Both changes operate on Nock bytecode that Vere already emits. The comparison baseline is Vere 4.6 with indexed decisions, subject ownership and mutable cell reuse enabled. The experimental build adds `U3_SPINE_BENCH` and `U3_DIRECT_EDIT_BENCH`. Both features are opt-in. [Previous ownership measurements](nock-ownership.md)
+Both changes operate on Nock bytecode that Vere already emits. The comparison baseline is Vere 4.6 with indexed decisions, subject ownership and mutable cell reuse enabled. The experimental build adds `U3_SPINE_BENCH` and `U3_DIRECT_EDIT_BENCH`. [Previous ownership measurements](nock-ownership.md)
 
 ## What the compiler workloads do
 

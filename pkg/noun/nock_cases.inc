@@ -65,67 +65,6 @@ _n_case_block(u3_noun* ops, u3_noun rows, c3_w len, c3_t direct,
   return size;
 }
 
-#ifdef U3_MIXED_BENCH
-// Unguarded rows compare an atom with the selected noun. Guarded rows
-// require a cell at that exact axis and compare its immediate head.
-static u3_noun
-_n_mixed_axis(const _n_case* row)
-{
-  u3_noun axis = u3t(row->slot);
-  if ( c3n == u3a_is_cat(axis) || row->tag > 0x7fffffff ) return 0;
-  if ( row->guard == u3_none ) return axis;
-  u3_noun base = u3t(u3t(row->guard));
-  return !(axis & 1) && (axis >> 1) == base ? base : 0;
-}
-
-static c3_w
-_n_comp_mixed(u3_noun* ops, _n_case row, u3_noun axis, u3_noun rows,
-              c3_w len, c3_t first_cell, c3_o los_o, c3_o tel_o)
-{
-  u3_noun group[2] = {u3_nul, u3_nul}, end;
-  c3_w count[2] = {0, 0};
-  group[first_cell] = u3k(rows);
-  count[first_cell] = len;
-  do {
-    if ( !_n_formulaic(row.arm) ) break;
-    unsigned cell = row.guard != u3_none;
-    group[cell] = u3nc(u3nc(u3k(row.tag), u3k(row.arm)), group[cell]);
-    ++count[cell];
-    end = row.rest;
-  } while ( _n_read_case(end, &row) && _n_mixed_axis(&row) == axis );
-  if ( count[!first_cell] == 0 || count[0] + count[1] < 3 || !_n_formulaic(end) ) {
-    u3z(group[0]);
-    u3z(group[1]);
-    return 0;
-  }
-
-  c3_t indexed = axis <= 65535 && count[0] + count[1] <= 128;
-  u3_noun def = u3_nul, atom = u3_nul, cell = u3nc(HELD, u3_nul);
-  c3_w def_len = _n_comp(&def, end, los_o, tel_o);
-  c3_w atom_len = _n_case_block(&atom, group[0], count[0], !indexed, los_o, tel_o, 0, def_len);
-  c3_w cell_len = 1 + _n_case_block(&cell, group[1], count[1], !indexed, los_o, tel_o,
-                                     atom_len, atom_len + def_len);
-  c3_w size = 0;
-  if ( indexed ) {
-    _n_emit(ops, u3nc(HILB, u3nt(N_MIXED_TAG, count[0], count[1])));
-    _n_emit(ops, TOSS);
-    _n_emit(ops, SWAP);
-    _n_emit(ops, TOSS);
-    size += 4;
-  }
-  u3_noun select = u3nc(0, axis);
-  size += _n_comp(ops, select, c3n, c3n);
-  u3z(select);
-  _n_emit(ops, COPY);
-  _n_emit(ops, DEEP);
-  _n_emit(ops, u3nc(SBIN, cell_len));
-  _n_apen(ops, cell);
-  _n_apen(ops, atom);
-  _n_apen(ops, def);
-  return size + 3 + cell_len + atom_len + def_len;
-}
-#endif
-
 static c3_w
 _n_comp_cases(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
 {
@@ -146,15 +85,6 @@ _n_comp_cases(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
          && (first.guard == row.guard ||
              (first.guard != u3_none && row.guard != u3_none &&
               c3y == u3r_sing(first.guard, row.guard))) );
-#ifdef U3_MIXED_BENCH
-  if ( more && direct && (first.guard == u3_none) != (row.guard == u3_none) ) {
-    u3_noun axis = _n_mixed_axis(&first);
-    if ( axis && axis == _n_mixed_axis(&row) ) {
-      c3_w size = _n_comp_mixed(ops, row, axis, rows, len, first.guard != u3_none, los_o, tel_o);
-      if ( size ) { u3z(rows); return size; }
-    }
-  }
-#endif
   if ( len < 3 || !_n_formulaic(end) ) {
     u3z(rows);
     return 0;

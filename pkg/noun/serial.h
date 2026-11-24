@@ -21,15 +21,11 @@
     /*  Noun serialization. All noun arguments RETAINED.
     */
 
-      /* u3s_jam_fib(): jam without atom allocation.
-      **
-      **   returns atom-suitable words, and *bit_w will have
-      **   the length (in bits). return should be freed with u3a_wfree().
-      */
+      /* u3s_jam_fib(): jam into a slab and return the length in bits. */
         c3_w
         u3s_jam_fib(u3i_slab* sab_u, u3_noun a);
 
-      /* u3s_jam_xeno(): jam with off-loom buffer (re-)allocation.
+      /* u3s_jam_xeno(): jam into an off-loom byte buffer.
       */
         c3_d
         u3s_jam_xeno(u3_noun a, c3_d* len_d, c3_y** byt_y);
@@ -39,7 +35,6 @@
         u3_noun
         u3s_cue(u3_atom a);
 
-#ifdef U3_CUE_VIEW
       typedef struct _u3_cue_view u3_cue_view;
       u3_cue_view* u3s_cue_view_new(void);
       /* Index one jam on the home road. Keep bytes live and immutable while
@@ -48,7 +43,6 @@
       /* Return an owned fragment, or u3_none for a missing axis. */
       u3_weak u3s_cue_view_at(u3_cue_view* view, u3_atom axis);
       void u3s_cue_view_free(u3_cue_view* view);
-#endif
 
       /* u3s_cue_xeno_init_with(): initialize a cue_xeno handle as specified.
       */

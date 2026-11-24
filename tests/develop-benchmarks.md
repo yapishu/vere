@@ -103,7 +103,7 @@ optimized="$bench/optimized/x86_64-linux-musl/urbit"
 python3 tests/bench-develop-compiler.py "$stock" "$optimized" "$bench/desk" --cores 8 14
 ```
 
-To rebuild the measured commits, pass `697fc95ddd ca2a0165a1` after the output directory. The optimized build enables `U3_DECISION_BENCH`, `U3_OWNER_BENCH`, `U3_REUSE_BENCH`, `U3_SPINE_BENCH`, `U3_DIRECT_EDIT_BENCH`, `U3_CUE_RANK`, `U3_NOUN_SHAPES`, `U3_GATE_SAMPLE` and `U3_LIST_SHARING`. The upstream build uses its defaults. [Build script](bench-develop-build.sh) · [Compiler driver](bench-develop-compiler.py)
+To rebuild this nine-feature comparison, use the build helper at `097606de80` and pass `697fc95ddd ca2a0165a1` after the output directory. The optimized build enables `U3_DECISION_BENCH`, `U3_OWNER_BENCH`, `U3_REUSE_BENCH`, `U3_SPINE_BENCH`, `U3_DIRECT_EDIT_BENCH`, `U3_CUE_RANK`, `U3_NOUN_SHAPES`, `U3_GATE_SAMPLE` and `U3_LIST_SHARING`. The upstream build uses its defaults. [Build script](bench-develop-build.sh) · [Compiler driver](bench-develop-compiler.py)
 
 For replay, supply an extracted, stopped pier. Set the expected first and last event numbers for that input. The driver makes independent scratch copies and checks that each process completes the expected range.
 

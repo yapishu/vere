@@ -1,6 +1,6 @@
 # Nock operand ownership on Vere 4.6
 
-Keeping the original subject and editing uniquely owned cells in place cuts a live two-million-step counter from 150.76 to 138.33 ms on a performance core. Cold replay takes 2.2% less time across two separate-build pairs, 2.9% less across two same-executable pairs and 4.7% less in a further same-executable pair using disk-backed scratch. Borrowing fields through private bytecode plans reduces reference-count traffic but adds 2.4% to mean cold replay time. All three features are opt-in.
+Keeping the original subject and editing uniquely owned cells in place cuts a live two-million-step counter from 150.76 to 138.33 ms on a performance core. Cold replay takes 2.2% less time across two separate-build pairs, 2.9% less across two same-executable pairs and 4.7% less in a further same-executable pair using disk-backed scratch. Borrowing fields through private bytecode plans reduces reference-count traffic but adds 2.4% to mean cold replay time.
 
 In the indexed 4.6 replay profile, 24.0% of sampled instruction pointers fall in four retain and release functions. Recursive destruction accounts for a substantial share. Sampling the bytecode separately shows an opportunity before gate calls. The VM selects a gate from its subject, reads arguments from that same subject and replaces the gate's sample. The subject already owns the selected gate throughout the reads. [CPU profile](nock-decisions.md)
 
