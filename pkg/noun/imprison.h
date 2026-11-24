@@ -128,6 +128,10 @@
           u3i_cell(u3_noun a, u3_noun b);
 #         define u3nc(a, b) u3i_cell(a, b)
 
+        /* Copy the spine up to an exclusive tail, returning its open end. */
+          u3_noun*
+          u3i_list_prefix(u3_noun* out, u3_noun list, u3_noun stop);
+
         /* u3i_defcons(): allocate cell for deferred construction.
         **            NB: [hed] and [tel] pointers MUST be filled.
         */

@@ -1697,6 +1697,21 @@ _cj_site_kick(u3_noun cor, u3j_site* sit_u)
   return pro;
 }
 
+// Check all roads for the battery, independently of the current sample.
+// This decision lasts only while executing a body with no registrations.
+c3_o
+u3j_site_unregistered(const u3j_site* site)
+{
+  if ( site->loc != u3_none || site->bas == u3_none ||
+       (u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) return c3n;
+  if ( !(u3C.wag_h & u3o_hashless) &&
+       u3_none != u3h_git(u3H->rod_u.jed.hot_p, site->bas) ) return c3n;
+  u3_weak reg = _cj_find_cold(site->bat);
+  if ( reg == u3_none ) return c3y;
+  u3z(reg);
+  return c3n;
+}
+
 /* u3j_site_kick(): kick a core with a u3j_site cache.
  */
 u3_weak
@@ -1754,6 +1769,115 @@ u3j_kink(u3_noun cor, u3_noun axe)
   }
 }
 
+enum { gate_full, gate_slot, gate_literal, gate_program, gate_borrow_program };
+
+typedef struct {
+  c3_w nodes;
+  c3_t may_unify;
+} _cj_sample_check;
+
+/* Axis 6 is the root of the sample in [battery [sample context]]. */
+static c3_w
+_cj_sample_axis(u3_noun axis)
+{
+  if ( axis < 6 || c3n == u3a_is_cat(axis) ) return 0;
+  c3_w depth = u3x_dep(axis) - 2;
+  c3_w root = (c3_w)1 << depth;
+  return (axis >> depth) == 6 ? root | (axis & (root - 1)) : 0;
+}
+
+/* Rebase a bounded, pure expression whose every slot reads the sample.
+ * Constants retain their values. Operators keep their evaluation order. */
+static u3_weak
+_cj_sample_formula(u3_noun fol, _cj_sample_check* check)
+{
+  u3_noun op, arg, left, right;
+  if ( !check->nodes || c3n == u3r_cell(fol, &op, &arg) ) return u3_none;
+  --check->nodes;
+
+  if ( op == 0 ) {
+    c3_w axis = _cj_sample_axis(arg);
+    return axis ? u3nc(0, axis) : u3_none;
+  }
+  if ( op == 1 ) return u3k(fol);
+  if ( op == 3 || op == 4 ) {
+    u3_weak sub = _cj_sample_formula(arg, check);
+    return sub == u3_none ? sub : u3nc(op, sub);
+  }
+  if ( c3y == u3du(op) ) {
+    left = op;
+    right = arg;
+  }
+  else if ( (op != 5 && op != 6) || c3n == u3r_cell(arg, &left, &right) ) {
+    return u3_none;
+  }
+  if ( op == 6 && c3n == u3du(right) ) return u3_none;
+
+  u3_weak a = _cj_sample_formula(left, check);
+  if ( a == u3_none ) return a;
+  if ( op == 6 ) {
+    u3_weak yes = _cj_sample_formula(u3h(right), check);
+    if ( yes != u3_none ) {
+      u3_weak no = _cj_sample_formula(u3t(right), check);
+      if ( no != u3_none ) return u3nq(6, a, yes, no);
+      u3z(yes);
+    }
+    u3z(a);
+    return u3_none;
+  }
+  u3_weak b = _cj_sample_formula(right, check);
+  if ( b == u3_none ) {
+    u3z(a);
+    return b;
+  }
+  // Cell equality can rewrite interior pointers through unification.
+  if ( op == 5 && !(u3h(left) == 1 && c3y == u3ud(u3t(left)))
+               && !(u3h(right) == 1 && c3y == u3ud(u3t(right))) ) {
+    check->may_unify = 1;
+  }
+  return op == 5 ? u3nt(5, a, b) : u3nc(a, b);
+}
+
+static void
+_cj_sample_prep(u3j_site* site)
+{
+  site->sample_y = gate_full;
+  if ( site->loc != u3_none && site->jet_o == c3y ) return;
+
+  u3_noun fol = u3h(site->bat), op, arg;
+  if ( c3n == u3r_cell(fol, &op, &arg) ) return;
+  if ( op == 1 ) site->sample_y = gate_literal;
+  else if ( op == 0 ) {
+    c3_w axis = _cj_sample_axis(arg);
+    if ( axis ) {
+      site->sample_y = gate_slot;
+      site->sample_axis = axis;
+    }
+  }
+  else {
+    _cj_sample_check check = { .nodes = 32 };
+    u3_weak body = _cj_sample_formula(fol, &check);
+    if ( body != u3_none ) {
+      site->sample_p = _cj_prog(u3_none, body);
+      site->sample_y = gate_program;
+      if ( !check.may_unify ) site->sample_y = gate_borrow_program;
+      u3z(body);
+    }
+  }
+}
+
+c3_o
+u3j_gate_read_only(const u3j_site* site)
+{
+  if ( u3C.wag_h & (u3o_trace | u3o_debug_cpu) ) return c3n;
+  switch ( site->sample_y ) {
+    case gate_slot:
+    case gate_literal:
+    case gate_borrow_program: return c3y;
+    default: return c3n;
+  }
+}
+
 /* u3j_gate_prep(): prepare a locally cached gate to call repeatedly.
  *                  core is TRANSFERRED.
  */
@@ -1790,10 +1914,11 @@ u3j_gate_prep(u3j_site* sit_u, u3_noun cor)
     }
     u3z(pam); u3z(pax);
   }
+  _cj_sample_prep(sit_u);
   u3t_off(glu_o);
 }
 
-/* u3j_gate_slam(): slam a site prepared by u3j_gate_find() with sample.
+/* u3j_gate_slam(): slam a site prepared by u3j_gate_prep() with sample.
  *                  sam is TRANSFERRED.
  */
 u3_noun
@@ -1803,6 +1928,32 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   u3_noun cor;
 
   u3t_on(glu_o);
+  if ( sit_u->sample_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
+    switch ( sit_u->sample_y ) {
+      case gate_program:
+      case gate_borrow_program:
+        pro = _cj_burn(sit_u->sample_p, sam);
+        u3t_off(glu_o);
+        return pro;
+      case gate_literal:
+        pro = u3t(u3h(sit_u->bat));
+        break;
+      default:
+        pro = sit_u->sample_axis == 1 ? sam : u3r_at(sit_u->sample_axis, sam);
+        break;
+    }
+    if ( pro != u3_none ) {
+      if ( pro != sam ) {
+        pro = u3k(pro);
+        u3z(sam);
+      }
+#ifdef U3_CPU_DEBUG
+      u3R->pro.nox_d++;
+#endif
+      u3t_off(glu_o);
+      return pro;
+    }
+  }
   pro = u3_none;
   cor = u3nt(u3k(u3h(sit_u->bat)),
              sam,
@@ -1817,7 +1968,7 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   return pro;
 }
 
-/* u3j_gate_lose(): clean up site prepared by u3j_gate_find().
+/* u3j_gate_lose(): clean up site prepared by u3j_gate_prep().
  */
 void
 u3j_gate_lose(u3j_site* sit_u)
@@ -2033,13 +2184,11 @@ u3j_mine(u3_noun clu, u3_noun cor)
   u3t_off(glu_o);
 }
 
-/* u3j_rite_mine(): mine cor with clue, using u3j_rite for caching
-*/
-void
-u3j_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+// Both arguments stay owned by the caller while the registration changes.
+static inline void
+_cj_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
 {
   c3_t non_t;
-  u3t_on(glu_o);
 
   non_t = (u3_none == rit_u->clu);
 
@@ -2062,6 +2211,23 @@ u3j_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
       }
     }
   }
+}
+
+void
+u3j_rite_mine_keep(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+{
+  u3t_on(glu_o);
+  _cj_rite_mine(rit_u, clu, cor);
+  u3t_off(glu_o);
+}
+
+/* u3j_rite_mine(): mine cor with clue, using u3j_rite for caching
+*/
+void
+u3j_rite_mine(u3j_rite* rit_u, u3_noun clu, u3_noun cor)
+{
+  u3t_on(glu_o);
+  _cj_rite_mine(rit_u, clu, cor);
   u3z(clu);
   u3z(cor);
   u3t_off(glu_o);

@@ -825,6 +825,16 @@ fn buildBinary(
                 .deps = noun_test_deps,
             },
             .{
+                .name = "nock-compiler-test",
+                .file = "pkg/noun/nock_compiler_tests.c",
+                .deps = noun_test_deps,
+            },
+            .{
+                .name = "nock-tail-test",
+                .file = "pkg/noun/nock_tail_tests.c",
+                .deps = noun_test_deps,
+            },
+            .{
                 .name = "nock-test",
                 .file = "pkg/noun/nock_tests.c",
                 .deps = noun_test_deps,

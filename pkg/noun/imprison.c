@@ -464,6 +464,10 @@ u3i_halfs(c3_w        a_w,
     u3i_slab_bare(&sab_u, 5, a_w);
 
     u3t_on(mal_o);
+#ifdef VERE64
+    // An odd number of 32-bit limbs fills only half of the final loom word.
+    sab_u.buf_w[sab_u.len_w - 1] = 0;
+#endif
     memcpy(sab_u.buf_w, b_h, (size_t)4 * a_w);
     u3t_off(mal_o);
 
@@ -628,6 +632,28 @@ u3i_defcons(u3_noun** hed, u3_noun** tel)
   return pro;
 }
 
+/* Copy a borrowed list prefix. Each source cell supplies one head and
+ * each new cell owns that head. The caller fills the final tail. */
+u3_noun*
+u3i_list_prefix(u3_noun* out, u3_noun list, u3_noun stop)
+{
+  while ( list != stop ) {
+    u3_noun first = u3k(u3h(list));
+    list = u3t(list);
+    if ( list == stop ) {
+      u3_noun *head, *tail;
+      *out = u3i_defcons(&head, &tail);
+      *head = first;
+      return tail;
+    }
+    *out = u3nt(first, u3k(u3h(list)), u3_nul);
+    u3a_cell* last = u3a_to_ptr(u3t(*out));
+    out = &last->tel;
+    list = u3t(list);
+  }
+  return out;
+}
+
 /* u3i_cell(): Produce the cell `[a b]`.
 */
 u3_noun
@@ -657,6 +683,30 @@ u3i_cell(u3_noun a, u3_noun b)
 u3_noun
 u3i_trel(u3_noun a, u3_noun b, u3_noun c)
 {
+  // Pop the two cells in ordinary allocation order. A depleted pool takes
+  // the regular allocation path, including its refill and accounting.
+  if ( u3R->cel.cel_p && u3R->cel.hav_w >= 2 ) {
+    u3t_on(mal_o);
+    u3_post* pool = u3to(u3_post, u3R->cel.cel_p);
+    u3R->cel.hav_w -= 2;
+    u3_post outer = pool[u3R->cel.hav_w];
+    u3_post inner = pool[u3R->cel.hav_w + 1];
+    u3a_cell* tail = u3to(u3a_cell, inner);
+    u3a_cell* root = u3to(u3a_cell, outer);
+    tail->use_w = 1;
+    tail->mug_w = 0;
+    tail->hed = b;
+    tail->tel = c;
+    root->use_w = 1;
+    root->mug_w = 0;
+    root->hed = a;
+    root->tel = u3a_to_pom(inner);
+#ifdef U3_CPU_DEBUG
+    u3R->pro.cel_d += 2;
+#endif
+    u3t_off(mal_o);
+    return u3a_to_pom(outer);
+  }
   return u3i_cell(a, u3i_cell(b, c));
 }
 

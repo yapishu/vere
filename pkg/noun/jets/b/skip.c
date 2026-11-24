@@ -5,6 +5,8 @@
 
 #include "noun.h"
 
+#include "list_walk.h"
+
 u3_noun
 u3qb_skip(u3_noun a, u3_noun b)
 {
@@ -17,6 +19,11 @@ u3qb_skip(u3_noun a, u3_noun b)
     u3_noun*   tel;
     u3j_site sit_u;
     u3j_gate_prep(&sit_u, u3k(b));
+    if ( c3y == u3j_gate_read_only(&sit_u) ) {
+      pro = _walk_list(a, &sit_u, _walk_skip);
+      u3j_gate_lose(&sit_u);
+      return pro;
+    }
     u3k(a);
 
     do {

@@ -536,7 +536,9 @@ _n_nock_on(u3_noun bus, u3_noun fol)
   X(KUTS, "kuts", &&do_kuts),  /* 92: c3_s */                                  \
   X(KITB, "kitb", &&do_kitb),  /* 93: c3_b */                                  \
   X(KITS, "kits", &&do_kits),  /* 94: c3_s */                                  \
-  X(LAST,   NULL,      NULL),  /* 95 */
+  X(PFRD, "pfrd", &&do_pfrd),  /* 95: project two related fields */             \
+  X(PFHD, "pfhd", &&do_pfrd),  /* 96: project and test for a cell */           \
+  X(LAST,   NULL,      NULL),
 
 // Opcodes. Define X to select the enum name from OPCODES.
 #define X(opcode, name, indirect_jump) opcode
@@ -549,6 +551,7 @@ static inline c3_y
 _n_arg(c3_y cod_y)
 {
   switch ( cod_y ) {
+    case PFRD: case PFHD: return 4;
     case FABK: case FABL: case FIBL: case FIBK:
     case LILB: case LITB: case LIBL: case LIBK:
     case SAMB: case SANB: case SBIP: case SBIN:
@@ -655,13 +658,18 @@ _n_melt(u3_noun ops, c3_w* byc_w, c3_w* cal_w,
         }
 
         case SIPS: case SINS: case SWIP: case SWIN:
-        case SAST: case SALT: case KICS: case TICS:
+        case SAST: case SALT: case KICS:
         case FISK: case FISL: case SUSH: case SANS:
         case LISL: case LISK: case SKIS: case SLIS:
         case HILS: case HINS:
           u3_assert(0); //overflows
           break;
 
+        case TICS:
+          u3_assert(0 == *cal_w);
+          ++*cal_w;
+          siz_y[i_w] = 3;
+          break;
         case KICB: case TICB:
           a_w = (*cal_w)++;
           if ( a_w <= 0xFF ) {
@@ -801,6 +809,8 @@ _n_prog_asm_inx(c3_y* buf_y, c3_w* i_w, c3_s inx_s, c3_y cod)
   }
 }
 
+#include "nock_index.inc"
+
 /* _n_prog_asm(): assemble list of ops (from _n_comp) into u3n_prog
  */
 static void
@@ -905,6 +915,7 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
         }
 
         /* 31-bit direct args */
+        case PFRD:
         case SWIP: case SWIN: {
           c3_w off_l   = u3t(op);
           buf_y[i_w--] = (c3_y) (off_l >> 24);
@@ -912,6 +923,13 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
           buf_y[i_w--] = (c3_y) (off_l >> 8);
           buf_y[i_w--] = (c3_y) off_l;
           buf_y[i_w]   = (c3_y) cod;
+          // DEEP proves that the selected noun owns a head. The yes arm can
+          // read it immediately. Keep the original test as a branch target.
+          if ( cod == PFRD && ((off_l >> 16) & 7) == 1 &&
+               ((off_l >> 19) & 7) == 2 && buf_y[i_w + 5] == DEEP &&
+               buf_y[i_w + 6] == SBIN ) {
+            buf_y[i_w] = PFHD;
+          }
           break;
         }
 
@@ -921,13 +939,31 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
         case BUSH: case SANB:
         case KITB: case MITB:
         case HILB: case HINB:
-          _n_prog_asm_inx(buf_y, &i_w, lit_s, cod);
-          pog_u->lit_u.non[lit_s++] = u3k(u3t(op));
+          {
+            u3_noun arg = u3t(op);
+            if ( cod == HILB && u3h(arg) == N_CASE_TAG ) {
+              arg = u3nc(N_CASE_TAG, _n_case_table(pog_u, i_w + 1, u3t(arg)));
+            }
+            else {
+              arg = u3k(arg);
+            }
+            _n_prog_asm_inx(buf_y, &i_w, lit_s, cod);
+            pog_u->lit_u.non[lit_s++] = arg;
+          }
           break;
 
         /* call site index args */
+        case TICS:
         case TICB: case KICB: {
-          _n_prog_asm_inx(buf_y, &i_w, cal_s, cod);
+          if ( cod == TICS ) {
+            u3_assert(!cal_s);
+            buf_y[i_w--] = 0;
+            buf_y[i_w--] = 0;
+            buf_y[i_w] = TICS;
+          }
+          else {
+            _n_prog_asm_inx(buf_y, &i_w, cal_s, cod);
+          }
           u3j_site* sit_u = &(pog_u->cal_u.sit_u[cal_s++]);
           sit_u->axe   = u3k(u3t(op));
           sit_u->pog_p = 0;
@@ -953,10 +989,20 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
   u3_assert(u3_nul == sip);
 }
 
+#include "nock_jumps.inc"
+
+#include "nock_projection.inc"
+
+#if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+#define NOCK_FOLD
+#include "jets/w.h"
+#include "nock_fold.inc"
+#endif
+
 /* _n_prog_from_ops(): new program from _n_comp() product
  */
 static u3n_prog*
-_n_prog_from_ops(u3_noun ops)
+_n_prog_from_ops(u3_noun ops, u3_noun fol)
 {
   u3_noun sip;
   u3n_prog* pog_u;
@@ -966,7 +1012,17 @@ _n_prog_from_ops(u3_noun ops)
        lit_w = 0,
        mem_w = 0;
 
-  sip   = _n_melt(ops, &byc_w, &cal_w, &reg_w, &lit_w, &mem_w);
+  ops = _n_thread(ops);
+  ops = _n_proj_compile(ops);
+#ifdef NOCK_FOLD
+  _n_fold_plan fold;
+  // A jump across zero bytes marks entry while remaining executable by a
+  // reader of the ordinary bytecode. All jump offsets are assembled below.
+  if ( _n_fold_read(fol, &fold) ) {
+    ops = u3kb_weld(ops, u3nc(u3nc(SBIP, 0), 0));
+  }
+#endif
+  sip = _n_melt(ops, &byc_w, &cal_w, &reg_w, &lit_w, &mem_w);
   pog_u = _n_prog_new(byc_w, cal_w, reg_w, lit_w, mem_w);
   _n_prog_asm(ops, pog_u, sip);
   return pog_u;
@@ -1254,6 +1310,24 @@ _n_formulaic(u3_noun fol)
   }
 }
 
+#include "nock_cases.inc"
+
+// Compile the two operands in order. When the enclosing operation consumes
+// its subject, an identity left operand already owns the left stack slot.
+// The right operand leaves that owner below its product, even across calls.
+static c3_w
+_n_comp_operands(u3_noun* ops, u3_noun left, u3_noun right, c3_o lose)
+{
+  u3_noun axis;
+  if ( lose == c3y && c3y == u3r_p(left, 0, &axis) && axis == 1 )
+    return _n_comp(ops, right, c3n, c3n);
+  c3_w size = _n_comp(ops, left, c3n, c3n);
+  _n_emit(ops, SWAP);
+  return size + 1 + _n_comp(ops, right, lose, c3n);
+}
+
+#include "nock_bind.inc"
+
 /* _n_comp(): compile nock formula to reversed opcode list
  *            ops is a pointer to a list (to be emitted to)
  *            fol is the nock formula to compile. RETAIN.
@@ -1270,9 +1344,7 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
   u3_noun cod, arg, hed, tel;
   u3x_cell(fol, &cod, &arg);
   if ( c3y == u3du(cod) ) {
-    tot_w += _n_comp(ops, cod, c3n, c3n);
-    ++tot_w; _n_emit(ops, SWAP);
-    tot_w += _n_comp(ops, arg, los_o, c3n);
+    tot_w += _n_comp_operands(ops, cod, arg, los_o);
     ++tot_w; _n_emit(ops, (c3y == los_o ) ? AULT : AUTO);
   }
   else switch ( cod ) {
@@ -1324,9 +1396,7 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
 
     case 2:
       u3x_cell(arg, &hed, &tel);
-      tot_w += _n_comp(ops, hed, c3n, c3n);
-      ++tot_w; _n_emit(ops, SWAP);
-      tot_w += _n_comp(ops, tel, los_o, c3n);
+      tot_w += _n_comp_operands(ops, hed, tel, los_o);
       /* things in tail position replace (so, lose) top of stack,
        * so NOCT "loses" and there is no non-losing version */
       op_y   = (c3y == tel_o)  ? NOCT
@@ -1370,9 +1440,7 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
           }
         }
         else if ( !hec_t && !tec_t ) {
-          tot_w += _n_comp(ops, hed, c3n, c3n);
-          ++tot_w; _n_emit(ops, SWAP);
-          tot_w += _n_comp(ops, tel, los_o, c3n);
+          tot_w += _n_comp_operands(ops, hed, tel, los_o);
           ++tot_w; _n_emit(ops, (c3y == los_o) ? SALM : SAME);
         }
         else {
@@ -1396,6 +1464,8 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
     }
 
     case 6: {
+      c3_w cases = _n_comp_cases(ops, fol, los_o, tel_o);
+      if ( cases ) return cases;
       u3_noun mid, lit;
       u3x_trel(arg, &hed, &mid, &tel);
       if ( c3y == u3r_safe(hed, &lit) && u3_none != lit ) {
@@ -1459,6 +1529,16 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
 
     case 8:
       u3x_cell(arg, &hed, &tel);
+      {
+        c3_t first = 1;
+        c3_w budget = 32;
+        u3_weak body = _n_bind_body(tel, hed, &first, &budget);
+        if ( body != u3_none ) {
+          tot_w += _n_comp(ops, body, los_o, tel_o);
+          u3z(body);
+          break;
+        }
+      }
       tot_w += _n_comp(ops, hed, c3n, c3n);
       ++tot_w; _n_emit(ops, (c3y == los_o) ? SNOL : SNOC);
       tot_w += _n_comp(ops, tel, c3y, tel_o);
@@ -1482,9 +1562,7 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
       u3_noun axe, nef;
       u3x_cell(arg, &hed, &tel);
       u3x_cell(hed, &axe, &nef);
-      tot_w += _n_comp(ops, tel, c3n, c3n);
-      ++tot_w; _n_emit(ops, SWAP);
-      tot_w += _n_comp(ops, nef, los_o, c3n);
+      tot_w += _n_comp_operands(ops, tel, nef, los_o);
 
       ++tot_w;
       switch ( axe ) {
@@ -1517,9 +1595,7 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
 
     case 12:
       u3x_cell(arg, &hed, &tel);
-      tot_w += _n_comp(ops, hed, c3n, c3n);
-      ++tot_w; _n_emit(ops, SWAP);
-      tot_w += _n_comp(ops, tel, los_o, c3n);
+      tot_w += _n_comp_operands(ops, hed, tel, los_o);
       ++tot_w; _n_emit(ops, (c3y == los_o) ? WILS : WISH);
       break;
 
@@ -1693,13 +1769,24 @@ _n_print_byc(c3_y* pog, c3_w her_w)
 }
 #endif
 
+#include "nock_tail.inc"
+
 /* _n_bite(): compile a nock formula to bytecode. RETAIN.
  */
 static inline u3n_prog*
 _n_bite(u3_noun fol) {
   u3_noun ops  = u3_nul;
   _n_comp(&ops, fol, c3y, c3y);
-  return _n_prog_from_ops(ops);
+  // The wide encoding of site zero is an ordinary tail kick in saved
+  // programs. All other sites retain their normal dispatch instruction.
+  u3_noun last = ops == u3_nul ? 0 : u3h(ops), axis;
+  _n_tail_plan plan;
+  if ( c3y == u3r_p(last, TICB, &axis) && axis == 2 && _n_tail_read(fol, &plan) ) {
+    u3_noun marked = u3nc(u3nc(TICS, 2), u3k(u3t(ops)));
+    u3z(ops);
+    ops = marked;
+  }
+  return _n_prog_from_ops(ops, fol);
 }
 
 static inline c3_w
@@ -1843,7 +1930,7 @@ _cn_intlen(c3_w num_w)
 }
 
 /* _cn_is_indexed(): return true if bop_w is an opcodes that uses pog_u->lit_u.non
-**            bop_w: opcode (assumed 0-94)
+**            bop_w: opcode
 */
 c3_b
 _cn_is_indexed(c3_w bop_w)
@@ -2227,6 +2314,15 @@ _n_kick(u3_noun cor, u3j_site* sit_u)
   u3_weak pro;
   u3t_off(noc_o);
   pro = u3j_site_kick(cor, sit_u);
+#ifdef NOCK_FOLD
+  if ( pro == u3_none && sit_u->axe == 2 ) {
+    const u3n_prog* arm = u3to(u3n_prog, sit_u->pog_p);
+    if ( arm->byc_u.ops_y[0] == SBIP && arm->byc_u.ops_y[1] == 0 ) {
+      pro = _n_fold_try(cor, arm);
+      if ( pro != u3_none ) u3z(cor);
+    }
+  }
+#endif
   u3t_on(noc_o);
   return pro;
 }
@@ -2242,10 +2338,46 @@ _n_kale(u3_noun a)
   return a;
 }
 
+// The caller owns a mutable cell. Axis 6 descends through its payload,
+// which can have other owners even when the root is unique.
+static inline u3_noun
+_n_edit_unique(u3_noun root, c3_w axis, u3_noun value)
+{
+  u3a_cell* cell = u3a_to_ptr(root);
+  if ( axis == 6 ) {
+    u3_noun payload = cell->tel;
+    if ( c3n == u3a_is_mutable(u3R, payload) ) {
+      u3_noun tail = u3t(payload);
+      cell->tel = u3nc(value, u3k(tail));
+      cell->mug_w = 0;
+      u3z(payload);
+      return root;
+    }
+    cell->mug_w = 0;
+    cell = u3a_to_ptr(payload);
+  }
+  u3_noun* field = (axis == 3) ? &cell->tel : &cell->hed;
+  u3_noun old = *field;
+  cell->mug_w = 0;
+  *field = value;
+  u3z(old);
+  return root;
+}
+
 typedef struct __attribute__((__packed__)) {
   u3n_prog* pog_u;
   c3_w     ip_w;
 } burnframe;
+
+#include "nock_slots.inc"
+
+static inline u3_noun
+_n_proj_small(c3_h axis, u3_noun noun)
+{
+  if ( axis == 1 ) return noun;
+  if ( axis >= 4 ) noun = _n_step(noun, (axis >> 1) & 1);
+  return _n_step(noun, axis & 1);
+}
 
 /* _n_burn(): pog: program
  *            bus: subject (TRANSFER)
@@ -2313,8 +2445,8 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
 
     do_copy:
       top = _n_peek(off);
-      _n_push(mov, off, u3k(*top));
-      BURN();
+      o = *top;
+      goto borrowed_test;
 
     do_swap:
       _n_swap(mov, off);
@@ -2336,17 +2468,77 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       *top = u3nc(*top, x);          // [pro]
       BURN();
 
-    do_snoc: // [hed tel]
-      x    = _n_pep(mov, off);
-      top  = _n_peek(off);
-      _n_push(mov, off, u3nc(x, u3k(*top)));
-      BURN();
+    do_snoc:
+    do_snol: {
+      c3_t keep = pog[ip_w - 1] == SNOC;
+      // [value context] followed by [literal subject] produces one trel.
+      // The literal table and the result own both operands of a %fast
+      // hint that immediately registers the constructed core.
+      if ( pog[ip_w] == LIBK || pog[ip_w] == LISK ) {
+        c3_w cursor = ip_w + 1;
+        c3_w literal = pog[ip_w] == LIBK ? pog[cursor++] : _n_resh(pog, &cursor);
+        if ( pog[cursor] == SWAP && pog[cursor + 1] == AULT ) {
+          ip_w = cursor + 2;
+          x = _n_pep(mov, off);
+          top = _n_peek(off);
+          u3_noun context = keep ? u3k(*top) : *top;
+          u3_noun product = u3nt(u3k(pog_u->lit_u.non[literal]), x, context);
 
-    do_snol:
-      x    = _n_pep(mov, off);
-      top  = _n_peek(off);
-      *top = u3nc(x, *top);
+          if ( pog[ip_w] == LIBK || pog[ip_w] == LISK ) {
+            cursor = ip_w + 1;
+            c3_w clue = pog[ip_w] == LIBK ? pog[cursor++] : _n_resh(pog, &cursor);
+            if ( pog[cursor] == SWAP &&
+                 (pog[cursor + 1] == BALT || pog[cursor + 1] == SALT) ) {
+              c3_y op = pog[cursor + 1];
+              cursor += 2;
+              c3_w site = op == BALT ? pog[cursor++] : _n_resh(pog, &cursor);
+              u3t_off(noc_o);
+              u3j_rite_mine_keep(&pog_u->reg_u.rit_u[site], pog_u->lit_u.non[clue], product);
+              u3t_on(noc_o);
+              ip_w = cursor;
+            }
+          }
+          if ( keep ) _n_push(mov, off, product);
+          else *top = product;
+          BURN();
+        }
+      }
+      // [x y] -> [[x y]] -> [x [x y]] -> [[x y] x] -> [fragment x].
+      // Forward the children directly while the pair stays unobservable.
+      if ( pog[ip_w] == HEAD && pog[ip_w + 1] == SWAP ) {
+        c3_w cursor = ip_w + 3, axis = 0;
+        switch ( pog[ip_w + 2] ) {
+          case HELD: axis = 2; break;
+          case TALL: axis = 3; break;
+          case FABL: axis = pog[cursor++]; break;
+          case FASL: axis = _n_resh(pog, &cursor); break;
+        }
+        if ( axis >= 2 ) {
+          ip_w = cursor;
+          x = _n_pep(mov, off);
+          top = _n_peek(off);
+          u3_noun tail = *top;
+          c3_w bit = 1U << (u3x_dep(axis) - 1);
+          u3_noun child = (axis & bit) ? tail : x;
+          if ( !keep && axis == 3 ) {
+            *top = x;
+            _n_push(mov, off, tail);
+          }
+          else {
+            o = u3k(_n_path3(bit | (axis & (bit - 1)), child));
+            if ( keep ) _n_push(mov, off, x);
+            else { *top = x; u3z(tail); }
+            _n_push(mov, off, o);
+          }
+          BURN();
+        }
+      }
+      x = _n_pep(mov, off);
+      top = _n_peek(off);
+      if ( keep ) _n_push(mov, off, u3nc(x, u3k(*top)));
+      else *top = u3nc(x, *top);
       BURN();
+    }
 
     do_head:
       top  = _n_peek(off);
@@ -2372,6 +2564,75 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       u3z(o);
       BURN();
 
+    do_pfrd: {
+      c3_y code = pog[ip_w - 1];
+      c3_h plan = _n_rewo(pog, &ip_w), edge;
+      top = _n_peek(off);
+      u3_noun subject = *top;
+      c3_h base = plan & 65535;
+      u3_noun anchor = base < 8 ? _n_proj_small(base, subject) : _n_path3(base, subject);
+      o = _n_proj_small((plan >> 16) & 7, anchor);
+    projection_test:
+      edge = (plan >> 19) & 63;
+      if ( code == PFHD ) {
+        c3_y skip = pog[ip_w + 2];
+        ip_w += 3;
+        if ( c3y == u3du(anchor) ) {
+          o = u3h(anchor);
+          goto projection_ready;
+        }
+        ip_w += skip;
+        edge = plan >> 25;
+        goto projection_edge;
+      }
+      c3_y test = pog[ip_w++];
+      if ( test == SWAP ) {
+        _n_push(mov, off, u3k(o));
+        top = _n_swap(mov, off);
+      }
+      else {
+        c3_t miss;
+        switch ( test ) {
+          case DEEP: miss = c3n == u3du(o); break;
+          case SAM0: case SAM1: miss = o != (test == SAM1); break;
+          case SAMB: miss = o != pog[ip_w++]; break;
+          default: miss = o != _n_resh(pog, &ip_w); break; // SAMS
+        }
+        c3_y jump = pog[ip_w++];
+        c3_h delta = jump == SBIN ? pog[ip_w++] :
+                     jump == SINS ? _n_resh(pog, &ip_w) : _n_rewo(pog, &ip_w);
+        if ( miss ) { ip_w += delta; edge = plan >> 25; }
+      }
+    projection_edge:
+      if ( !edge ) { BURN(); }
+      o = _n_proj_small(edge & 7, anchor);
+    projection_ready:
+      if ( !(edge >> 4) ) {
+        // This successor is itself a planned read. Its test already has the
+        // right operand. Its anchor is recoverable from this one whenever
+        // its suffix fits in the incoming edge.
+        code = pog[ip_w++];
+        c3_h next = _n_rewo(pog, &ip_w);
+        c3_h first = (next >> 16) & 7, suffix = edge & 7;
+        if ( first == 1 ) anchor = o;
+        else {
+          unsigned shift = first < 4 ? 1 : 2;
+          c3_h relative = suffix >> shift;
+          if ( !relative ) goto projection_keep;
+          anchor = _n_proj_small(relative, anchor);
+        }
+        plan = next;
+        goto projection_test;
+      }
+      ip_w += edge >> 4;
+      if ( edge & 8 ) goto projection_keep;
+      *top = u3k(o);
+      u3z(subject);
+      BURN();
+
+    projection_keep:
+      goto borrowed_test;
+    }
     do_fisk:
       x = pog_u->lit_u.non[_n_resh(pog, &ip_w)];
       goto frag_in;
@@ -2388,7 +2649,31 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       x = pog[ip_w++];
     frag_in:
       top = _n_peek(off);
-      _n_push(mov, off, u3k(u3x_at(x, *top)));
+      o = (x && x <= 65535) ? _n_path3(x, *top) : u3x_at(x, *top);
+    borrowed_test:
+      // The subject on the stack owns the selected noun. The next test
+      // consumes its temporary operand and produces a direct boolean.
+      switch ( pog[ip_w] ) {
+        case DEEP: ++ip_w; x = u3du(o); break;
+        case SAM0: ++ip_w; x = __(o == 0); break;
+        case SAM1: ++ip_w; x = __(o == 1); break;
+        case SAMB: ++ip_w; x = __(o == pog[ip_w++]); break;
+        case SAMS: ++ip_w; x = __(o == _n_resh(pog, &ip_w)); break;
+        case SANB: ++ip_w; x = u3r_sing(o, pog_u->lit_u.non[pog[ip_w++]]); break;
+        case SANS: ++ip_w; x = u3r_sing(o, pog_u->lit_u.non[_n_resh(pog, &ip_w)]); break;
+        default:
+          _n_push(mov, off, u3k(o));
+          BURN();
+      }
+      // Branches consume the boolean immediately. At every other
+      // continuation publish it at the ordinary stack position.
+      if ( pog[ip_w] == SBIN ) {
+        sip_w = pog[ip_w + 1];
+        ip_w += 2;
+        if ( c3n == x ) ip_w += sip_w;
+        BURN();
+      }
+      _n_push(mov, off, x);
       BURN();
 
     do_fisl:
@@ -2408,7 +2693,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
     flag_in:
       top  = _n_peek(off);
       o    = *top;
-      *top = u3k(u3x_at(x, o));
+      *top = u3k((x && x <= 65535) ? _n_path3(x, o) : u3x_at(x, o));
       u3z(o);
       BURN();
 
@@ -2429,11 +2714,17 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       BURN();
 
     do_libk:
-      _n_push(mov, off, u3k(pog_u->lit_u.non[pog[ip_w++]]));
-      BURN();
-
+      x = pog_u->lit_u.non[pog[ip_w++]];
+      goto lit_in;
     do_lisk:
-      _n_push(mov, off, u3k(pog_u->lit_u.non[_n_resh(pog, &ip_w)]));
+      x = pog_u->lit_u.non[_n_resh(pog, &ip_w)];
+    lit_in:
+      if ( pog[ip_w] == SWAP && pog[ip_w + 1] == AULT ) {
+        ip_w += 2;
+        top = _n_peek(off);
+        *top = u3nc(u3k(x), *top);
+      }
+      else _n_push(mov, off, u3k(x));
       BURN();
 
     do_lil1:
@@ -2664,6 +2955,15 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
 
     do_tics:
       x = _n_resh(pog, &ip_w);
+      if ( !x ) {
+        sit_u = &pog_u->cal_u.sit_u[0];
+        top = _n_peek(off);
+        o = *top;
+        *top = _n_kick(o, sit_u);
+        if ( *top != u3_none ) { BURN(); }
+        if ( u3to(u3n_prog, sit_u->pog_p) == pog_u ) o = _n_tail_batch(o, sit_u);
+        goto tick_resume;
+      }
       goto tick_in;
 
     do_ticb:
@@ -2674,6 +2974,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       o     = *top;
       *top = _n_kick(o, sit_u);
       if ( u3_none == *top ) {
+      tick_resume:
         *top  = o;
         pog_u = u3to(u3n_prog, sit_u->pog_p);
         pog   = pog_u->byc_u.ops_y;
@@ -2863,6 +3164,11 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
     do_hils:
       x = _n_resh(pog, &ip_w);
     hilt_fore_in:
+      o = pog_u->lit_u.non[x];
+      if ( u3h(o) == N_CASE_TAG && u3t(o) != 0 ) {
+        ip_w = _n_case_target(u3t(o), *_n_peek(off));
+        BURN();
+      }
       x   = u3k(pog_u->lit_u.non[x]);
       top = _n_peek(off);   // bus
       x   = _n_hilt_fore(x, *top, &o);
@@ -2926,6 +3232,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       top  = _n_peek(off);
     muth_in:
       o    = *top;
+      if ( c3y == u3a_is_mutable(u3R, o) ) {
+        *top = _n_edit_unique(o, 2, x);
+        BURN();
+      }
       *top = u3nc(x, u3k(u3t(o)));
       u3z(o);
       BURN();
@@ -2939,6 +3249,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       top  = _n_peek(off);
     mutt_in:
       o    = *top;
+      if ( c3y == u3a_is_mutable(u3R, o) ) {
+        *top = _n_edit_unique(o, 3, x);
+        BURN();
+      }
       *top = u3nc(u3k(u3h(o)), x);
       u3z(o);
       BURN();
@@ -2952,6 +3266,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       top  = _n_peek(off);
     musm_in:
       o    = *top;
+      if ( c3y == u3a_is_mutable(u3R, o) ) {
+        *top = _n_edit_unique(o, 6, x);
+        BURN();
+      }
       *top = u3nt(u3k(u3h(o)), x, u3k(u3t(u3t(o))));
       u3z(o);
       BURN();

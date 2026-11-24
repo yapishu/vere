@@ -137,7 +137,8 @@ jobs:
           zig build                    \
             ur-test ent-test           \
             hashtable-test jets-test   \
-            nock-test retrieve-test    \
+            nock-test nock-compiler-test \
+            nock-tail-test retrieve-test \
             serial-test ames-test      \
             pact-test equality-test    \
             boot-test newt-test        \
@@ -377,7 +378,8 @@ jobs:
           zig build                          \
             ur-test ent-test                 \
             hashtable-test jets-test         \
-            nock-test retrieve-test          \
+            nock-test nock-compiler-test     \
+            nock-tail-test retrieve-test     \
             serial-test equality-test        \
             palloc-test bytestream-test      \
             ames-test mesa-test              \

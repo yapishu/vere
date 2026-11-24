@@ -437,6 +437,31 @@ _test_reap(void)
   return ret_i;
 }
 
+static void
+_test_pooled_triples(void)
+{
+  u3_noun shared = u3nc(32, 64);
+  u3_noun held = u3_nul;
+  for ( c3_w remaining = 0; remaining <= 2; ++remaining ) {
+    if ( u3R->cel.cel_p ) {
+      if ( u3R->cel.hav_w < remaining ) {
+        while ( u3R->cel.hav_w ) held = u3nc(0, held);
+        held = u3nc(0, held);
+      }
+      while ( u3R->cel.hav_w > remaining ) held = u3nc(0, held);
+      u3_assert(u3R->cel.hav_w == remaining);
+    }
+    u3_noun triple = u3nt(u3k(shared), remaining, u3k(shared));
+    u3_assert(u3h(triple) == shared && u3h(u3t(triple)) == remaining);
+    u3_assert(u3t(u3t(triple)) == shared && u3a_use(shared) == 3);
+    u3_assert(u3a_use(triple) == 1 && u3a_use(u3t(triple)) == 1);
+    u3z(triple);
+    u3_assert(u3a_use(shared) == 1);
+  }
+  u3z(held);
+  u3z(shared);
+}
+
 int
 main(int argc, char* argv[])
 {
@@ -464,6 +489,11 @@ main(int argc, char* argv[])
     exit(1);
   }
   fprintf(stderr, "test reap: ok\r\n");
+
+  _test_pooled_triples();
+  u3m_hate(0);
+  _test_pooled_triples();
+  u3z(u3m_love(0));
 
   if ( !_test_edit_road() ) {
     fprintf(stderr, "test edit road: failed\r\n");
