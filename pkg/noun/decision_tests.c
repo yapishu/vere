@@ -1397,10 +1397,29 @@ _projection_bench(c3_t nested)
   }
 }
 
+#include "fold_tests.inc"
+
 int
 main(void)
 {
   u3m_boot_lite(1 << 27);
+  if ( getenv("U3_FOLD_BENCH") ) {
+    u3_noun bat = _fold_battery(), fire = u3nt(9, 2, _slot(1));
+    _fold_tables(bat, fire, 22, 1);
+    _fold_miss_bench(bat, fire);
+    u3z(bat);
+    u3z(fire);
+    return 0;
+  }
+  if ( getenv("U3_FOLD_CHECK") ) {
+    _fold_check();
+    u3m_hate(0);
+    _fold_check();
+    u3z(u3m_love(0));
+    u3C.wag_h |= u3o_debug_ram;
+    u3m_grab();
+    return 0;
+  }
   if ( getenv("U3_PROJECTION_MICRO") ) {
     _projection_bench(getenv("U3_PROJECTION_NESTED") != NULL);
     return 0;
@@ -1459,6 +1478,9 @@ main(void)
   extern c3_d u3n_field_hits;
   u3_assert(u3n_field_hits > 0);
 #endif
+#endif
+#ifdef U3_DAG_FOLD
+  _fold_check();
 #endif
   _effects();
   _prepared_cases();

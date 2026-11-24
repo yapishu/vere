@@ -1032,10 +1032,16 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
 #include "nock_projection.inc"
 #endif
 
+#if defined(U3_DAG_FOLD) && !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+#define NOCK_FOLD
+#include "jets/w.h"
+#include "nock_fold.inc"
+#endif
+
 /* _n_prog_from_ops(): new program from _n_comp() product
  */
 static u3n_prog*
-_n_prog_from_ops(u3_noun ops)
+_n_prog_from_ops(u3_noun ops, u3_noun fol)
 {
   u3_noun sip;
   u3n_prog* pog_u;
@@ -1050,6 +1056,14 @@ _n_prog_from_ops(u3_noun ops)
 #endif
 #ifdef U3_COMPILED_PROJECTIONS
   ops = _n_proj_compile(ops);
+#endif
+#ifdef NOCK_FOLD
+  _n_fold_plan fold;
+  // A jump across zero bytes marks entry while remaining executable by a
+  // reader of the ordinary bytecode. All jump offsets are assembled below.
+  if ( _n_fold_read(fol, &fold) ) {
+    ops = u3kb_weld(ops, u3nc(u3nc(SBIP, 0), 0));
+  }
 #endif
   sip = _n_melt(ops, &byc_w, &cal_w, &reg_w, &lit_w, &mem_w);
   pog_u = _n_prog_new(byc_w, cal_w, reg_w, lit_w, mem_w);
@@ -1865,7 +1879,7 @@ _n_bite(u3_noun fol) {
     u3z(ops);
     ops = marked;
   }
-  return _n_prog_from_ops(ops);
+  return _n_prog_from_ops(ops, fol);
 }
 
 static inline c3_w
@@ -2416,6 +2430,15 @@ _n_kick(u3_noun cor, u3j_site* sit_u)
   u3_weak pro;
   u3t_off(noc_o);
   pro = u3j_site_kick(cor, sit_u);
+#ifdef NOCK_FOLD
+  if ( pro == u3_none && sit_u->axe == 2 ) {
+    const u3n_prog* arm = u3to(u3n_prog, sit_u->pog_p);
+    if ( arm->byc_u.ops_y[0] == SBIP && arm->byc_u.ops_y[1] == 0 ) {
+      pro = _n_fold_try(cor, arm);
+      if ( pro != u3_none ) u3z(cor);
+    }
+  }
+#endif
   u3t_on(noc_o);
   return pro;
 }
