@@ -1710,6 +1710,83 @@ _test_bsr_tag(void)
        & _test_bsr_tag_loop("bsr tag alt-2 2", 2, 0x55);
 }
 
+// Compare a complete batch, including its final cursor, against the
+// independent tag, length and single-bit readers.
+static int
+_check_token(const uint8_t *bytes, unsigned len, unsigned off)
+{
+  ur_bsr_t actual = {0};
+  ur_bsr_init(&actual, len, bytes);
+  ur_bsr_skip_any(&actual, off);
+  ur_bsr_t expected = actual;
+  ur_cue_token_t token = {0};
+  ur_cue_res_e got = ur_bsr_token(&actual, &token);
+  ur_cue_res_e want = ur_cue_good;
+  ur_cue_tag_e tag;
+  for ( unsigned i = 0; i < token.cells; ++i ) {
+    if ( ur_bsr_tag(&expected, &tag) != ur_cue_good || tag != ur_jam_cell ) return 0;
+  }
+  if ( !token.cells || token.tag != ur_jam_cell ) {
+    want = ur_bsr_tag(&expected, &tag);
+    if ( want == ur_cue_good ) {
+      if ( tag != token.tag || tag == ur_jam_cell ) return 0;
+      uint64_t width;
+      want = ur_bsr_rub_len(&expected, &width);
+      if ( want == ur_cue_good ) {
+        if ( width != token.width ) return 0;
+        if ( tag == ur_jam_back && width > 62 ) want = ur_cue_meme;
+        else if ( width <= 64 && _bsr64_any_slow(&expected, width) != token.value ) return 0;
+      }
+    }
+  }
+  return want == got && _bsr_cmp_any_check("cue token", off, len, &actual, &expected);
+}
+
+static int
+_test_bsr_token(void)
+{
+  uint8_t bytes[40];
+  if ( !_check_token(NULL, 0, 0) ) return 0;
+  for ( unsigned off = 0; off < 8; ++off ) {
+    // Every 16-bit prefix at every alignment, with a nonzero suffix.
+    for ( unsigned prefix = 0; prefix < 65536; ++prefix ) {
+      uint32_t aligned = ((uint32_t)prefix | (UINT32_C(0x5a) << 16)) << off;
+      memset(bytes, 0xa5, sizeof(bytes));
+      for ( unsigned i = 0; i < 3; ++i ) bytes[i] = aligned >> (8 * i);
+      if ( !_check_token(bytes, sizeof(bytes), off)
+        || !_check_token(bytes, 2, off)
+        || !_check_token(bytes, 8, off) ) return 0;
+    }
+    // Long cell runs, long unary lengths and every end-of-buffer offset.
+    for ( unsigned len = 1; len <= sizeof(bytes); ++len ) {
+      uint8_t *edge = malloc(len);
+      int ok = 1;
+      for ( unsigned pattern = 0; pattern < 4; ++pattern ) {
+        const uint8_t fill[] = {0x55, 0xaa, 0xff, 0};
+        memset(edge, fill[pattern], len);
+        ok &= _check_token(edge, len, off);
+      }
+      free(edge);
+      if ( !ok ) return 0;
+    }
+    // Exercise each length-of-length, including the word-window cutoff
+    // and unrepresentable widths, for both leaf tags.
+    for ( unsigned back = 0; back <= 1; ++back ) {
+      for ( unsigned zeros = 0; zeros <= 65; ++zeros ) {
+        memset(bytes, 0, sizeof(bytes));
+        if ( back ) {
+          bytes[off / 8] |= 1U << (off % 8);
+          bytes[(off + 1) / 8] |= 1U << ((off + 1) % 8);
+        }
+        unsigned end = off + 1 + back + zeros;
+        bytes[end / 8] |= 1U << (end % 8);
+        if ( !_check_token(bytes, sizeof(bytes), off) ) return 0;
+      }
+    }
+  }
+  return 1;
+}
+
 static int
 _test_bsr(void)
 {
@@ -1722,7 +1799,8 @@ _test_bsr(void)
        & _test_bsr64()
        & _test_bsr_log()
        & _test_bsr_log_oob()
-       & _test_bsr_tag();
+       & _test_bsr_tag()
+       & _test_bsr_token();
 }
 
 static int

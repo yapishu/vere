@@ -59,24 +59,20 @@ u3s_cue_view_open(u3_cue_view* v, c3_d len, const c3_y* bytes)
   u3a_pile stack;
   u3a_pile_prep(&stack, sizeof(size_t), __alignof__(size_t));
   while ( 1 ) {
-    c3_d bit = reader.bits, width;
-    ur_cue_tag_e tag;
-    if ( bit >= len * 8 || ur_cue_good != ur_bsr_tag(&reader, &tag) ) break;
-    if ( tag == ur_jam_cell ) {
+    c3_d bit = reader.bits;
+    ur_cue_token_t token;
+    if ( bit >= len * 8 || ur_cue_good != ur_bsr_token(&reader, &token) ) break;
+    for ( unsigned i = 0; i < token.cells; i++, bit += 2 )
       *(size_t*)u3a_push(&stack) = _cue_view_start(v, bit, 0);
-      continue;
-    }
-    if ( ur_cue_good != ur_bsr_rub_len(&reader, &width) ) break;
-    if ( tag == ur_jam_back ) {
-      if ( width > 62 ) break;
-      c3_d target = ur_bsr64_any(&reader, width);
-      size_t slot = _cue_page_find(v->pages, v->page_count, target);
+    if ( token.tag == ur_jam_cell ) continue;
+    if ( token.tag == ur_jam_back ) {
+      size_t slot = _cue_page_find(v->pages, v->page_count, token.value);
       if ( slot == SIZE_MAX || !(v->tails[slot] & CUE_COMPLETE) ) break;
     }
     else {
-      if ( ((width + 7) >> 3) > c3_w_max ) break;
+      if ( ((token.width + 7) >> 3) > c3_w_max ) break;
       _cue_view_start(v, bit, CUE_COMPLETE);
-      ur_bsr_skip_any(&reader, width);
+      if ( token.width > 64 ) ur_bsr_skip_any(&reader, token.width);
     }
     while ( c3n == u3a_pile_done(&stack) ) {
       size_t slot = *(size_t*)u3a_peek(&stack);

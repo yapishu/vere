@@ -687,6 +687,109 @@ ur_bsr_rub_len(ur_bsr_t *bsr, uint64_t *out)
   return ur_cue_good;
 }
 
+// Read a little-endian window without accessing bytes past the buffer.
+// The overlapping loads cover short final windows at arbitrary alignments.
+static inline uint64_t
+_bsr_window(const uint8_t *bytes, uint64_t left)
+{
+  if ( left >= 8 ) {
+    uint64_t word;
+    memcpy(&word, bytes, sizeof(word));
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    word = __builtin_bswap64(word);
+#endif
+    return word;
+  }
+  if ( left >= 4 ) {
+    uint32_t lo, hi;
+    memcpy(&lo, bytes, sizeof(lo));
+    memcpy(&hi, bytes + left - 4, sizeof(hi));
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    lo = __builtin_bswap32(lo);
+    hi = __builtin_bswap32(hi);
+#endif
+    return lo | ((uint64_t)hi << ((left - 4) * 8));
+  }
+  if ( left == 1 ) return bytes[0];
+  uint32_t lo = bytes[0] | ((uint32_t)bytes[1] << 8);
+  return left == 3 ? lo | ((uint32_t)bytes[2] << 16) : lo;
+}
+
+static inline void
+_bsr_advance_word(ur_bsr_t *bsr, unsigned bits)
+{
+  unsigned end = bsr->off + bits;
+  bsr->left  -= end >> 3;
+  bsr->bytes  = bsr->left ? bsr->bytes + (end >> 3) : 0;
+  bsr->off    = end & 7;
+  bsr->bits  += bits;
+}
+
+ur_cue_res_e
+ur_bsr_token(ur_bsr_t *bsr, ur_cue_token_t *token)
+{
+  if ( bsr->left ) {
+    uint64_t word = _bsr_window(bsr->bytes, bsr->left);
+    unsigned available = 8 * ur_min(bsr->left, 8) - bsr->off;
+    word >>= bsr->off;
+    unsigned prefix = 0;
+    if ( (word & 3) == 1 ) {
+      // A left descent is the little-endian pattern 01 01 ... . The
+      // sentinel bounds the run to 28 tags at every starting alignment.
+      uint64_t diff = (word ^ UINT64_C(0x5555555555555555))
+                    | (UINT64_C(1) << ur_min(56, available));
+      prefix = ur_tz64(diff) & ~1U;
+      word >>= prefix;
+    }
+
+    unsigned tag_bits = 1 + (word & 1);
+    uint64_t rub = word >> tag_bits;
+    // A unary prefix of 32 zeros needs at least 65 header bits.
+    unsigned zeros = ur_tz64(rub | (UINT64_C(1) << 32));
+    unsigned header = tag_bits + (zeros ? 2 * zeros : 1);
+    available -= prefix;
+    token->cells = prefix >> 1;
+    if ( (word & 3) != 1 && header <= available ) {
+      // rub(0) is one bit. Otherwise its unary prefix supplies the
+      // implicit high bit of the width. The rest is stored low bit first.
+      uint64_t width = 0;
+      if ( zeros ) {
+        uint64_t high = UINT64_C(1) << (zeros - 1);
+        width = high | ((rub >> (zeros + 1)) & (high - 1));
+      }
+      token->tag = tag_bits == 1 ? ur_jam_atom : ur_jam_back;
+      token->width = width;
+      if ( width <= available - header ) {
+        token->value = (word >> header) & ((UINT64_C(1) << width) - 1);
+        _bsr_advance_word(bsr, prefix + header + width);
+        return ur_cue_good;
+      }
+      _bsr_advance_word(bsr, prefix + header);
+      goto payload;
+    }
+    if ( prefix ) {
+      token->tag = ur_jam_cell;
+      _bsr_advance_word(bsr, prefix);
+      return ur_cue_good;
+    }
+  }
+
+  token->cells = 0;
+  ur_cue_res_e res = ur_bsr_tag(bsr, &token->tag);
+  if ( res != ur_cue_good ) return res;
+  if ( token->tag == ur_jam_cell ) {
+    token->cells = 1;
+    return ur_cue_good;
+  }
+  res = ur_bsr_rub_len(bsr, &token->width);
+  if ( res != ur_cue_good ) return res;
+
+payload:
+  if ( token->tag == ur_jam_back && token->width > 62 ) return ur_cue_meme;
+  if ( token->width <= 64 ) token->value = ur_bsr64_any(bsr, token->width);
+  return ur_cue_good;
+}
+
 /*
 **  bitstream-writer operations follow a pattern of an unsafe (inline)
 **  implementation, unsafe wrt to buffer size and reallocation,

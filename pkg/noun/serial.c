@@ -549,49 +549,32 @@ _cs_cue_xeno_next(u3a_pile* pil_u, ur_bsr_t* red_u,
                   _cue_xeno_refs* dic_u, u3_noun* out)
 {
   while ( 1 ) {
-    c3_d  len_d, bit_d = red_u->bits;
-    ur_cue_tag_e tag_e;
-    ur_cue_res_e res_e;
+    c3_d bit_d = red_u->bits;
+    ur_cue_token_t token;
+    ur_cue_res_e res_e = ur_bsr_token(red_u, &token);
+    if ( res_e != ur_cue_good ) return res_e;
 
-    if ( ur_cue_good != (res_e = ur_bsr_tag(red_u, &tag_e)) ) {
-      return res_e;
+    for ( unsigned i = 0; i < token.cells; i++, bit_d += 2 ) {
+      _cue_frame_t* fam_u = u3a_push(pil_u);
+      fam_u->ref = u3_none;
+      fam_u->key_d = _cue_xeno_open(dic_u, bit_d);
     }
 
-    switch ( tag_e ) {
+    switch ( token.tag ) {
       default: u3_assert(0);
-
-      case ur_jam_cell: {
-        _cue_frame_t* fam_u = u3a_push(pil_u);
-
-        fam_u->ref   = u3_none;
-        fam_u->key_d = _cue_xeno_open(dic_u, bit_d);
-        continue;
-      }
+      case ur_jam_cell: continue;
 
       case ur_jam_back: {
-        if ( ur_cue_good != (res_e = ur_bsr_rub_len(red_u, &len_d)) ) {
-          return res_e;
-        }
-        //  XX: not 63?
-        else if ( 62 < len_d ) {
-          return ur_cue_meme;
-        }
-        else {
-          c3_d bak_d = ur_bsr64_any(red_u, len_d);
-          u3_weak bak = _cue_xeno_get(dic_u, bak_d);
-          if ( bak == u3_none ) return ur_cue_back;
-          *out = bak;
-          return ur_cue_good;
-        }
+        u3_weak bak = _cue_xeno_get(dic_u, token.value);
+        if ( bak == u3_none ) return ur_cue_back;
+        *out = bak;
+        return ur_cue_good;
       }
 
       case ur_jam_atom: {
-        if ( ur_cue_good != (res_e = ur_bsr_rub_len(red_u, &len_d)) ) {
-          return res_e;
-        }
-
-        if ( (u3a_word_bits-1) >= len_d ) {
-          *out = (u3_noun)ur_bsrn_any(red_u, len_d);
+        c3_d len_d = token.width;
+        if ( len_d <= 64 ) {
+          *out = len_d < u3a_word_bits ? (u3_noun)token.value : u3i_chub(token.value);
         }
         else {
           c3_d     byt_d = (len_d + 0x7) >> 3;
@@ -834,43 +817,29 @@ _cs_cue_bytes_next(u3a_pile*     pil_u,
                    ur_bsr_t*     red_u)
 {
   while ( 1 ) {
-    c3_d  len_d, bit_d = red_u->bits;
-    ur_cue_tag_e tag_e;
+    c3_d bit_d = red_u->bits;
+    ur_cue_token_t token;
+    _cs_cue_need(ur_bsr_token(red_u, &token));
 
-    _cs_cue_need(ur_bsr_tag(red_u, &tag_e));
+    for ( unsigned i = 0; i < token.cells; i++, bit_d += 2 ) {
+      _cue_frame_t* fam_u = u3a_push(pil_u);
+      fam_u->ref = u3_none;
+      fam_u->key_d = _cue_refs_open(refs, bit_d);
+    }
 
-    switch ( tag_e ) {
+    switch ( token.tag ) {
       default: u3_assert(0);
-
-      case ur_jam_cell: {
-        _cue_frame_t* fam_u = u3a_push(pil_u);
-
-        fam_u->ref   = u3_none;
-        fam_u->key_d = _cue_refs_open(refs, bit_d);
-        continue;
-      }
+      case ur_jam_cell: continue;
 
       case ur_jam_back: {
-        _cs_cue_need(ur_bsr_rub_len(red_u, &len_d));
-
-        //  XX: not 63?
-        if ( 62 < len_d ) {
-          return u3m_bail(c3__meme);
-        }
-        else {
-          c3_d  bak_d = ur_bsr64_any(red_u, len_d);
-          u3_weak bak = _cue_refs_get(refs, bak_d);
-          return u3x_good(bak);
-        }
+        return u3x_good(_cue_refs_get(refs, token.value));
       }
 
       case ur_jam_atom: {
+        c3_d len_d = token.width;
         u3_atom vat;
-
-        _cs_cue_need(ur_bsr_rub_len(red_u, &len_d));
-
-        if ( (u3a_word_bits-1) >= len_d ) {
-          vat = (u3_noun)ur_bsrn_any(red_u, len_d);
+        if ( len_d <= 64 ) {
+          vat = len_d < u3a_word_bits ? (u3_noun)token.value : u3i_chub(token.value);
         }
         else {
           u3i_slab sab_u;
