@@ -713,6 +713,11 @@ _n_melt(u3_noun ops, c3_w* byc_w, c3_w* cal_w,
   return u3kb_flop(sip);
 }
 
+#ifdef U3_GATE_FIELDS
+_Static_assert(offsetof(u3n_prog, byc_u.len_w) == 4, "bytecode header layout");
+#include "nock_fields.inc"
+#endif
+
 /* _n_prog_dat(): return pointer to program's data segment
  */
 static void*
@@ -775,6 +780,9 @@ _n_prog_old(u3n_prog* sep_u)
   u3n_prog* pog_u     = u3a_malloc(sizeof(u3n_prog) + dat_w);
   pog_u->byc_u.own_o = c3n;
   pog_u->byc_u.len_w = sep_u->byc_u.len_w;
+#ifdef U3_GATE_FIELDS
+  pog_u->byc_u.fields_y = sep_u->byc_u.fields_y;
+#endif
   pog_u->byc_u.ops_y = sep_u->byc_u.ops_y;
 
   pog_u->lit_u.len_w = sep_u->lit_u.len_w;
@@ -1026,6 +1034,9 @@ _n_prog_from_ops(u3_noun ops)
   sip   = _n_melt(ops, &byc_w, &cal_w, &reg_w, &lit_w, &mem_w);
   pog_u = _n_prog_new(byc_w, cal_w, reg_w, lit_w, mem_w);
   _n_prog_asm(ops, pog_u, sip);
+#ifdef U3_GATE_FIELDS
+  pog_u->byc_u.fields_y = _n_field_eligible(pog_u->byc_u.ops_y);
+#endif
   return pog_u;
 }
 
@@ -2377,6 +2388,10 @@ _n_hint_hind(u3_noun tok, u3_noun pro)
   u3z(tok);
 }
 
+#ifdef U3_FIELD_STATS
+c3_d u3n_field_hits;
+#endif
+
 /* _n_kick(): stop tracing noc and kick a u3j_site.
  */
 static u3_weak
@@ -3329,6 +3344,48 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       top  = _n_peek(off);
     musm_in:
       o    = *top;
+#ifdef U3_GATE_FIELDS
+      if ( pog[ip_w] >= KICB && pog[ip_w] <= TICS &&
+           !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) &&
+           c3y == u3du(o) && c3y == u3du(u3t(o)) ) {
+        c3_y call = pog[ip_w];
+        sit_u = &pog_u->cal_u.sit_u[_n_field_arg(pog + ip_w)];
+        if ( sit_u->axe == 2 && sit_u->pog_p && sit_u->bat == u3h(o) ) {
+          u3n_prog* arm = u3to(u3n_prog, sit_u->pog_p);
+          _n_field_entry entry;
+          if ( arm->byc_u.fields_y && c3y == u3j_gate_fields_ok(sit_u, o) &&
+               _n_field_enter(arm, o, x, &entry) ) {
+#ifdef U3_FIELD_STATS
+            ++u3n_field_hits;
+#endif
+#ifdef U3_CPU_DEBUG
+            ++u3R->pro.nox_d;
+#endif
+            u3z(x);
+            u3z(o);
+            ip_w += 1 + _n_arg(call);
+            if ( call == KICB || call == KICS ) {
+              if ( entry.second == u3_none && arm->byc_u.ops_y[entry.ip] == HALT ) {
+                *top = entry.first;
+                BURN();
+              }
+              _n_pop(mov);
+              fam = u3to(burnframe, u3R->cap_p) + off + mov;
+              u3R->cap_p = u3of(burnframe, fam - off);
+              fam->ip_w = ip_w;
+              fam->pog_u = pog_u;
+              _n_push(mov, off, entry.first);
+            }
+            else *top = entry.first;
+            if ( entry.second != u3_none ) _n_push(mov, off, entry.second);
+            pog_u = arm;
+            pog = arm->byc_u.ops_y;
+            ip_w = entry.ip;
+            BURN();
+          }
+        }
+      }
+#endif
 #ifdef U3_REUSE_BENCH
       if ( c3y == u3a_is_mutable(u3R, o) ) {
         *top = _n_edit_unique(o, 6, x);
@@ -3490,6 +3547,9 @@ _cn_take_prog_cb(c3_w pog_w)
     gop_u = _n_prog_old(pog_u);
   }
 
+#ifdef U3_GATE_FIELDS
+  gop_u->byc_u.fields_y = pog_u->byc_u.fields_y;
+#endif
   _cn_take_prog_dat(gop_u, pog_u);
   // _n_prog_take_dat(gop_u, pog_u, c3n);
 
@@ -3680,6 +3740,9 @@ _n_ream(u3_noun kev)
   pog_u->cal_u.sit_u = (u3j_site*) (pog_u->mem_u.sot_u + pog_u->mem_u.len_w + ped_w);
   pog_u->reg_u.rit_u = (u3j_rite*) (pog_u->cal_u.sit_u + pog_u->cal_u.len_w);
 
+#ifdef U3_GATE_FIELDS
+  pog_u->byc_u.fields_y = _n_field_eligible(pog_u->byc_u.ops_y);
+#endif
   for ( c3_w i_w = 0; i_w < pog_u->cal_u.len_w; ++i_w ) {
     u3j_site_ream(&(pog_u->cal_u.sit_u[i_w]));
   }

@@ -1697,7 +1697,7 @@ _cj_site_kick(u3_noun cor, u3j_site* sit_u)
   return pro;
 }
 
-#ifdef U3_TAIL_BENCH
+#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
 // Check all roads for the battery, independently of the current sample.
 // This decision lasts only while executing a body with no registrations.
 c3_o
@@ -1711,6 +1711,19 @@ u3j_site_unregistered(const u3j_site* site)
   if ( reg == u3_none ) return c3y;
   u3z(reg);
   return c3n;
+}
+#endif
+
+#ifdef U3_GATE_FIELDS
+/* A parent at axis 7 makes the cached fine check independent of the sample. */
+c3_o
+u3j_gate_fields_ok(const u3j_site* site, u3_noun gate)
+{
+  if ( site->loc == u3_none ) return u3j_site_unregistered(site);
+  if ( site->jet_o == c3y ) return c3n;
+  u3j_fink* fin = u3to(u3j_fink, site->fin_p);
+  if ( !fin->len_w || fin->fis_u[0].pax != 7 ) return c3n;
+  return _cj_fine(gate, site->fin_p);
 }
 #endif
 

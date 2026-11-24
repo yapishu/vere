@@ -197,7 +197,7 @@ _effects(void)
   u3C.slog_f = 0;
 }
 
-#ifdef U3_TAIL_BENCH
+#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
 static void
 _registry(void)
 {
@@ -224,6 +224,29 @@ _registry(void)
   u3C.wag_h |= u3o_trace;
   if ( c3n != u3j_site_unregistered(&site) ) abort();
   u3C.wag_h &= ~u3o_trace;
+#ifdef U3_GATE_FIELDS
+  // A cached interpreted location is valid for a replacement sample only
+  // when its first fine check steps straight into the existing context.
+  u3j_fink* fine = u3a_malloc(sizeof(*fine) + sizeof(u3j_fist));
+  site.fin_p = u3of(u3j_fink, fine);
+  site.loc = 42;
+  site.jet_o = c3n;
+  fine->len_w = 1;
+  fine->sat = 99;
+  fine->fis_u[0] = (u3j_fist){site.bat, 7};
+  u3_noun gate = u3nt(u3k(site.bat), 77, 99);
+  u3_assert(c3y == u3j_gate_fields_ok(&site, gate));
+  site.jet_o = c3y;
+  u3_assert(c3n == u3j_gate_fields_ok(&site, gate));
+  site.jet_o = c3n;
+  fine->fis_u[0].pax = 6;
+  u3_assert(c3n == u3j_gate_fields_ok(&site, gate));
+  fine->fis_u[0].pax = 7;
+  fine->sat = 77;
+  u3_assert(c3n == u3j_gate_fields_ok(&site, gate));
+  u3z(gate);
+  u3a_free(fine);
+#endif
   u3z(site.bat);
   u3z(site.bas);
 }
@@ -248,7 +271,7 @@ main(void)
 {
   u3m_boot_lite(1 << 27);
   if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
-#ifdef U3_TAIL_BENCH
+#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
   _registry();
 #endif
   _counters();

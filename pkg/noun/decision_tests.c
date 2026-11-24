@@ -1104,6 +1104,85 @@ _seconds(void)
   return (double)ts.tv_sec + 1e-9 * ts.tv_nsec;
 }
 
+#ifdef U3_GATE_FIELDS
+static u3_noun
+_gate_missing(u3_noun call)
+{
+  u3_noun body = _slot(12);
+  u3_noun gate = u3nt(body, 0, 77);
+  u3p(u3n_prog) prog = u3n_find(0, call);
+  u3_assert(18 == u3n_burn(prog, u3nc(u3k(gate), u3nc(18, 19))));
+  return u3n_burn(prog, u3nc(gate, 22));
+}
+
+static void
+_gate_effects(void)
+{
+  u3_noun call = u3nt(9, 2, u3nt(10, u3nc(6, _slot(3)), _slot(2)));
+  u3_noun fail = u3m_soft(0, _gate_missing, u3k(call));
+  u3_assert(c3__exit == u3h(fail));
+  u3z(fail);
+
+  u3_noun hint = u3nt(11, u3nc(c3__slog, _lit(71)), _slot(1));
+  u3_noun gate = u3nt(u3nt(7, _slot(6), hint), 999, 77);
+  u3p(u3n_prog) prog = u3n_find(0, call);
+  logs = 0;
+  u3C.slog_f = _log;
+  for ( unsigned i = 0; i < 4; i++ ) {
+    u3_assert(i == u3n_burn(prog, u3nc(u3k(gate), i)));
+    u3_assert(logs == i + 1 && logged[i] == 71);
+  }
+  u3C.slog_f = 0;
+  logs = 0;
+  u3z(gate);
+  u3z(call);
+}
+#endif
+
+// Exercise a single compiled kick site with changing samples, contexts and
+// batteries. The reference evaluates the body on a separately built core.
+static void
+_gate_fields(c3_t bench)
+{
+  u3_noun pair = u3nc(_slot(6), _slot(7));
+  u3_noun cell = u3nq(6, u3nc(3, _slot(6)), _slot(12), _slot(7));
+  u3_noun equal = u3nq(6, u3nt(5, _slot(6), _lit(42)), _slot(7), _slot(6));
+  u3_noun opaque = u3nq(6, u3nc(3, _slot(6)), _slot(1), _slot(6));
+  u3_noun arms[] = {pair, cell, equal, opaque, _slot(6), _slot(7)};
+  const char* names[] = {"pair", "cell", "equal", "escape", "sample", "context"};
+  u3_noun call = u3nt(9, 2, u3nt(10, u3nc(6, _slot(3)), _slot(2)));
+  for ( unsigned nested = 0; nested < 2; nested++ ) {
+    u3_noun formula = nested ? u3nc(u3k(call), _lit(42)) : u3k(call);
+    u3p(u3n_prog) program = u3n_find(0, formula);
+    for ( unsigned a = 0; a < sizeof(arms)/sizeof(*arms); a++ ) {
+      u3_noun inputs[8], expected[8];
+      for ( unsigned i = 0; i < 8; i++ ) {
+        u3_noun sample = i & 1 ? u3nc(i, i+1) : i == 2 ? 42 : i;
+        u3_noun context = u3nc(100+i, 101+i);
+        u3_noun core = u3nt(u3k(arms[a]), u3k(sample), u3k(context));
+        expected[i] = _eval(core, arms[a]);
+        if ( nested ) expected[i] = u3nc(expected[i], 42);
+        u3z(core);
+        inputs[i] = u3nc(u3nt(u3k(arms[a]), 998, context), sample);
+      }
+      unsigned repetitions = bench ? 500000 : 32;
+      double start = _seconds();
+      for ( unsigned i = 0; i < repetitions; i++ ) {
+        unsigned j = i % 8;
+        u3_noun product = u3n_burn(program, u3k(inputs[j]));
+        u3_assert(c3y == u3r_sing(product, expected[j]));
+        u3z(product);
+      }
+      if ( bench ) printf("%s,%s,%.3f\n", names[a], nested ? "call" : "tail",
+                          1e9 * (_seconds() - start) / repetitions);
+      for ( unsigned i = 0; i < 8; i++ ) { u3z(inputs[i]); u3z(expected[i]); }
+    }
+    u3z(formula);
+  }
+  u3z(call);
+  for ( unsigned i = 0; i < sizeof(arms)/sizeof(*arms); i++ ) u3z(arms[i]);
+}
+
 static void
 _borrow_bench(void)
 {
@@ -1230,6 +1309,7 @@ main(void)
     _check_short_axes();
     return 0;
   }
+  if ( getenv("U3_FIELD_MICRO") ) { _gate_fields(1); return 0; }
   if ( getenv("U3_BORROW_MICRO") ) { _borrow_bench(); return 0; }
   if ( getenv("U3_MIXED_MICRO") ) {
     _mixed_bench(126);
@@ -1254,6 +1334,16 @@ main(void)
   u3z(u3m_love(0));
   _list_guards();
   _list_expressions();
+#endif
+#ifdef U3_GATE_FIELDS
+  u3m_hate(0);
+  _gate_fields(0);
+  u3z(u3m_love(0));
+  _gate_effects();
+#ifdef U3_FIELD_STATS
+  extern c3_d u3n_field_hits;
+  u3_assert(u3n_field_hits > 0);
+#endif
 #endif
   _effects();
   _prepared_cases();

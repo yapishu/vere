@@ -291,7 +291,10 @@
         void
         u3j_site_ream(u3j_site* sit_u);
 
-#ifdef U3_TAIL_BENCH
+#ifdef U3_GATE_FIELDS
+      c3_o u3j_gate_fields_ok(const u3j_site* site, u3_noun gate);
+#endif
+#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
       c3_o
       u3j_site_unregistered(const u3j_site* site);
 #endif

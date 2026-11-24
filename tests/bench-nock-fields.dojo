@@ -1,0 +1,7 @@
+=ffirst |=([i=@ud a=@ud] ^-(@ud ?:(=(i 42) a i)))
+=fseed 7
+=fctx |=([i=@ud a=@ud] ^-(@ud ?:(=(i 42) fseed +(a))))
+=fapply |=([f=$-([@ud @ud] @ud) n=@ud i=@ud a=@ud] ^-(@ud ?:(=(i n) a $(i +(i), a (f i a)))))
+
+?>(=(~>(%bout (fapply ffirst 300.000 0 0)) 299.999) 782)
+?>(=(~>(%bout (fapply fctx 300.000 0 0)) 299.964) 782)
