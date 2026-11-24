@@ -6,11 +6,11 @@
 #include <fcntl.h>
 
 #include "allocate.h"
+#include "cue_pages.h"
 #include "hashtable.h"
 #include "jets/k.h"
 #include "jets/q.h"
 #include "retrieve.h"
-#include "serial.h"
 #include "ur/ur.h"
 #include "vortex.h"
 #include "xtract.h"
@@ -24,74 +24,48 @@ const c3_y u3s_dit_y[64] = {
   '-', '~'
 };
 
-/* _cs_jam_buf: struct for tracking the fibonacci-allocated jam of a noun
-*/
-struct _cs_jam_fib {
-  u3i_slab*     sab_u;
-  u3p(u3h_root) har_p;
-  c3_w          a_w;
-  c3_w          b_w;
-  c3_w          bit_w;
+/* Cursor in the pre-sized jam slab. */
+struct _cs_jam_slab {
+  u3i_slab* sab_u;
+  c3_w      len_w;
+  c3_w      bit_w;
 };
 
-/* _cs_jam_fib_grow(): reallocate buffer with fibonacci growth
-*/
 static inline void
-_cs_jam_fib_grow(struct _cs_jam_fib* fib_u, c3_w mor_w)
+_cs_jam_slab_advance(struct _cs_jam_slab* slab, c3_w bits)
 {
-  c3_w wan_w = fib_u->bit_w + mor_w;
-
-  // check for c3_w overflow
-  //
-  if ( wan_w < mor_w ) {
-    u3m_bail(c3__fail);
-    return;
-  }
-
-  if ( wan_w > fib_u->a_w ) {
-    c3_w   c_w = 0;
-
-    //  fibonacci growth
-    //
-    while ( c_w < wan_w ) {
-      c_w        = fib_u->a_w + fib_u->b_w;
-      fib_u->b_w = fib_u->a_w;
-      fib_u->a_w = c_w;
-    }
-
-    u3i_slab_grow(fib_u->sab_u, 0, c_w);
-  }
+  if ( bits > slab->len_w - slab->bit_w ) u3m_bail(c3__fail);
+  slab->bit_w += bits;
 }
 
-/* _cs_jam_fib_chop(): chop [met_w] bits of [a] into [fib_u]
+/* _cs_jam_slab_chop(): chop [met_w] bits of [a] into [slab_u]
 */
 static inline void
-_cs_jam_fib_chop(struct _cs_jam_fib* fib_u, c3_w met_w, u3_noun a)
+_cs_jam_slab_chop(struct _cs_jam_slab* slab_u, c3_w met_w, u3_noun a)
 {
-  c3_w bit_w = fib_u->bit_w;
-  _cs_jam_fib_grow(fib_u, met_w);
-  fib_u->bit_w += met_w;
+  c3_w bit_w = slab_u->bit_w;
+  _cs_jam_slab_advance(slab_u, met_w);
 
   {
-    c3_w* buf_w = fib_u->sab_u->buf_w;
+    c3_w* buf_w = slab_u->sab_u->buf_w;
     u3r_chop(0, 0, met_w, bit_w, buf_w, a);
   }
 }
 
-/* _cs_jam_fib_mat(): length-prefixed encode (mat) [a] into [fib_u]
+/* _cs_jam_slab_mat(): length-prefixed encode (mat) [a] into [slab_u]
 */
 static void
-_cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
+_cs_jam_slab_mat(struct _cs_jam_slab* slab_u, u3_noun a)
 {
   if ( 0 == a ) {
-    _cs_jam_fib_chop(fib_u, 1, 1);
+    _cs_jam_slab_chop(slab_u, 1, 1);
   }
   else {
     c3_w   a_w = u3r_met(0, a);
     c3_w   b_w = c3_bits_word(a_w);
-    c3_w bit_w = fib_u->bit_w;
+    c3_w bit_w = slab_u->bit_w;
 
-    //  amortize overflow checks and reallocation
+    //  reserve the prefix and payload together
     //
     {
       c3_w met_w = a_w + (2 * b_w);
@@ -101,8 +75,7 @@ _cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
         return;
       }
 
-      _cs_jam_fib_grow(fib_u, met_w);
-      fib_u->bit_w += met_w;
+      _cs_jam_slab_advance(slab_u, met_w);
     }
 
     {
@@ -112,9 +85,9 @@ _cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
       c3_w  src_w[1];
 #endif
 
-      c3_w* buf_w = fib_u->sab_u->buf_w;
+      c3_w* buf_w = slab_u->sab_u->buf_w;
 
-      //  _cs_jam_fib_chop(fib_u, b_w+1, 1 << b_w);
+      //  _cs_jam_slab_chop(slab_u, b_w+1, 1 << b_w);
       //
       {
 #ifndef VERE64
@@ -130,7 +103,7 @@ _cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
         bit_w += b_w + 1;
       }
 
-      //  _cs_jam_fib_chop(fib_u, b_w-1, a_w);
+      //  _cs_jam_slab_chop(slab_u, b_w-1, a_w);
       //
       {
         src_w[0] = a_w;
@@ -138,102 +111,12 @@ _cs_jam_fib_mat(struct _cs_jam_fib* fib_u, u3_noun a)
         bit_w += b_w - 1;
       }
 
-      //  _cs_jam_fib_chop(fib_u, a_w, a);
+      //  _cs_jam_slab_chop(slab_u, a_w, a);
       //
       u3r_chop(0, 0, a_w, bit_w, buf_w, a);
     }
   }
 }
-
-/* _cs_jam_fib_atom_cb(): encode atom or backref
-*/
-static void
-_cs_jam_fib_atom_cb(u3_atom a, void* ptr_v)
-{
-  struct _cs_jam_fib* fib_u = ptr_v;
-  u3_weak b = u3h_git(fib_u->har_p, a);
-
-  //  if [a] has no backref, encode atom and put cursor into [har_p]
-  //
-  if ( u3_none == b ) {
-    u3h_put(fib_u->har_p, a, u3i_words(1, &(fib_u->bit_w)));
-    _cs_jam_fib_chop(fib_u, 1, 0);
-    _cs_jam_fib_mat(fib_u, a);
-  }
-  else {
-    c3_w a_w = u3r_met(0, a);
-    c3_w b_w = u3r_met(0, b);
-
-    //  if [a] is smaller than the backref, encode atom
-    //
-    if ( a_w <= b_w ) {
-      _cs_jam_fib_chop(fib_u, 1, 0);
-      _cs_jam_fib_mat(fib_u, a);
-    }
-    //  otherwise, encode backref
-    //
-    else {
-      _cs_jam_fib_chop(fib_u, 2, 3);
-      _cs_jam_fib_mat(fib_u, b);
-    }
-  }
-}
-
-/* _cs_jam_fib_cell_cb(): encode cell or backref
-*/
-static c3_o
-_cs_jam_fib_cell_cb(u3_noun a, void* ptr_v)
-{
-  struct _cs_jam_fib* fib_u = ptr_v;
-  u3_weak b = u3h_git(fib_u->har_p, a);
-
-  //  if [a] has no backref, encode cell and put cursor into [har_p]
-  //
-  if ( u3_none == b ) {
-    u3h_put(fib_u->har_p, a, u3i_words(1, &(fib_u->bit_w)));
-    _cs_jam_fib_chop(fib_u, 2, 1);
-    return c3y;
-  }
-  //  otherwise, encode backref and shortcircuit traversal
-  //
-  else {
-    _cs_jam_fib_chop(fib_u, 2, 3);
-    _cs_jam_fib_mat(fib_u, b);
-    return c3n;
-  }
-}
-
-/* u3s_jam_fib(): jam without atom allocation.
-**
-**   returns atom-suitable words, and *bit_w will have
-**   the length (in bits). return should be freed with u3a_wfree().
-*/
-c3_w
-u3s_jam_fib(u3i_slab* sab_u, u3_noun a)
-{
-  struct _cs_jam_fib fib_u;
-  fib_u.har_p = u3h_new();
-  fib_u.sab_u = sab_u;
-
-  //  fib(12) is small enough to be reasonably fast to allocate.
-  //  fib(11) is needed to get fib(13).
-  //
-  //
-  fib_u.a_w   = ur_fib12;
-  fib_u.b_w   = ur_fib11;
-  fib_u.bit_w = 0;
-  u3i_slab_init(sab_u, 0, fib_u.a_w);
-
-  u3a_walk_fore(a, &fib_u, _cs_jam_fib_atom_cb, _cs_jam_fib_cell_cb);
-
-  u3h_free(fib_u.har_p);
-  return fib_u.bit_w;
-}
-
-typedef struct _jam_xeno_s {
-  u3p(u3h_root) har_p;
-  ur_bsw_t      rit_u;
-} _jam_xeno_t;
 
 /* _cs_coin_chub(): shortcircuit u3i_chubs().
 */
@@ -243,7 +126,7 @@ _cs_coin_chub(c3_d a_d)
   return ( ((c3_d)u3a_direct_max) >= a_d ) ? a_d : u3i_chubs(1, &a_d);
 }
 
-/* _cs_jam_xeno_atom(): encode in/direct atom in bitstream.
+/* _cs_jam_bsw_atom(): encode in/direct atom in bitstream.
 */
 static inline void
 _cs_jam_bsw_atom(ur_bsw_t* rit_u, c3_w met_w, u3_atom a)
@@ -263,79 +146,24 @@ _cs_jam_bsw_atom(ur_bsw_t* rit_u, c3_w met_w, u3_atom a)
   }
 }
 
-/* _cs_jam_bsw_back(): encode in/direct backref in bitstream.
-*/
-static inline void
-_cs_jam_bsw_back(ur_bsw_t* rit_u, c3_w met_w, u3_atom a)
-{
-  c3_d bak_d = ( c3y == u3a_is_cat(a) )
-             ? (c3_d)a
-             : u3r_chub(0, a);
+#include "jam_classes.inc"
 
-  //  XX need a ur_bsw_back32()
-  //
-  ur_bsw_back64(rit_u, (c3_y)met_w, bak_d);
+/* u3s_jam_fib(): jam into a slab and return the length in bits. */
+c3_w
+u3s_jam_fib(u3i_slab* sab_u, u3_noun a)
+{
+  struct _cs_jam_slab slab_u = { .sab_u = sab_u };
+  _jam_emit_classes(a, NULL, &slab_u);
+  return slab_u.bit_w;
 }
 
-/* _cs_jam_xeno_atom(): encode atom or backref in bitstream.
-*/
-static void
-_cs_jam_xeno_atom(u3_atom a, void* ptr_v)
-{
-  _jam_xeno_t* jam_u = ptr_v;
-  ur_bsw_t*    rit_u = &(jam_u->rit_u);
-  u3_weak        bak = u3h_git(jam_u->har_p, a);
-  c3_w         met_w = u3r_met(0, a);
-
-  if ( u3_none == bak ) {
-    u3h_put(jam_u->har_p, a, _cs_coin_chub(rit_u->bits));
-    _cs_jam_bsw_atom(rit_u, met_w, a);
-  }
-  else {
-    c3_w bak_w = u3r_met(0, bak);
-
-    if ( met_w <= bak_w ) {
-      _cs_jam_bsw_atom(rit_u, met_w, a);
-    }
-    else {
-      _cs_jam_bsw_back(rit_u, bak_w, bak);
-    }
-  }
-}
-
-/* _cs_jam_xeno_cell(): encode cell or backref in bitstream.
-*/
-static c3_o
-_cs_jam_xeno_cell(u3_noun a, void* ptr_v)
-{
-  _jam_xeno_t* jam_u = ptr_v;
-  ur_bsw_t*    rit_u = &(jam_u->rit_u);
-  u3_weak        bak = u3h_git(jam_u->har_p, a);
-
-  if ( u3_none == bak ) {
-    u3h_put(jam_u->har_p, a, _cs_coin_chub(rit_u->bits));
-    ur_bsw_cell(rit_u);
-    return c3y;
-  }
-  else {
-    _cs_jam_bsw_back(rit_u, u3r_met(0, bak), bak);
-    return c3n;
-  }
-}
-
-/* u3s_jam_xeno(): jam with off-loom buffer (re-)allocation.
-*/
+/* u3s_jam_xeno(): jam into an off-loom byte buffer. */
 c3_d
 u3s_jam_xeno(u3_noun a, c3_d* len_d, c3_y** byt_y)
 {
-  _jam_xeno_t jam_u = {0};
-  ur_bsw_init(&jam_u.rit_u, ur_fib11, ur_fib12);
-  jam_u.har_p = u3h_new();
-
-  u3a_walk_fore(a, &jam_u, _cs_jam_xeno_atom, _cs_jam_xeno_cell);
-
-  u3h_free(jam_u.har_p);
-  return ur_bsw_done(&jam_u.rit_u, len_d, byt_y);
+  ur_bsw_t writer = {0};
+  _jam_emit_classes(a, &writer, NULL);
+  return ur_bsw_done(&writer, len_d, byt_y);
 }
 
 /* _cs_cue: stack frame for tracking intermediate cell results
@@ -497,67 +325,44 @@ u3s_cue(u3_atom a)
 */
 typedef struct _cue_frame_s {
   u3_weak ref;
-  c3_d  bit_d;
+  c3_d    key_d;  // Dictionary key reserved at the opening cell tag.
 } _cue_frame_t;
+
+#include "cue_rank.inc"
 
 /* _cs_cue_xeno_next(): read next value from bitstream, dictionary off-loom.
 */
 static inline ur_cue_res_e
-_cs_cue_xeno_next(u3a_pile*    pil_u,
-                  ur_bsr_t*    red_u,
-                  ur_dictn_t* dic_u,
-                  u3_noun*       out)
+_cs_cue_xeno_next(u3a_pile* pil_u, ur_bsr_t* red_u,
+                  _cue_refs* dic_u, u3_noun* out)
 {
-  ur_root_t* rot_u = 0;
-
   while ( 1 ) {
-    c3_d  len_d, bit_d = red_u->bits;
-    ur_cue_tag_e tag_e;
-    ur_cue_res_e res_e;
+    c3_d bit_d = red_u->bits;
+    ur_cue_token_t token;
+    ur_cue_res_e res_e = ur_bsr_token(red_u, &token);
+    if ( res_e != ur_cue_good ) return res_e;
 
-    if ( ur_cue_good != (res_e = ur_bsr_tag(red_u, &tag_e)) ) {
-      return res_e;
+    for ( unsigned i = 0; i < token.cells; i++, bit_d += 2 ) {
+      _cue_frame_t* fam_u = u3a_push(pil_u);
+      fam_u->ref = u3_none;
+      fam_u->key_d = _cue_refs_open(dic_u, bit_d);
     }
 
-    switch ( tag_e ) {
+    switch ( token.tag ) {
       default: u3_assert(0);
-
-      case ur_jam_cell: {
-        _cue_frame_t* fam_u = u3a_push(pil_u);
-
-        fam_u->ref   = u3_none;
-        fam_u->bit_d = bit_d;
-        continue;
-      }
+      case ur_jam_cell: continue;
 
       case ur_jam_back: {
-        if ( ur_cue_good != (res_e = ur_bsr_rub_len(red_u, &len_d)) ) {
-          return res_e;
-        }
-        //  XX: not 63?
-        else if ( 62 < len_d ) {
-          return ur_cue_meme;
-        }
-        else {
-          c3_d bak_d = ur_bsr64_any(red_u, len_d);
-          c3_w bak_w;
-
-          if ( !ur_dictn_get(rot_u, dic_u, bak_d, &bak_w) ) {
-            return ur_cue_back;
-          }
-
-          *out = u3k((u3_noun)bak_w);
-          return ur_cue_good;
-        }
+        u3_weak bak = _cue_refs_get(dic_u, token.value);
+        if ( bak == u3_none ) return ur_cue_back;
+        *out = bak;
+        return ur_cue_good;
       }
 
       case ur_jam_atom: {
-        if ( ur_cue_good != (res_e = ur_bsr_rub_len(red_u, &len_d)) ) {
-          return res_e;
-        }
-
-        if ( (u3a_word_bits-1) >= len_d ) {
-          *out = (u3_noun)ur_bsrn_any(red_u, len_d);
+        c3_d len_d = token.width;
+        if ( len_d <= 64 ) {
+          *out = len_d < u3a_word_bits ? (u3_noun)token.value : u3i_chub(token.value);
         }
         else {
           c3_d     byt_d = (len_d + 0x7) >> 3;
@@ -573,7 +378,7 @@ _cs_cue_xeno_next(u3a_pile*    pil_u,
           }
         }
 
-        ur_dictn_put(rot_u, dic_u, bit_d, *out);
+        _cue_refs_finish(dic_u, _cue_refs_open(dic_u, bit_d), *out);
         return ur_cue_good;
       }
     }
@@ -581,7 +386,7 @@ _cs_cue_xeno_next(u3a_pile*    pil_u,
 }
 
 struct _u3_cue_xeno {
-  ur_dictn_t dic_u;
+  _cue_refs dic_u;
 };
 
 /* _cs_cue_xeno(): cue on-loom, with off-loom dictionary in handle.
@@ -592,7 +397,7 @@ _cs_cue_xeno(u3_cue_xeno* sil_u,
              const c3_y*  byt_y)
 {
   ur_bsr_t      red_u = {0};
-  ur_dictn_t*  dic_u = &sil_u->dic_u;
+  _cue_refs* dic_u = &sil_u->dic_u;
   u3a_pile      pil_u;
   _cue_frame_t* fam_u;
   ur_cue_res_e  res_e;
@@ -636,10 +441,8 @@ _cs_cue_xeno(u3_cue_xeno* sil_u,
       //  f is a tail-frame; pop the stack and continue
       //
       else {
-        ur_root_t* rot_u = 0;
-
         ref   = u3nc(fam_u->ref, ref);
-        ur_dictn_put(rot_u, dic_u, fam_u->bit_d, ref);
+        _cue_refs_finish(dic_u, fam_u->key_d, ref);
         fam_u = u3a_pop(&pil_u);
       }
     }
@@ -652,14 +455,10 @@ _cs_cue_xeno(u3_cue_xeno* sil_u,
   }
   //  on failure, unwind the stack and dispose of intermediate nouns
   //
-  else if ( c3n == u3a_pile_done(&pil_u) ) {
-    do {
-      if ( u3_none != fam_u->ref ) {
-        u3z(fam_u->ref);
-      }
-      fam_u = u3a_pop(&pil_u);
-    }
-    while ( c3n == u3a_pile_done(&pil_u) );
+  while ( c3n == u3a_pile_done(&pil_u) ) {
+    _cue_frame_t* pending = u3a_peek(&pil_u);
+    if ( u3_none != pending->ref ) u3z(pending->ref);
+    u3a_drop(&pil_u);
   }
 
   return u3_none;
@@ -673,7 +472,7 @@ u3s_cue_xeno_init_with(c3_d pre_d, c3_d siz_d)
   u3_cue_xeno* sil_u;
 
   sil_u = c3_calloc(sizeof(*sil_u));
-  ur_dictn_grow((ur_root_t*)0, &sil_u->dic_u, pre_d, siz_d);
+  _cue_refs_init_external(&sil_u->dic_u, siz_d);
 
   return sil_u;
 }
@@ -698,7 +497,8 @@ u3s_cue_xeno_with(u3_cue_xeno* sil_u,
   u3_assert( &(u3H->rod_u) == u3R );
 
   som = _cs_cue_xeno(sil_u, len_d, byt_y);
-  ur_dictn_wipe(&sil_u->dic_u);
+  sil_u->dic_u.noun_count = sil_u->dic_u.page_count = 0;
+  if ( sil_u->dic_u.directory ) sil_u->dic_u.directory->height = 0;
   return som;
 }
 
@@ -707,7 +507,7 @@ u3s_cue_xeno_with(u3_cue_xeno* sil_u,
 void
 u3s_cue_xeno_done(u3_cue_xeno* sil_u)
 {
-  ur_dict_free((ur_dict_t*)&sil_u->dic_u);
+  _cue_refs_free(&sil_u->dic_u);
   c3_free(sil_u);
 }
 
@@ -742,73 +542,37 @@ _cs_cue_need(ur_cue_res_e res_e)
   }
 }
 
-/* _cs_cue_get(): u3h_get wrapper handling allocation and refcounts.
-*/
-static inline u3_weak
-_cs_cue_get(u3p(u3h_root) har_p, c3_d key_d)
-{
-  u3_atom key = _cs_coin_chub(key_d);
-  u3_weak pro = u3h_get(har_p, key);
-  u3z(key);
-  return pro;
-}
-
-/* _cs_cue_put(): u3h_put wrapper handling allocation and refcounts.
-*/
-static inline u3_noun
-_cs_cue_put(u3p(u3h_root) har_p, c3_d key_d, u3_noun val)
-{
-  u3_atom key = _cs_coin_chub(key_d);
-  u3h_put(har_p, key, u3k(val));
-  u3z(key);
-  return val;
-}
-
 /* _cs_cue_bytes_next(): read next value from bitstream.
 */
 static inline u3_noun
 _cs_cue_bytes_next(u3a_pile*     pil_u,
-                   u3p(u3h_root) har_p,
+                   _cue_refs*    refs,
                    ur_bsr_t*     red_u)
 {
   while ( 1 ) {
-    c3_d  len_d, bit_d = red_u->bits;
-    ur_cue_tag_e tag_e;
+    c3_d bit_d = red_u->bits;
+    ur_cue_token_t token;
+    _cs_cue_need(ur_bsr_token(red_u, &token));
 
-    _cs_cue_need(ur_bsr_tag(red_u, &tag_e));
+    for ( unsigned i = 0; i < token.cells; i++, bit_d += 2 ) {
+      _cue_frame_t* fam_u = u3a_push(pil_u);
+      fam_u->ref = u3_none;
+      fam_u->key_d = _cue_refs_open(refs, bit_d);
+    }
 
-    switch ( tag_e ) {
+    switch ( token.tag ) {
       default: u3_assert(0);
-
-      case ur_jam_cell: {
-        _cue_frame_t* fam_u = u3a_push(pil_u);
-
-        fam_u->ref   = u3_none;
-        fam_u->bit_d = bit_d;
-        continue;
-      }
+      case ur_jam_cell: continue;
 
       case ur_jam_back: {
-        _cs_cue_need(ur_bsr_rub_len(red_u, &len_d));
-
-        //  XX: not 63?
-        if ( 62 < len_d ) {
-          return u3m_bail(c3__meme);
-        }
-        else {
-          c3_d  bak_d = ur_bsr64_any(red_u, len_d);
-          u3_weak bak = _cs_cue_get(har_p, bak_d);
-          return u3x_good(bak);
-        }
+        return u3x_good(_cue_refs_get(refs, token.value));
       }
 
       case ur_jam_atom: {
+        c3_d len_d = token.width;
         u3_atom vat;
-
-        _cs_cue_need(ur_bsr_rub_len(red_u, &len_d));
-
-        if ( (u3a_word_bits-1) >= len_d ) {
-          vat = (u3_noun)ur_bsrn_any(red_u, len_d);
+        if ( len_d <= 64 ) {
+          vat = len_d < u3a_word_bits ? (u3_noun)token.value : u3i_chub(token.value);
         }
         else {
           u3i_slab sab_u;
@@ -818,7 +582,8 @@ _cs_cue_bytes_next(u3a_pile*     pil_u,
           vat = u3i_slab_mint_bytes(&sab_u);
         }
 
-        return _cs_cue_put(har_p, bit_d, vat);
+        _cue_refs_finish(refs, _cue_refs_open(refs, bit_d), vat);
+        return vat;
       }
     }
   }
@@ -832,16 +597,14 @@ u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
   ur_bsr_t      red_u = {0};
   u3a_pile      pil_u;
   _cue_frame_t* fam_u;
-  u3p(u3h_root) har_p;
+  _cue_refs     refs;
   u3_noun         ref;
 
   //  initialize stack control
   //
   u3a_pile_prep(&pil_u, sizeof(*fam_u), __alignof__(*fam_u));
 
-  //  initialize a hash table for dereferencing backrefs
-  //
-  har_p = u3h_new();
+  _cue_refs_init(&refs);
 
   //  init bitstream-reader
   //
@@ -855,7 +618,7 @@ u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
 
   //  advance into stream
   //
-  ref = _cs_cue_bytes_next(&pil_u, har_p, &red_u);
+  ref = _cs_cue_bytes_next(&pil_u, &refs, &red_u);
 
   //  process cell results
   //
@@ -867,21 +630,21 @@ u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
       //
       if ( u3_none == fam_u->ref ) {
         fam_u->ref = ref;
-        ref        = _cs_cue_bytes_next(&pil_u, har_p, &red_u);
+        ref        = _cs_cue_bytes_next(&pil_u, &refs, &red_u);
         fam_u      = u3a_peek(&pil_u);
       }
       //  f is a tail-frame; pop the stack and continue
       //
       else {
         ref   = u3nc(fam_u->ref, ref);
-        _cs_cue_put(har_p, fam_u->bit_d, ref);
+        _cue_refs_finish(&refs, fam_u->key_d, ref);
         fam_u = u3a_pop(&pil_u);
       }
     }
     while ( c3n == u3a_pile_done(&pil_u) );
   }
 
-  u3h_free(har_p);
+  _cue_refs_free(&refs);
 
   return ref;
 }

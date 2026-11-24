@@ -842,7 +842,12 @@ fn buildBinary(
             .{
                 .name = "serial-test",
                 .file = "pkg/noun/serial_tests.c",
-                .deps = noun_test_deps,
+                .deps = &.{
+                    pkg_noun.artifact("noun"),
+                    pkg_ur.artifact("ur"),
+                    pkg_c3.artifact("c3"),
+                    gmp.artifact("gmp"),
+                },
             },
             // pkg_vere
             .{

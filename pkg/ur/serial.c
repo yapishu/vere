@@ -250,7 +250,19 @@ _cue_next(ur_root_t      *r,
             len_byt--;
           }
 
-          *out = ur_coin_bytes_unsafe(r, len_byt, byt);
+          // The declared width can include leading zeros. Choose the atom
+          // representation from the value that the stream actually supplies.
+          if ( !len_byt || ur_met0_bytes_unsafe(len_byt, byt) <= 62 ) {
+            uint64_t value = 0;
+            for ( uint64_t i = 0; i < len_byt; ++i ) {
+              value |= (uint64_t)byt[i] << (8 * i);
+            }
+            free(byt);
+            *out = value;
+          }
+          else {
+            *out = ur_coin_bytes_unsafe(r, len_byt, byt);
+          }
         }
 
         ur_dict64_put(r, dict, bits, (uint64_t)*out);

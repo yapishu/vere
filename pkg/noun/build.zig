@@ -234,6 +234,7 @@ pub fn build(b: *std.Build) !void {
 
 const c_source_files = [_][]const u8{
     "allocate.c",
+    "cue_view.c",
     "events.c",
     "hashtable.c",
     "imprison.c",

@@ -134,6 +134,21 @@ ur_bsr_log(ur_bsr_t *bsr, uint8_t *out);
 ur_cue_res_e
 ur_bsr_rub_len(ur_bsr_t *bsr, uint64_t *out);
 
+/* Read consecutive cell openings and, when available, the leaf below them.
+** A cell tag means the batch consists entirely of openings. Leaves of up
+** to 64 bits carry their value. Wider atoms leave the cursor at the payload.
+** Backreference widths above 62 bits return ur_cue_meme.
+*/
+typedef struct {
+  ur_cue_tag_e tag;
+  unsigned     cells;
+  uint64_t     width;
+  uint64_t     value;
+} ur_cue_token_t;
+
+ur_cue_res_e
+ur_bsr_token(ur_bsr_t *bsr, ur_cue_token_t *token);
+
 /*
 **  initialize bitstream-writer with prev/size for fibonacci growth.
 */
