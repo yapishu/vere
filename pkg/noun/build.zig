@@ -331,6 +331,7 @@ const c_source_files = [_][]const u8{
     "jets/d/in_bif.c",
     "jets/d/in_del.c",
     "jets/d/in_dif.c",
+    "jets/d/gas.c",
     "jets/d/in_gas.c",
     "jets/d/in_has.c",
     "jets/d/in_int.c",

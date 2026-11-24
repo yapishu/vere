@@ -223,6 +223,7 @@ u3r_vmean(u3_noun a, u3r_mean_pair pairs[], c3_z len_z)
 
 typedef struct {
   c3_y     sat_y;
+  c3_t     remember;
   u3_noun  a;
   u3_noun  b;
 } eqframe;
@@ -234,6 +235,7 @@ _cr_sing_push(u3a_pile* pil_u, u3_noun a, u3_noun b)
 {
   eqframe* fam_u = u3a_push(pil_u);
   fam_u->sat_y   = SING_NONE;
+  fam_u->remember = 0;
   fam_u->a       = a;
   fam_u->b       = b;
   return fam_u;
@@ -348,6 +350,19 @@ _cr_sing_wed(u3_noun *restrict a, u3_noun *restrict b)
   }
 }
 
+// Only a fork can introduce two more cell comparisons. Checkpoint unary
+// paths as well, so a shared long chain has bounded unchecked stretches.
+// Stack offsets are measured in words. Every 32 pushes reach a checkpoint
+// on either road, independently of frame size or the direction of growth.
+static inline c3_t
+_cr_sing_checkpoint(const u3a_pile* pile, const u3a_cell* a, const u3a_cell* b)
+{
+  if ( !((u3R->cap_p - pile->top_p) & 31) ) return 1;
+  return a->hed != b->hed && a->tel != b->tel
+      && c3y == u3du(a->hed) && c3y == u3du(b->hed)
+      && c3y == u3du(a->tel) && c3y == u3du(b->tel);
+}
+
 /* _cr_sing_cape(): unifying equality with comparison deduplication
  *                  (tightly coupled to _cr_sing)
  */
@@ -397,12 +412,19 @@ _cr_sing_cape(u3a_pile* pil_u, u3p(u3h_root) har_p)
           }
           //  short-circuiting re-comparison check
           //
-          else if ( c3y == _cr_sing_cape_test(har_p, a, b) ) {
+          fam_u->remember = _cr_sing_checkpoint(pil_u, a_u, b_u);
+          if ( fam_u->remember && c3y == _cr_sing_cape_test(har_p, a, b) ) {
             fam_u = u3a_pop(pil_u);
             continue;
           }
           //  upgrade none-frame to head-frame, check heads
           //
+          else if ( a_u->hed == b_u->hed ) {
+            if ( a_u->tel == b_u->tel ) break;
+            fam_u->sat_y = SING_TAIL;
+            fam_u = _cr_sing_push(pil_u, a_u->tel, b_u->tel);
+            continue;
+          }
           else {
             fam_u->sat_y = SING_HEAD;
             fam_u = _cr_sing_push(pil_u, a_u->hed, b_u->hed);
@@ -417,6 +439,7 @@ _cr_sing_cape(u3a_pile* pil_u, u3p(u3h_root) har_p)
         a_u = u3a_to_ptr(a);
         b_u = u3a_to_ptr(b);
         _cr_sing_wed(&(a_u->hed), &(b_u->hed));
+        if ( a_u->tel == b_u->tel ) break;
 
         //  upgrade head-frame to tail-frame, check tails
         //
@@ -440,7 +463,7 @@ _cr_sing_cape(u3a_pile* pil_u, u3p(u3h_root) har_p)
 
     //  track equal pairs to short-circuit possible (re-)comparison
     //
-    _cr_sing_cape_keep(har_p, a, b);
+    if ( fam_u->remember ) _cr_sing_cape_keep(har_p, a, b);
 
     fam_u = u3a_pop(pil_u);
   }
@@ -506,6 +529,12 @@ _cr_sing(u3_noun a, u3_noun b)
           }
           //  upgrade none-frame to head-frame, check heads
           //
+          else if ( a_u->hed == b_u->hed ) {
+            if ( a_u->tel == b_u->tel ) break;
+            fam_u->sat_y = SING_TAIL;
+            fam_u = _cr_sing_push(&pil_u, a_u->tel, b_u->tel);
+            continue;
+          }
           else {
             fam_u->sat_y = SING_HEAD;
             fam_u = _cr_sing_push(&pil_u, a_u->hed, b_u->hed);
@@ -520,6 +549,7 @@ _cr_sing(u3_noun a, u3_noun b)
         a_u = u3a_to_ptr(a);
         b_u = u3a_to_ptr(b);
         _cr_sing_wed(&(a_u->hed), &(b_u->hed));
+        if ( a_u->tel == b_u->tel ) break;
 
         //  upgrade head-frame to tail-frame, check tails
         //

@@ -29,9 +29,47 @@ _by_key(u3_noun a, u3_noun set)
   }
 }
 
+// A map satisfying the same gor/mor invariants as a set already has
+// its canonical key-set topology. Project it in postorder.
+static u3_noun
+_by_key_project(u3_noun map)
+{
+  typedef struct {
+    u3_noun key, right, left;
+  } frame;
+  u3a_pile stack;
+  u3a_pile_prep(&stack, sizeof(frame), alignof(frame));
+  u3_noun set = u3_nul;
+  for (;;) {
+    while ( map ) {
+      u3_noun key = u3h(u3h(map)), branches = u3t(map);
+      u3_noun left = u3h(branches), right = u3t(branches);
+      if ( !left && !right ) {
+        set = u3nc(u3k(key), u3k(branches));
+        break;
+      }
+      *(frame*)u3a_push(&stack) = (frame){ key, right, u3_none };
+      map = left;
+    }
+    for (;;) {
+      if ( c3y == u3a_pile_done(&stack) ) return set;
+      frame* top = u3a_peek(&stack);
+      if ( u3_none == top->left ) {
+        top->left = set;
+        map = top->right;
+        set = u3_nul;
+        break;
+      }
+      set = u3nt(u3k(top->key), top->left, set);
+      u3a_drop(&stack);
+    }
+  }
+}
+
 u3_noun
 u3qdb_key(u3_noun a)
 {
+  if ( c3y == u3qdb_apt(a) ) return _by_key_project(a);
   return _by_key(a, u3_nul);
 }
 
