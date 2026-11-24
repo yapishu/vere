@@ -330,10 +330,37 @@ _test_hcons(void)
   return ret_i;
 }
 
+// Two independent DAGs represent exponentially large trees. The inner
+// road can compare them but cannot unify their home-road children.
+static void
+_test_shared_comparisons(void)
+{
+  u3_noun a = u3nc(18, 19), b = u3nc(18, 19);
+  for ( unsigned i = 0; i < 48; ++i ) {
+    a = u3nc(u3k(a), a);
+    b = u3nc(u3k(b), b);
+    for ( unsigned j = 0; j < (i % 5); ++j ) {
+      a = u3nc(j, a);
+      b = u3nc(j, b);
+    }
+  }
+
+  u3_noun x = u3nc(u3k(a), 1), y = u3nc(u3k(b), 2);
+  u3m_hate(0);
+  u3_post cap = u3R->cap_p;
+  u3_assert(c3y == u3r_sing(a, b));
+  u3_assert(c3n == u3r_sing(x, y));
+  u3_assert(cap == u3R->cap_p);
+  u3z(u3m_love(0));
+  u3z(x); u3z(y); u3z(a); u3z(b);
+}
+
 static c3_i
 _test_equality(void)
 {
   c3_i ret_i = 1;
+
+  _test_shared_comparisons();
 
   if ( !_test_hcons() ) {
     fprintf(stderr, "test: equality: hcons: failed\r\n");
