@@ -1065,10 +1065,48 @@ _test_lug(void)
   return ret_i;
 }
 
+// Individual puts independently specify the entire canonical tree and the
+// winning map value for every key, including distinct keys with equal mugs.
+static void
+_test_bulk_trees(void)
+{
+  const unsigned sizes[] = {0, 1, 2, 31, 32, 33, 255, 1024};
+  for ( size_t i = 0; i < sizeof(sizes) / sizeof(*sizes); i++ ) {
+    u3_noun keys = u3_nul, pairs = u3_nul, set = u3_nul, map = u3_nul;
+    for ( unsigned j = sizes[i]; j > 0; --j ) {
+      u3_noun key;
+      switch ( j % 7 ) {
+        case 0: key = u3i_chub(UINT64_C(0xc001d00d0000b33f)); break;
+        case 1: key = u3i_chub(UINT64_C(0xc001d00d00012a3e)); break;
+        case 2: key = u3nc(j % 11, j % 5); break;
+        case 3: case 4: key = 0; break;
+        default: key = j; break;
+      }
+      keys = u3nc(u3k(key), keys);
+      pairs = u3nc(u3nc(key, j), pairs);
+    }
+    for ( u3_noun rest = pairs; rest; rest = u3t(rest) ) {
+      u3_noun pair = u3h(rest), key = u3h(pair);
+      u3_noun next_set = u3qdi_put(set, key);
+      u3_noun next_map = u3qdb_put(map, key, u3t(pair));
+      u3z(set); u3z(map);
+      set = next_set; map = next_map;
+    }
+    u3_noun built_set = u3qdi_gas(u3_nul, keys);
+    u3_noun built_map = u3qdb_gas(u3_nul, pairs);
+    u3_assert(c3y == u3r_sing(set, built_set));
+    u3_assert(c3y == u3r_sing(map, built_map));
+    u3z(built_set); u3z(built_map);
+    u3z(set); u3z(map); u3z(keys); u3z(pairs);
+  }
+}
+
 static c3_i
 _test_jets(void)
 {
   c3_i ret_i = 1;
+
+  _test_bulk_trees();
 
   if ( !_test_cut() ) {
     fprintf(stderr, "test jets: cut: failed\r\n");
