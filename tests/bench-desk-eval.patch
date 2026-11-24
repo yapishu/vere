@@ -1,0 +1,49 @@
+diff --git a/pkg/vere/main.c b/pkg/vere/main.c
+--- a/pkg/vere/main.c
++++ b/pkg/vere/main.c
+@@ -1273,6 +1273,12 @@
+   return byt_y;
+ }
+
++static u3_noun
++_cw_bench_nock(u3_noun pair)
++{
++  return u3n_nock_on(u3k(u3h(pair)), u3k(u3t(pair)));
++}
++
+ /* _cw_eval(): initialize and run the hoon evaluator
+ */
+ static void
+@@ -1414,6 +1420,32 @@
+     if ( u3_none == som ) {
+       fprintf(stderr, "cue failed\n");
+       exit(1);
++    }
++    if ( getenv("U3_DESK_BENCH") ) {
++      u3_noun core = u3v_wish("..ride");
++      u3_noun shipped = u3h(u3h(som));
++      c3_o same = u3r_sing(core, shipped);
++      fprintf(stderr, "desk ivory_core=%u shipped_core=%u equal=%s\n",
++              (unsigned)u3r_mug(core), (unsigned)u3r_mug(shipped),
++              same == c3y ? "yes" : "no");
++      u3z(core);
++      c3_w input_mug = u3r_mug(som);
++      c3_d start = uv_hrtime();
++      u3_noun res = u3m_soft(0, _cw_bench_nock, som);
++      c3_d elapsed = uv_hrtime() - start;
++      if ( u3h(res) ) {
++        u3_pier_punt_goof("desk", res);
++        exit(2);
++      }
++      fprintf(stderr, "desk ns=%" PRIu64 " input_mug=%u product_mug=%u\n",
++              elapsed, (unsigned)input_mug, (unsigned)u3r_mug(u3t(res)));
++      c3_y* jam;
++      u3s_jam_xeno(u3t(res), &len_d, &jam);
++      if ( fwrite(jam, 1, len_d, stdout) != len_d ) exit(3);
++      c3_free(jam);
++      free(byt_y);
++      u3z(res);
++      return;
+     }
+     c3_c* pre_c;
+     //  if input is jammed khan output

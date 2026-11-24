@@ -1,5 +1,7 @@
 # Structural sharing in list jets
 
+For the cumulative branch comparison against upstream `develop`, see the [development benchmarks](develop-benchmarks.md). The measurements below use Vere 4.6.
+
 Vere can reuse the unchanged tail of a list across a map or filter. The opt-in build flag is `-Dcopt=-DU3_LIST_SHARING`. It enables prepared sample gates. `+turn`, `+skim`, `+skip` and `+murn` evaluate each callback from left to right. For qualifying gates they defer copying a run of unchanged elements until an edit requires that prefix. On reaching the end they retain the original suffix once. A map recognizes an unchanged element by noun identity. A filter already knows which input elements it keeps. The traversals use constant auxiliary space.
 
 Vere can unify equal subtrees by replacing interior pointers during noun equality. Gate preparation therefore certifies only sample programs whose equality operations each have a literal atom operand. Slots and literal gates also qualify. Resolved native jets, captured context, hints, unrestricted equality, tracing and profiling take the ordinary callback path. The jet still visits an improper list’s tail and raises its usual exit. Builds with pooled pair allocation also use the prefix constructor for `+weld`.
