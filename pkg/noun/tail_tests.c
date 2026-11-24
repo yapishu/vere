@@ -64,6 +64,48 @@ _check(u3_noun battery, u3_noun sample, u3_weak expected)
   u3z(outcome);
 }
 
+// A scalar induction arm edits one slot under the sample on each self kick.
+static u3_noun
+_counter_arm(unsigned axis, u3_noun lhs, u3_noun rhs, u3_noun done,
+             u3_noun update)
+{
+  u3_noun edit = u3nt(10, u3nc(axis, update), _slot(1));
+  return u3nq(6, u3nt(5, lhs, rhs), done, u3nt(9, 2, edit));
+}
+
+static void
+_scalar_counters(void)
+{
+  const unsigned spans[] = {0, 1, 2, 31, 4097};
+  for ( unsigned next = 0; next < 2; ++next ) {
+    for ( unsigned swap = 0; swap < 2; ++swap ) {
+      for ( unsigned k = 0; k < sizeof(spans) / sizeof(*spans); ++k ) {
+        unsigned limit = 17 + spans[k] + next;
+        u3_noun test = _inc(13, next), bound = _slot(12);
+        u3_noun bat = _counter_arm(13, swap ? bound : test, swap ? test : bound,
+                                   _slot(6), _inc(13, 1));
+        _check(bat, u3nc(limit, 17), u3nc(limit, limit - next));
+      }
+    }
+  }
+
+  _check(_counter_arm(6, _inc(6, 1), u3nc(1, 81), u3nc(1, 90), _inc(6, 1)),
+         20, 90);
+  // Crossing the direct-atom boundary still performs noun arithmetic.
+  c3_d edge = (c3_d)1 << (u3a_word_bits - 1);
+  _check(_counter_arm(13, _slot(12), _inc(13, 1), _slot(13), _inc(13, 1)),
+         u3nc(u3i_chub(edge + 4), u3i_chub(edge - 2)), u3i_chub(edge + 3));
+  _check(_counter_arm(13, _slot(12), _slot(13), _slot(13), _inc(13, 1)),
+         u3nc(10, u3nc(1, 2)), u3_none);
+  _check(_counter_arm(13, _slot(24), _inc(13, 1), _slot(13), _inc(13, 1)),
+         u3nc(9, 1), u3_none);
+  _check(_counter_arm(13, _slot(12), _slot(13), _slot(26), _inc(13, 1)),
+         u3nc(88, 0), u3_none);
+  // A different update invalidates the unit-stride calculation.
+  _check(_counter_arm(13, _slot(12), _slot(13), _slot(13), _inc(13, 2)),
+         u3nc(20, 0), 20);
+}
+
 static void
 _counters(void)
 {
@@ -147,6 +189,12 @@ _indirect_call(void)
   if ( u3h(result) || u3t(result) != 192 ) abort();
   ++cases;
   u3z(result);
+
+  battery = _counter_arm(26, _inc(26, 1), _slot(12), _slot(26), _inc(26, 1));
+  result = u3m_soft(0, _other_arm, battery);
+  if ( u3h(result) || u3t(result) != 192 ) abort();
+  ++cases;
+  u3z(result);
 }
 
 static u3_noun
@@ -194,10 +242,13 @@ _effects(void)
   _check(_battery(13, _slot(26), _slot(12), _slot(27), _inc(26, 1), hinted),
          u3nt(17, 0, 0), 17);
   if ( messages != 3 * 17 ) abort();
+  hinted = u3nt(11, u3nc(c3__slog, u3nc(1, 101)), _inc(13, 1));
+  _check(_counter_arm(13, _slot(12), _slot(13), _slot(13), hinted),
+         u3nc(17, 0), 17);
+  if ( messages != 6 * 17 ) abort();
   u3C.slog_f = 0;
 }
 
-#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
 static void
 _registry(void)
 {
@@ -250,7 +301,6 @@ _registry(void)
   u3z(site.bat);
   u3z(site.bas);
 }
-#endif
 
 #ifdef U3_CPU_DEBUG
 static void
@@ -262,6 +312,11 @@ _count_kicks(void)
   u3_noun core = u3nt(bat, u3nt(8701, 0, 0), 0);
   c3_d before = u3R->pro.nox_d;
   if ( u3n_burn(prog, core) != 8701 || u3R->pro.nox_d - before != 8702 ) abort();
+  bat = _counter_arm(13, _inc(13, 1), _slot(12), _slot(13), _inc(13, 1));
+  prog = u3n_find(0, bat);
+  core = u3nt(bat, u3nc(8701, 0), 0);
+  before = u3R->pro.nox_d;
+  if ( u3n_burn(prog, core) != 8700 || u3R->pro.nox_d - before != 8701 ) abort();
   u3z(u3m_love(0));
 }
 #endif
@@ -271,9 +326,8 @@ main(void)
 {
   u3m_boot_lite(1 << 27);
   if ( getenv("U3_CASE_GC") ) u3C.wag_h |= u3o_debug_ram;
-#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
   _registry();
-#endif
+  _scalar_counters();
   _counters();
   _nested_edits();
   _indirect_call();

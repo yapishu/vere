@@ -294,10 +294,8 @@
 #ifdef U3_GATE_FIELDS
       c3_o u3j_gate_fields_ok(const u3j_site* site, u3_noun gate);
 #endif
-#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
       c3_o
       u3j_site_unregistered(const u3j_site* site);
-#endif
 
       /* u3j_site_kick(): kick a core with a u3j_site cache.
        */

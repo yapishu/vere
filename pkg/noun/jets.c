@@ -1697,7 +1697,6 @@ _cj_site_kick(u3_noun cor, u3j_site* sit_u)
   return pro;
 }
 
-#if defined(U3_TAIL_BENCH) || defined(U3_GATE_FIELDS)
 // Check all roads for the battery, independently of the current sample.
 // This decision lasts only while executing a body with no registrations.
 c3_o
@@ -1712,7 +1711,6 @@ u3j_site_unregistered(const u3j_site* site)
   u3z(reg);
   return c3n;
 }
-#endif
 
 #ifdef U3_GATE_FIELDS
 /* A parent at axis 7 makes the cached fine check independent of the sample. */

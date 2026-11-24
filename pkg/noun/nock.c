@@ -656,22 +656,17 @@ _n_melt(u3_noun ops, c3_w* byc_w, c3_w* cal_w,
 
         case SIPS: case SINS: case SWIP: case SWIN:
         case SAST: case SALT: case KICS:
-#ifndef U3_TAIL_BENCH
-        case TICS:
-#endif
         case FISK: case FISL: case SUSH: case SANS:
         case LISL: case LISK: case SKIS: case SLIS:
         case HILS: case HINS:
           u3_assert(0); //overflows
           break;
 
-#ifdef U3_TAIL_BENCH
         case TICS:
           u3_assert(0 == *cal_w);
           ++*cal_w;
           siz_y[i_w] = 3;
           break;
-#endif
         case KICB: case TICB:
           a_w = (*cal_w)++;
           if ( a_w <= 0xFF ) {
@@ -972,20 +967,17 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
           break;
 
         /* call site index args */
-#ifdef U3_TAIL_BENCH
         case TICS:
-#endif
         case TICB: case KICB: {
-#ifdef U3_TAIL_BENCH
           if ( cod == TICS ) {
             u3_assert(!cal_s);
             buf_y[i_w--] = 0;
             buf_y[i_w--] = 0;
             buf_y[i_w] = TICS;
           }
-          else
-#endif
-          _n_prog_asm_inx(buf_y, &i_w, cal_s, cod);
+          else {
+            _n_prog_asm_inx(buf_y, &i_w, cal_s, cod);
+          }
           u3j_site* sit_u = &(pog_u->cal_u.sit_u[cal_s++]);
           sit_u->axe   = u3k(u3t(op));
           sit_u->pog_p = 0;
@@ -1828,9 +1820,7 @@ _n_print_byc(c3_y* pog, c3_w her_w)
 }
 #endif
 
-#ifdef U3_TAIL_BENCH
 #include "nock_tail.inc"
-#endif
 
 /* _n_bite(): compile a nock formula to bytecode. RETAIN.
  */
@@ -1838,7 +1828,6 @@ static inline u3n_prog*
 _n_bite(u3_noun fol) {
   u3_noun ops  = u3_nul;
   _n_comp(&ops, fol, c3y, c3y);
-#ifdef U3_TAIL_BENCH
   // The wide encoding of site zero is an ordinary tail kick in saved
   // programs. All other sites retain their normal dispatch instruction.
   u3_noun last = ops == u3_nul ? 0 : u3h(ops), axis;
@@ -1848,7 +1837,6 @@ _n_bite(u3_noun fol) {
     u3z(ops);
     ops = marked;
   }
-#endif
   return _n_prog_from_ops(ops);
 }
 
@@ -3006,7 +2994,6 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
 
     do_tics:
       x = _n_resh(pog, &ip_w);
-#ifdef U3_TAIL_BENCH
       if ( !x ) {
         sit_u = &pog_u->cal_u.sit_u[0];
         top = _n_peek(off);
@@ -3016,7 +3003,6 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
         if ( u3to(u3n_prog, sit_u->pog_p) == pog_u ) o = _n_tail_batch(o, sit_u);
         goto tick_resume;
       }
-#endif
       goto tick_in;
 
     do_ticb:
@@ -3027,9 +3013,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off)
       o     = *top;
       *top = _n_kick(o, sit_u);
       if ( u3_none == *top ) {
-#ifdef U3_TAIL_BENCH
       tick_resume:
-#endif
         *top  = o;
         pog_u = u3to(u3n_prog, sit_u->pog_p);
         pog   = pog_u->byc_u.ops_y;
