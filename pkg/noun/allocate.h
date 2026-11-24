@@ -871,7 +871,7 @@ u3a_post_info(u3_post);
         */
           extern c3_w u3a_Defer_max_w;
 
-        /* u3a_defer_active(): home-road reference counts have pending gains. */
+        /* u3a_defer_active(): a home-road deferred-gain window is open. */
           c3_t u3a_defer_active(void);
 
         /* u3a_defer_open(): defer home-road refcount gains, cancelling

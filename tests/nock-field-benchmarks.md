@@ -4,6 +4,8 @@ The control is upstream develop at `697fc95ddd`. The branch control is `097606de
 
 ## Reading fields directly from jam
 
+A separate encoder experiment uses subtree classes to compute canonical backreference positions and the output size. [Jam encoding measurements](jam-classes.md)
+
 | Workload | Upstream develop | Optimized branch | Candidate | Less vs branch | Less vs develop |
 |---|---:|---:|---:|---:|---:|
 | 143 records, two axes (ms) | 1,721.34 | 444.95 | 197.82 | +55.5% | +88.5% |

@@ -9,3 +9,6 @@
 ?>(=([500 jrepeat] (cue ~>(%bout (jam [500 jrepeat])))) 782)
 ?>(=([500 jshare] (cue ~>(%bout (jam [500 jshare])))) 782)
 ?>(=([500 jblob] (cue ~>(%bout (jam [500 jblob])))) 782)
+
+=jmini (gulf 1 20.000)
+?>(=((turn jmini |=(v=@ [600 v])) (turn ~>(%bout (turn jmini |=(v=@ (jam [600 v])))) cue)) 782)
