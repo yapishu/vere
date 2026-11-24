@@ -34,7 +34,9 @@ def main():
     parser.add_argument("develop", type=Path)
     parser.add_argument("optimized", type=Path)
     parser.add_argument("pier", type=Path, help="frozen, stopped input pier")
-    parser.add_argument("--cores", type=int, nargs=2, required=True)
+    parser.add_argument("--candidate", type=Path, help="third runtime for an incremental comparison")
+    parser.add_argument("--serial", action="store_true", help="rotate process order on a single core")
+    parser.add_argument("--cores", type=int, nargs="+", required=True)
     parser.add_argument("--first", type=int, required=True, help="expected first replayed event")
     parser.add_argument("--last", type=int, required=True, help="expected last replayed event")
     parser.add_argument("--full", action="store_true", help="bootstrap from the event log")
@@ -42,20 +44,31 @@ def main():
     parser.add_argument("--timeout", type=int, default=900, help="seconds per process")
     parser.add_argument("--scratch-dir", type=Path, help="filesystem for disposable copies")
     args = parser.parse_args()
-    if len(set(args.cores)) < 2 or args.rounds < 1 or args.first > args.last:
-        parser.error("specify distinct cores, a positive round count and an ordered event range")
+    builds = {"develop": args.develop.resolve(), "optimized": args.optimized.resolve()}
+    if args.candidate:
+        builds["candidate"] = args.candidate.resolve()
+    workers = 1 if args.serial else len(builds)
+    if len(args.cores) != workers or len(set(args.cores)) != workers:
+        parser.error(f"supply {workers} distinct core(s) for this comparison")
+    if args.rounds < 1 or args.first > args.last:
+        parser.error("specify a positive round count and an ordered event range")
     if not (args.pier / ".urb/log").is_dir():
         parser.error("the input pier must contain .urb/log")
-    builds = {"develop": args.develop.resolve(), "optimized": args.optimized.resolve()}
     for trial in range(args.rounds):
-        cores = args.cores if trial % 2 == 0 else args.cores[::-1]
+        offset = trial % len(builds)
+        order = list(builds)
+        if args.serial:
+            order = order[offset:] + order[:offset]
+            cores = args.cores * len(builds)
+        else:
+            cores = args.cores[offset:] + args.cores[:offset]
         with tempfile.TemporaryDirectory(dir=args.scratch_dir) as scratch:
             for label in builds:
                 subprocess.run(["cp", "-RL", "--reflink=auto", "--sparse=always", "--",
                                 str(args.pier), str(Path(scratch) / label)], check=True)
-            with ThreadPoolExecutor(2) as pool:
-                jobs = [(label, cpu, pool.submit(replay, binary, Path(scratch) / label, cpu, args))
-                        for (label, binary), cpu in zip(builds.items(), cores)]
+            with ThreadPoolExecutor(workers) as pool:
+                jobs = [(label, cpu, pool.submit(replay, builds[label], Path(scratch) / label, cpu, args))
+                        for label, cpu in zip(order, cores)]
                 for label, cpu, job in jobs:
                     print(json.dumps(dict(trial=trial, build=label, cpu=cpu,
                                           wall_s=job.result())), flush=True)
