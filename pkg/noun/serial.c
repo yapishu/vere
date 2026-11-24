@@ -667,14 +667,10 @@ _cs_cue_xeno(u3_cue_xeno* sil_u,
   }
   //  on failure, unwind the stack and dispose of intermediate nouns
   //
-  else if ( c3n == u3a_pile_done(&pil_u) ) {
-    do {
-      if ( u3_none != fam_u->ref ) {
-        u3z(fam_u->ref);
-      }
-      fam_u = u3a_pop(&pil_u);
-    }
-    while ( c3n == u3a_pile_done(&pil_u) );
+  while ( c3n == u3a_pile_done(&pil_u) ) {
+    _cue_frame_t* pending = u3a_peek(&pil_u);
+    if ( u3_none != pending->ref ) u3z(pending->ref);
+    u3a_drop(&pil_u);
   }
 
   return u3_none;

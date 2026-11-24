@@ -278,6 +278,42 @@ _write_tree(ur_bsw_t* writer, _cue_generator* gen, unsigned depth)
   return value;
 }
 
+// Compare complete results and rejection against the independent ur arena
+// for every input small enough to exhaust in a unit test.
+static void
+_test_short_cue(_cue_test* test)
+{
+  for ( unsigned len = 1; len <= 2; ++len ) {
+    for ( unsigned word = 0; word < (1U << (8 * len)); ++word ) {
+      c3_y bytes[2] = {word, word >> 8};
+      ur_nref ref;
+      ur_cue_res_e status = ur_cue(test->arena, len, bytes, &ref);
+      u3_weak noun = u3s_cue_xeno_with(test->decoder, len, bytes);
+      u3_assert((status == ur_cue_good) == (noun != u3_none));
+      if ( noun != u3_none ) _check_canonical(test->arena, ref, noun);
+#ifdef U3_CUE_VIEW
+      c3_o open = u3s_cue_view_open(test->view, len, bytes);
+      u3_assert((open == c3y) == (noun != u3_none));
+      if ( open == c3y ) {
+        u3_noun copy = u3s_cue_view_at(test->view, 1);
+        u3_assert(c3y == u3r_sing(noun, copy));
+        u3z(copy);
+      }
+#endif
+      // The atom entry point obtains its byte length from its highest bit.
+      if ( bytes[len - 1] ) {
+        u3_noun result = u3m_soft(0, u3s_cue_atom, word);
+        c3_m error = (status == ur_cue_good) ? 0
+                   : (status == ur_cue_meme) ? c3__meme : c3__exit;
+        u3_assert(u3h(result) == error);
+        if ( noun != u3_none ) u3_assert(c3y == u3r_sing(noun, u3t(result)));
+        u3z(result);
+      }
+      if ( noun != u3_none ) u3z(noun);
+    }
+  }
+}
+
 static void
 _test_cue_positions(void)
 {
@@ -286,6 +322,22 @@ _test_cue_positions(void)
 #ifdef U3_CUE_VIEW
   test.view = u3s_cue_view_new();
 #endif
+  _test_short_cue(&test);
+  // A wide encoded payload can represent a direct atom on either loom.
+  {
+    c3_d values[] = {0, (UINT64_C(1) << 57) | 9, UINT64_C(1) << 62};
+    for ( size_t i = 0; i < sizeof(values) / sizeof(*values); ++i ) {
+      c3_y payload[12] = {0};
+      for ( unsigned j = 0; j < 8; ++j ) payload[j] = values[i] >> (8 * j);
+      ur_bsw_t bits = {0};
+      ur_bsw_init(&bits, 13, 21);
+      ur_bsw_atom_bytes(&bits, 96, payload);
+      u3_noun expected = u3i_chub(values[i]);
+      _check_stream(&test, &bits, expected);
+      u3z(expected);
+    }
+  }
+
   // The prefix is [ [42 7] [ back-to-42 ... ] ]. An offset may name a
   // completed atom or cell. Open cells, payload bits and the backreference
   // token itself have no dictionary value.
