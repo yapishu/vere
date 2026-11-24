@@ -500,6 +500,12 @@ typedef struct _cue_frame_s {
   c3_d    key_d;  // Dictionary key reserved at the opening cell tag.
 } _cue_frame_t;
 
+#if defined(U3_CUE_RANK) || defined(U3_CUE_VIEW)
+#include "cue_pages.inc"
+#endif
+#ifdef U3_CUE_VIEW
+#include "cue_view.inc"
+#endif
 #ifdef U3_CUE_RANK
 #include "cue_rank.inc"
 typedef _cue_refs _cue_xeno_refs;

@@ -125,14 +125,35 @@ _test_cue_spec(const c3_c* cap_c,
 /* Check both cue entry points against a noun built independently of the
 ** bitstream. Reuse the external dictionary across successes and exits.
 */
+typedef struct {
+  u3_cue_xeno* decoder;
+#ifdef U3_CUE_VIEW
+  u3_cue_view* view;
+#endif
+} _cue_test;
+
 static void
-_check_stream(u3_cue_xeno* decoder, ur_bsw_t* writer, u3_weak expected)
+_check_stream(_cue_test* test, ur_bsw_t* writer, u3_weak expected)
 {
   c3_d len;
   c3_y* bytes;
   ur_bsw_done(writer, &len, &bytes);
   u3_noun result = u3m_soft(0, u3s_cue_atom, u3i_bytes(len, bytes));
-  u3_weak external = u3s_cue_xeno_with(decoder, len, bytes);
+  u3_weak external = u3s_cue_xeno_with(test->decoder, len, bytes);
+#ifdef U3_CUE_VIEW
+  u3_cue_view* view = test->view;
+  c3_o opened = u3s_cue_view_open(view, len, bytes);
+  u3_assert((opened == c3y) == (expected != u3_none));
+  for ( c3_w axis = 0; axis < 32; axis++ ) {
+    u3_weak want = (axis && expected != u3_none) ? u3r_at(axis, expected) : u3_none;
+    u3_weak got = u3s_cue_view_at(view, axis);
+    u3_assert((got == u3_none) == (want == u3_none));
+    if ( got != u3_none ) {
+      u3_assert(c3y == u3r_sing(want, got));
+      u3z(got);
+    }
+  }
+#endif
   if ( expected == u3_none ) {
     u3_assert(u3h(result) == c3__exit && external == u3_none);
   }
@@ -195,7 +216,10 @@ _write_tree(ur_bsw_t* writer, _cue_generator* gen, unsigned depth)
 static void
 _test_cue_positions(void)
 {
-  u3_cue_xeno* decoder = u3s_cue_xeno_init_with(1, 2);
+  _cue_test test = { .decoder = u3s_cue_xeno_init_with(1, 2) };
+#ifdef U3_CUE_VIEW
+  test.view = u3s_cue_view_new();
+#endif
   // The prefix is [ [42 7] [ back-to-42 ... ] ]. An offset may name a
   // completed atom or cell. Open cells, payload bits and the backreference
   // token itself have no dictionary value.
@@ -215,7 +239,7 @@ _test_cue_positions(void)
     u3_weak value = target == pair ? u3nc(42, 7)
                    : target == first ? 42 : target == second ? 7 : u3_none;
     u3_weak expected = value == u3_none ? u3_none : u3nt(u3nc(42, 7), 42, value);
-    _check_stream(decoder, &writer, expected);
+    _check_stream(&test, &writer, expected);
     if ( expected != u3_none ) u3z(expected);
   }
 
@@ -251,7 +275,7 @@ _test_cue_positions(void)
       expected = u3nc(u3k(values[(i * 73) % 128]), expected);
     }
     for ( unsigned i = 128; i-- > 0; ) expected = u3nc(values[i], expected);
-    _check_stream(decoder, &writer, expected);
+    _check_stream(&test, &writer, expected);
     u3z(expected);
   }
 
@@ -259,16 +283,60 @@ _test_cue_positions(void)
   ur_bsw_t writer = {0};
   ur_bsw_init(&writer, 13, 21);
   ur_bsw_back64(&writer, 2, 2);
-  _check_stream(decoder, &writer, u3_none);
+  _check_stream(&test, &writer, u3_none);
   for ( uint32_t seed = 1; seed <= 512; seed++ ) {
     _cue_generator gen = { .rng = seed };
     ur_bsw_t bits = {0};
     ur_bsw_init(&bits, 13, 21);
     u3_noun expected = _write_tree(&bits, &gen, 9);
-    _check_stream(decoder, &bits, expected);
+    _check_stream(&test, &bits, expected);
     u3z(expected);
   }
-  u3s_cue_xeno_done(decoder);
+  u3s_cue_xeno_done(test.decoder);
+#ifdef U3_CUE_VIEW
+  // Cue supplies missing high bits of a final atom as zeros.
+  {
+    ur_bsw_t writer = {0};
+    c3_y payload[64] = { 123 };
+    ur_bsw_init(&writer, 13, 21);
+    ur_bsw_atom_bytes(&writer, 512, payload);
+    c3_d len;
+    c3_y* bytes;
+    ur_bsw_done(&writer, &len, &bytes);
+    u3_assert(len > 10);
+    u3_assert(c3y == u3s_cue_view_open(test.view, 10, bytes));
+    u3_assert(123 == u3s_cue_view_at(test.view, 1));
+    u3_assert(123 == u3s_cue_xeno(10, bytes));
+    c3_free(bytes);
+  }
+  // A 96-bit axis selects a shared diamond whose expanded tree has over
+  // a trillion leaves. The result owns its cells after invalidation.
+  u3_noun diamond = u3nc(1001, 1002);
+  for ( unsigned i = 0; i < 40; i++ ) diamond = u3nc(u3k(diamond), diamond);
+  u3_noun root = u3k(diamond);
+  for ( unsigned i = 0; i < 95; i++ ) root = u3nc(i, root);
+  c3_d len;
+  c3_y* bytes;
+  u3s_jam_xeno(root, &len, &bytes);
+  u3_assert(c3y == u3s_cue_view_open(test.view, len, bytes));
+  c3_y path[12];
+  memset(path, 0xff, sizeof(path));
+  u3_noun axis = u3i_bytes(sizeof(path), path);
+  u3_weak product = u3s_cue_view_at(test.view, axis);
+  u3_assert(c3n == u3s_cue_view_open(test.view, 0, 0));
+  u3_assert(u3_none == u3s_cue_view_at(test.view, 1));
+  u3s_cue_view_free(test.view);
+  c3_free(bytes);
+  u3z(axis); u3z(root); u3z(diamond);
+  u3_assert(product != u3_none);
+  u3_noun at = product;
+  for ( unsigned i = 0; i < 40; i++ ) {
+    u3_assert(u3h(at) == u3t(at));
+    at = u3h(at);
+  }
+  u3_assert(u3h(at) == 1001 && u3t(at) == 1002);
+  u3z(product);
+#endif
 }
 
 static c3_i

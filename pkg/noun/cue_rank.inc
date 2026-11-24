@@ -1,11 +1,3 @@
-// A page covers 512 bit positions in the input. Only pages that contain an
-// atom or cell start exist. The rank of a start bit gives its noun slot.
-typedef struct {
-  c3_d   number;
-  c3_d   bits[8];
-  size_t base[8];
-} _cue_page;
-
 typedef struct {
   _cue_page* pages;
   u3_noun*   nouns;
@@ -76,10 +68,8 @@ _cue_refs_open(_cue_refs* refs, c3_d bit)
                                  &refs->noun_capacity, sizeof(u3_noun));
   }
   _cue_page* page = &refs->pages[refs->page_count - 1];
-  unsigned   word = (bit >> 6) & 7;
-  size_t     slot = refs->noun_count++;
-  if ( !page->bits[word] ) page->base[word] = slot;
-  page->bits[word] |= UINT64_C(1) << (bit & 63);
+  size_t slot = refs->noun_count++;
+  _cue_page_mark(page, bit, slot);
   // An open cell has a position, but cannot be the target of a backreference.
   refs->nouns[slot] = u3_none;
   return slot;
@@ -95,26 +85,8 @@ _cue_refs_finish(_cue_refs* refs, c3_d slot, u3_noun value)
 static inline u3_weak
 _cue_refs_get(_cue_refs* refs, c3_d bit)
 {
-  c3_d number = bit >> 9;
-  size_t i;
-  if ( number < refs->page_count && refs->pages[number].number == number ) {
-    i = number;
-  }
-  else {
-    size_t lo = 0, hi = refs->page_count;
-    while ( lo < hi ) {
-      size_t mid = lo + (hi - lo) / 2;
-      if ( refs->pages[mid].number < number ) lo = mid + 1;
-      else hi = mid;
-    }
-    if ( lo == refs->page_count || refs->pages[lo].number != number ) return u3_none;
-    i = lo;
-  }
-  _cue_page* page = &refs->pages[i];
-  unsigned word = (bit >> 6) & 7;
-  c3_d mask = UINT64_C(1) << (bit & 63);
-  if ( !(page->bits[word] & mask) ) return u3_none;
-  size_t slot = page->base[word] + __builtin_popcountll(page->bits[word] & (mask - 1));
+  size_t slot = _cue_page_find(refs->pages, refs->page_count, bit);
+  if ( slot == SIZE_MAX ) return u3_none;
   u3_weak value = refs->nouns[slot];
   return value == u3_none ? u3_none : u3k(value);
 }

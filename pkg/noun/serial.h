@@ -39,6 +39,17 @@
         u3_noun
         u3s_cue(u3_atom a);
 
+#ifdef U3_CUE_VIEW
+      typedef struct _u3_cue_view u3_cue_view;
+      u3_cue_view* u3s_cue_view_new(void);
+      /* Index one jam on the home road. Keep bytes live and immutable while
+       * querying this input. A failed open invalidates the view. */
+      c3_o u3s_cue_view_open(u3_cue_view* view, c3_d len, const c3_y* bytes);
+      /* Return an owned fragment, or u3_none for a missing axis. */
+      u3_weak u3s_cue_view_at(u3_cue_view* view, u3_atom axis);
+      void u3s_cue_view_free(u3_cue_view* view);
+#endif
+
       /* u3s_cue_xeno_init_with(): initialize a cue_xeno handle as specified.
       */
         u3_cue_xeno*
