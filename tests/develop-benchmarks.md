@@ -6,6 +6,8 @@ Measurements run on a shared Linux i7-12700K on 23 November 2026. The tables rep
 
 ## Compiler, decoder and event replay
 
+The indexed jam and ordinary gate experiments also use this cumulative branch as a control. [Incremental measurements](nock-field-benchmarks.md)
+
 | Workload | develop | Optimized | Less time | Faster pairs |
 | --- | ---: | ---: | ---: | ---: |
 | Compile Hoon (s) | 23.442 | 17.207 | +26.6% | 6/6 |

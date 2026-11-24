@@ -2,8 +2,8 @@
 # Build the upstream control and cumulative candidate for the develop benchmarks.
 set -euo pipefail
 
-if (( $# < 1 || $# > 3 )); then
-  echo "usage: $0 OUTPUT_DIRECTORY [UPSTREAM_REF [CANDIDATE_REF]]" >&2
+if (( $# < 1 )); then
+  echo "usage: $0 OUTPUT_DIRECTORY [UPSTREAM_REF [CANDIDATE_REF [FEATURE ...]]]" >&2
   exit 2
 fi
 repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
@@ -16,7 +16,7 @@ if ! git -C "$repo" merge-base --is-ancestor "$base" "$candidate"; then
 fi
 mkdir -p "$out"
 features=(DECISION_BENCH OWNER_BENCH REUSE_BENCH SPINE_BENCH DIRECT_EDIT_BENCH
-          CUE_RANK NOUN_SHAPES GATE_SAMPLE LIST_SHARING)
+          CUE_RANK NOUN_SHAPES GATE_SAMPLE LIST_SHARING "${@:4}")
 
 for name in develop optimized; do
   rev=$base
