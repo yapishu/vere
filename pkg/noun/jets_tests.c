@@ -1135,6 +1135,14 @@ _test_jets(void)
 
   _test_bulk_trees();
 
+  // Both alternating triples are longest. The earlier right endpoint wins.
+  u3_noun left = u3nc(1, u3nq(2, 1, 2, 0));
+  u3_noun right = u3nc(2, u3nq(1, 2, 1, 0));
+  u3_noun common = u3qe_loss(left, right);
+  u3_noun expected = u3nq(2, 1, 2, 0);
+  u3_assert(c3y == u3r_sing(common, expected));
+  u3z(left); u3z(right); u3z(common); u3z(expected);
+
   if ( !_test_cut() ) {
     fprintf(stderr, "test jets: cut: failed\r\n");
     ret_i = 0;

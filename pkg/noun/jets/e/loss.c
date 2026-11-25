@@ -6,294 +6,98 @@
 
 #include "noun.h"
 
+typedef struct {
+  u3_noun value;
+  c3_w    previous;
+} _loss_match;
 
-  typedef struct _u3_loss {                 //  loss problem
-    u3_noun hel;                            //  a as a list
-    c3_w lel_w;                             //  length of a
-    c3_w lev_w;                             //  length of b
-    u3_noun* hev;                           //  b as an array
-    u3_noun sev;                            //  b as a set of lists
-    c3_w kct_w;                             //  candidate count
-    u3_noun* kad;                           //  candidate array
-  } u3_loss;
+typedef struct {
+  c3_w    end;
+  u3_noun chain;
+} _loss_best;
 
-  //  free loss object
-  //
-  static void
-  _flem(u3_loss* loc_u)
-  {
-    u3z(loc_u->sev);
-    {
-      c3_w i_w;
+u3_noun
+u3qe_loss(u3_noun hel, u3_noun hev)
+{
+  u3_noun left = u3qb_lent(hel), right = u3qb_lent(hev);
+  if ( c3n == u3a_is_cat(right) ) return u3m_bail(c3__fail);
+  c3_w cap = c3_min(u3r_word(0, left), right);
+  u3z(left);
+  if ( !cap ) return u3_nul;
 
-      for ( i_w = 0; i_w < loc_u->kct_w; i_w++ ) {
-        u3z(loc_u->kad[i_w]);
+  static_assert(u3a_cells < SIZE_MAX / sizeof(_loss_match), "match array size");
+  static_assert(u3a_cells < SIZE_MAX / sizeof(_loss_best), "candidate array size");
+  _loss_match* match = u3a_malloc(right * sizeof(*match));
+  _loss_best* best = u3a_malloc(cap * sizeof(*best));
+  u3p(u3h_root) heads = u3h_new();
+  c3_w len = 0;
+
+  // Position zero ends each occurrence chain. Each key owns one table slot.
+  for ( c3_w i = 0; i < right; ++i, hev = u3t(hev) ) {
+    u3_noun value = u3h(hev);
+    u3_weak last = u3h_git(heads, value);
+    match[i].value = value;
+    match[i].previous = (last == u3_none) ? 0 : last;
+    u3h_put(heads, value, i + 1);
+  }
+
+  for ( ; hel != u3_nul; hel = u3t(hel) ) {
+    u3_weak last = u3h_git(heads, u3h(hel));
+    if ( last == u3_none ) continue;
+
+    // Walk positions from right to left. A candidate can extend only a
+    // chain from a previous input row. Equal endpoints keep their chain.
+    c3_w limit = len;
+    for ( c3_w pos = last; pos; pos = match[pos - 1].previous ) {
+      c3_w lo = limit, hi = limit;
+      for ( c3_w step = 1; lo && best[lo - 1].end >= pos; step *= 2 ) {
+        lo -= c3_min(lo, step);
       }
-    }
-    u3a_free(loc_u->hev);
-    u3a_free(loc_u->kad);
-  }
-
-  //  extract lcs  -  XX don't use the stack like this
-  //
-  static u3_noun
-  _lext(u3_loss* loc_u,
-        u3_noun  kad)
-  {
-    if ( u3_nul == kad ) {
-      return u3_nul;
-    } else {
-      return u3nc(u3k(loc_u->hev[u3r_word(0, u3h(kad))]),
-                  _lext(loc_u, u3t(kad)));
-    }
-  }
-
-  //  extract lcs
-  //
-  static u3_noun
-  _lexs(u3_loss* loc_u)
-  {
-    if ( 0 == loc_u->kct_w ) {
-      return u3_nul;
-    } else return u3kb_flop(_lext(loc_u, loc_u->kad[loc_u->kct_w - 1]));
-  }
-
-  //  initialize loss object
-  //
-  static void
-  _lemp(u3_loss* loc_u,
-        u3_noun  hel,
-        u3_noun  hev)
-  {
-    loc_u->hel = hel;
-    loc_u->lel_w = u3kb_lent(u3k(hel));
-
-    //  Read hev into array.
-    {
-      c3_w i_w;
-
-      u3_noun len = u3qb_lent(hev);
-      if ( c3n == u3a_is_cat(len) ) u3m_bail(c3__fail);
-      loc_u->hev = u3a_malloc(len * sizeof(u3_noun));
-
-      for ( i_w = 0; u3_nul != hev; i_w++ ) {
-        loc_u->hev[i_w] = u3h(hev);
-        hev = u3t(hev);
+      while ( lo < hi ) {
+        c3_w mid = lo + (hi - lo) / 2;
+        if ( best[mid].end < pos ) lo = mid + 1;
+        else hi = mid;
       }
-      loc_u->lev_w = i_w;
-    }
-    loc_u->kct_w = 0;
-    loc_u->kad = u3a_malloc((1 + c3_min(loc_u->lev_w, loc_u->lel_w)) *
-                             sizeof(u3_noun));
-
-    //  Compute equivalence classes.
-    //
-    loc_u->sev = u3_nul;
-    {
-      c3_w i_w;
-
-      for ( i_w = 0; i_w < loc_u->lev_w; i_w++ ) {
-        u3_noun how = loc_u->hev[i_w];
-        u3_noun hav;
-        u3_noun teg;
-
-        hav = u3kdb_get(u3k(loc_u->sev), u3k(how));
-        teg = u3nc(u3i_word(i_w),
-                   (hav == u3_none) ? u3_nul : hav);
-        loc_u->sev = u3kdb_put(loc_u->sev, u3k(how), teg);
-      }
+      limit = lo;
+      if ( lo < len && best[lo].end == pos ) continue;
+      u3_noun prev = lo ? u3k(best[lo - 1].chain) : u3_nul;
+      if ( lo == len ) ++len;
+      else u3z(best[lo].chain);
+      best[lo].end = pos;
+      best[lo].chain = u3nc(u3k(match[pos - 1].value), prev);
     }
   }
 
-  //  apply
-  //
-  static void
-  _lune(u3_loss* loc_u,
-        c3_w     inx_w,
-        c3_w     goy_w)
+  u3_noun pro = len ? u3kb_flop(u3k(best[len - 1].chain)) : u3_nul;
+  for ( c3_w i = 0; i < len; ++i ) u3z(best[i].chain);
+  u3h_free(heads);
+  u3a_free(best);
+  u3a_free(match);
+  return pro;
+}
+
+static u3_noun
+_listp(u3_noun lix)
+{
+  while ( 1 ) {
+    if ( u3_nul == lix ) return c3y;
+    if ( c3n == u3du(lix) ) return c3n;
+    lix = u3t(lix);
+  }
+}
+
+u3_noun
+u3we_loss(u3_noun cor)
+{
+  u3_noun hel, hev;
+
+  if ( (u3_none == (hel = u3r_at(u3x_sam_2, cor))) ||
+       (u3_none == (hev = u3r_at(u3x_sam_3, cor))) ||
+       (c3n == _listp(hel)) ||
+       (c3n == _listp(hev)) )
   {
-    u3_noun kad;
-
-    kad = u3nc(u3i_word(goy_w),
-               (inx_w == 0) ? u3_nul
-                            : u3k(loc_u->kad[inx_w - 1]));
-    if ( loc_u->kct_w == inx_w ) {
-      u3_assert(loc_u->kct_w < ((c3_w)1 << 31));
-      loc_u->kct_w++;
-    } else {
-      u3z(loc_u->kad[inx_w]);
-    }
-    loc_u->kad[inx_w] = kad;
+    return u3m_bail(c3__fail);
+  } else {
+    return u3qe_loss(hel, hev);
   }
-
-  //  extend fits top
-  //
-  static u3_noun
-  _hink(u3_loss* loc_u,
-        c3_w     inx_w,
-        c3_w     goy_w)
-  {
-    return __
-         ( (loc_u->kct_w == inx_w) ||
-           (u3r_word(0, u3h(loc_u->kad[inx_w])) > goy_w) );
-  }
-
-  //  extend fits bottom
-  //
-  static u3_noun
-  _lonk(u3_loss* loc_u,
-        c3_w     inx_w,
-        c3_w     goy_w)
-  {
-    return __
-      ( (0 == inx_w) ||
-        (u3r_word(0, u3h(loc_u->kad[inx_w - 1])) < goy_w) );
-  }
-
-#if 0
-  //  search for first index >= inx_w and <= max_w that fits
-  //  the hink and lonk criteria.
-  //
-  static u3_noun
-  _binka(u3_loss* loc_u,
-         c3_w*    inx_w,
-         c3_w     max_w,
-         c3_w     goy_w)
-  {
-    while ( *inx_w <= max_w ) {
-      if ( c3n == _lonk(loc_u, *inx_w, goy_w) ) {
-        return c3n;
-      }
-      if ( c3y == _hink(loc_u, *inx_w, goy_w) ) {
-        return c3y;
-      }
-      else ++*inx_w;
-    }
-    return c3n;
-  }
-#endif
-
-  //  search for lowest index >= inx_w and <= max_w for which
-  //  both hink(inx_w) and lonk(inx_w) are true.  lonk is false
-  //  if inx_w is too high, hink is false if it is too low.
-  //
-  static u3_noun
-  _bink(u3_loss* loc_u,
-        c3_w*    inx_w,
-        c3_w     max_w,
-        c3_w     goy_w)
-  {
-    u3_assert(max_w >= *inx_w);
-
-    if ( max_w == *inx_w ) {
-      if ( c3n == _lonk(loc_u, *inx_w, goy_w) ) {
-        return c3n;
-      }
-      if ( c3y == _hink(loc_u, *inx_w, goy_w) ) {
-        return c3y;
-      }
-      else {
-        ++*inx_w;
-        return c3n;
-      }
-    }
-    else {
-      c3_w mid_w = *inx_w + ((max_w - *inx_w) / 2);
-
-      if ( (c3n == _lonk(loc_u, mid_w, goy_w)) ||
-           (c3y == _hink(loc_u, mid_w, goy_w)) )
-      {
-        return _bink(loc_u, inx_w, mid_w, goy_w);
-      } else {
-        *inx_w = mid_w + 1;
-        return _bink(loc_u, inx_w, max_w, goy_w);
-      }
-    }
-  }
-
-
-  static void
-  _merg(u3_loss* loc_u,
-        c3_w     inx_w,
-        u3_noun  gay)
-  {
-    if ( (u3_nul == gay) || (inx_w > loc_u->kct_w) ) {
-      return;
-    }
-    else {
-      u3_noun i_gay = u3h(gay);
-      c3_w    goy_w = u3r_word(0, i_gay);
-      u3_noun bik;
-
-      bik = _bink(loc_u, &inx_w, loc_u->kct_w, goy_w);
-
-      if ( c3y == bik ) {
-        _merg(loc_u, inx_w + 1, u3t(gay));
-        _lune(loc_u, inx_w, goy_w);
-      }
-      else {
-        _merg(loc_u, inx_w, u3t(gay));
-      }
-    }
-  }
-
-  //  compute lcs
-  //
-  static void
-  _loss(u3_loss* loc_u)
-  {
-    while ( u3_nul != loc_u->hel ) {
-      u3_noun i_hel = u3h(loc_u->hel);
-      u3_weak guy   = u3kdb_get(u3k(loc_u->sev), u3k(i_hel));
-
-      if ( u3_none != guy ) {
-        u3_noun gay = u3kb_flop(guy);
-
-        _merg(loc_u, 0, gay);
-        u3z(gay);
-      }
-
-      loc_u->hel = u3t(loc_u->hel);
-    }
-  }
-
-  u3_noun
-  u3qe_loss(u3_noun hel,
-            u3_noun hev)
-  {
-    u3_loss loc_u;
-    u3_noun lcs;
-
-    _lemp(&loc_u, hel, hev);
-    _loss(&loc_u);
-    lcs = _lexs(&loc_u);
-
-    _flem(&loc_u);
-    return lcs;
-  }
-
-  static u3_noun
-  _listp(u3_noun lix)
-  {
-    while ( 1 ) {
-      if ( u3_nul == lix ) return c3y;
-      if ( c3n == u3du(lix) ) return c3n;
-      lix = u3t(lix);
-    }
-  }
-
-  u3_noun
-  u3we_loss(u3_noun cor)
-  {
-    u3_noun hel, hev;
-
-    if ( (u3_none == (hel = u3r_at(u3x_sam_2, cor))) ||
-         (u3_none == (hev = u3r_at(u3x_sam_3, cor))) ||
-         (c3n == _listp(hel)) ||
-         (c3n == _listp(hev)) )
-    {
-      return u3m_bail(c3__fail);
-    } else {
-      return u3qe_loss(hel, hev);
-    }
-  }
+}
