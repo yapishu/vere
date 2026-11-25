@@ -118,106 +118,97 @@ _measure_number(u3_noun a)
   return u3r_met(3, a);
 }
 
-static void
-_serialize_number(json_buffer *buf_u, u3_noun a)
+static const c3_y*
+_atom_bytes(const u3_atom* atom)
 {
-  const c3_y *byt_y;
+  STATIC_ASSERT(c3_endian == c3_endian_little, "atom byte order");
+  if ( c3y == u3a_is_cat(*atom) ) return (const c3_y*)atom;
+  const u3a_atom* vat_u = u3a_to_ptr(*atom);
+  return (const c3_y*)vat_u->buf_w;
+}
 
-  // XX assumes little-endian
-  //
-  if ( c3y == u3a_is_cat(a) ) {
-    byt_y = (c3_y*)&a;
-  }
-  else {
-    u3a_atom* vat_u = u3a_to_ptr(a);
-    byt_y = (c3_y*)vat_u->buf_w;
-  }
+static void
+_serialize_number(json_buffer* buf_u, u3_noun a)
+{
+  _append_text(buf_u, _atom_bytes(&a), u3r_met(3, a));
+}
 
-  _append_text(buf_u, byt_y, u3r_met(3, a));
+static inline uint64_t
+_zero_bytes(uint64_t word)
+{
+  return (word - UINT64_C(0x0101010101010101)) & ~word;
+}
+
+// Only the high bits matter. A borrow across lanes can follow a match,
+// so this predicate tests a whole word and locates escapes byte by byte.
+static inline c3_t
+_has_escape(const c3_y* bytes)
+{
+  const uint64_t ones = UINT64_C(0x0101010101010101);
+  uint64_t word;
+  memcpy(&word, bytes, sizeof(word));
+  uint64_t control = (word - 32 * ones) & ~word;
+  uint64_t hits = control | _zero_bytes(word ^ (34 * ones))
+                          | _zero_bytes(word ^ (92 * ones))
+                          | _zero_bytes(word ^ (127 * ones));
+  return (hits & (128 * ones)) != 0;
+}
+
+static inline c3_w
+_string(json_buffer* buf_u, u3_atom a)
+{
+  c3_w len = u3r_met(3, a), start = 0, pos = 0;
+  c3_w size = len + 2;
+  const c3_y* bytes = _atom_bytes(&a);
+
+  if ( buf_u ) _append_char(buf_u, '"');
+  while ( pos < len ) {
+    c3_w width = c3_min(8, len - pos);
+    if ( width == 8 && !_has_escape(bytes + pos) ) {
+      pos += 8;
+      continue;
+    }
+    c3_w end = pos + width;
+    for ( ; pos < end; ++pos ) {
+      c3_y byte = bytes[pos];
+      const c3_y* escape;
+      c3_w count = 2;
+      switch ( byte ) {
+        case 10:  escape = _JSON_NEWLINE; break;
+        case 34:  escape = _JSON_DOQ; break;
+        case 92:  escape = _JSON_BAS; break;
+        case 127: escape = _JSON_DEL; count = 6; break;
+        case 0 ... 9: case 11 ... 31:
+          escape = _JSON_UNICODES[byte]; count = 6; break;
+        default: continue;
+      }
+      size += count - 1;
+      if ( buf_u ) {
+        if ( pos > start ) _append_text(buf_u, bytes + start, pos - start);
+        if ( count == 6 ) _append_text(buf_u, escape, 6);
+        else _append_text(buf_u, escape, 2);
+        start = pos + 1;
+      }
+    }
+  }
+  if ( buf_u ) {
+    if ( len > start ) _append_text(buf_u, bytes + start, len - start);
+    _append_char(buf_u, '"');
+  }
+  return size;
 }
 
 static c3_w
 _measure_string(u3_noun a)
 {
-  if ( _(u3du(a)) ) {
-    u3m_bail(c3__exit);
-  }
-
-  c3_w len_w = u3r_met(3, a);
-  c3_w siz_w = 0;
-
-  for (c3_w i = 0; i < len_w; ++i) {
-    c3_y c_y = u3r_byte(i, a);
-
-    switch ( c_y ) {
-      case 0 ... 9:
-      case 11 ... 31: {
-        siz_w += 6;
-      } break;
-
-      case 10: {
-        siz_w += sizeof(_JSON_NEWLINE) - 1;
-      } break;
-
-      case 34: {
-        siz_w += sizeof(_JSON_DOQ) - 1;
-      } break;
-
-      case 92: {
-        siz_w += sizeof(_JSON_BAS) - 1;
-      } break;
-
-      case 127: {
-        siz_w += sizeof(_JSON_DEL) - 1;
-      } break;
-
-      default: {
-        siz_w += 1;
-      } break;
-    }
-  }
-
-  // surrounding double quotes
-  return (siz_w + 2);
+  if ( c3y == u3du(a) ) return u3m_bail(c3__exit);
+  return _string(NULL, a);
 }
 
 static void
-_serialize_string(json_buffer *buf_u, u3_noun a)
+_serialize_string(json_buffer* buf_u, u3_noun a)
 {
-  c3_w len_w = u3r_met(3, a);
-
-  _append_char(buf_u, '"');
-  for (c3_w i = 0; i < len_w; ++i) {
-    c3_y c_y = u3r_byte(i, a);
-
-    switch ( c_y ) {
-      case 0 ... 9:
-      case 11 ... 31: {
-        _append_text(buf_u, _JSON_UNICODES[c_y], 6);
-      } break;
-
-      case 10: {
-        _append_text(buf_u, _JSON_NEWLINE, sizeof(_JSON_NEWLINE) - 1);
-      } break;
-
-      case 34: {
-        _append_text(buf_u, _JSON_DOQ, sizeof(_JSON_DOQ) - 1);
-      } break;
-
-      case 92: {
-        _append_text(buf_u, _JSON_BAS, sizeof(_JSON_BAS) - 1);
-      } break;
-
-      case 127: {
-        _append_text(buf_u, _JSON_DEL, sizeof(_JSON_DEL) - 1);
-      } break;
-
-      default: {
-        _append_char(buf_u, c_y);
-      } break;
-    }
-  }
-  _append_char(buf_u, '"');
+  _string(buf_u, a);
 }
 
 static c3_w

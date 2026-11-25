@@ -1143,6 +1143,13 @@ _test_jets(void)
   u3_assert(c3y == u3r_sing(common, expected));
   u3z(left); u3z(right); u3z(common); u3z(expected);
 
+  // Escapes on either side of a word boundary, including zero and DEL.
+  const c3_y bytes[] = {'a','b','c','d','e','f','g','"',0,'\\',10,127,'z'};
+  u3_noun json = u3nc(c3__s, u3i_bytes(sizeof(bytes), bytes));
+  u3_noun text = u3qe_json_en(json);
+  u3_assert(c3y == u3r_sing_c("\"abcdefg\\\"\\u0000\\\\\\n\\u007fz\"", text));
+  u3z(json); u3z(text);
+
   if ( !_test_cut() ) {
     fprintf(stderr, "test jets: cut: failed\r\n");
     ret_i = 0;
