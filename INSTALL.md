@@ -63,6 +63,14 @@ zig build
 ```
 This builds a native debug binary.
 
+To search a log epoch for a noun pattern, build the optional `jam-search` tool.
+This example prints the event number and pattern for every event containing `[%wake 0]`.
+
+```sh
+zig build -Doptimize=ReleaseFast jam-search
+zig-out/bin/jam-search /path/to/pier/.urb/log/0i0 '[%wake 0]'
+```
+
 ### Build options
 
 A quick overview of the more useful build options.

@@ -22,6 +22,10 @@
       */
         typedef struct _u3_cue_view u3_cue_view;
 
+      /* u3_jam_query: compiled patterns for searching jammed nouns.
+      */
+        typedef struct _u3_jam_query u3_jam_query;
+
     /*  Noun serialization. All noun arguments RETAINED.
     */
 
@@ -59,6 +63,27 @@
       */
         void
         u3s_cue_view_free(u3_cue_view* view);
+
+      /* u3s_jam_query_compile(): compile 1-64 patterns for use off the loom.
+      ** Patterns are _, @, decimal uint64 atoms, %terms or [head tail].
+      ** A query supports 62 distinct literal/pair rules and 255 states.
+      ** Returns NULL and sets error to a static message on failure.
+      */
+        u3_jam_query*
+        u3s_jam_query_compile(size_t count, const c3_c* const* patterns,
+                              const c3_c** error);
+
+      /* u3s_jam_query_scan(): set bit i if pattern i occurs anywhere in the
+      ** noun. Return c3n and clear matches on an invalid jam.
+      */
+        c3_o
+        u3s_jam_query_scan(const u3_jam_query* query, size_t len,
+                           const c3_y* bytes, c3_d* matches);
+
+      /* u3s_jam_query_free(): release the compiled query and its literals.
+      */
+        void
+        u3s_jam_query_free(u3_jam_query* query);
 
       /* u3s_cue_xeno_init_with(): initialize a cue_xeno handle as specified.
       */

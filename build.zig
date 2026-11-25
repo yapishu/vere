@@ -750,7 +750,7 @@ fn buildBinary(
     }
 
     //
-    // Tests
+    // Single-target tools and tests
     //
 
     if (cfg.include_test_steps) {
@@ -759,6 +759,8 @@ fn buildBinary(
             pkg_c3.artifact("c3"),
             gmp.artifact("gmp"),
         };
+        const serial_deps = noun_test_deps.* ++ .{pkg_ur.artifact("ur")};
+        const search_deps = noun_test_deps.* ++ .{lmdb.artifact("lmdb")};
         const vere_test_deps = &.{
             pkg_vere.artifact("vere"),
             pkg_noun.artifact("noun"),
@@ -771,10 +773,11 @@ fn buildBinary(
             natpmp.artifact("natpmp"),
             zlib.artifact("z"),
         };
-        const tests = [_]struct {
+        const programs = [_]struct {
             name: []const u8,
             file: []const u8,
             deps: []const *std.Build.Step.Compile,
+            install_only: ?[]const u8 = null,
             //  windows-only tests: the behaviour under test is win32's
             win: bool = false,
             //  posix-only tests: mkdtemp/nftw and /tmp, which mingw lacks
@@ -852,14 +855,20 @@ fn buildBinary(
             .{
                 .name = "serial-test",
                 .file = "pkg/noun/serial_tests.c",
-                .deps = &.{
-                    pkg_noun.artifact("noun"),
-                    pkg_ur.artifact("ur"),
-                    pkg_c3.artifact("c3"),
-                    gmp.artifact("gmp"),
-                },
+                .deps = &serial_deps,
+            },
+            .{
+                .name = "jam-search-test",
+                .file = "pkg/noun/jam_query_tests.c",
+                .deps = &serial_deps,
             },
             // pkg_vere
+            .{
+                .name = "jam-search",
+                .file = "pkg/vere/jam_search.c",
+                .deps = &search_deps,
+                .install_only = "Build the read-only event log search tool",
+            },
             .{
                 .name = "ames-test",
                 .file = "pkg/vere/ames_tests.c",
@@ -913,13 +922,12 @@ fn buildBinary(
             },
         };
 
-        for (tests) |tst| {
-            if (tst.win and t.os.tag != .windows) continue;
-            if (tst.nix and t.os.tag == .windows) continue;
+        for (programs) |prog| {
+            if (prog.win and t.os.tag != .windows) continue;
+            if (prog.nix and t.os.tag == .windows) continue;
 
-            const test_step =
-                b.step(tst.name, b.fmt("Build & run: {s}", .{tst.file}));
-            const test_exe = b.addExecutable(.{ .name = tst.name, .root_module = b.createModule(.{
+            const step = b.step(prog.name, prog.install_only orelse b.fmt("Build & run: {s}", .{prog.file}));
+            const exe = b.addExecutable(.{ .name = prog.name, .root_module = b.createModule(.{
                 .target = target,
                 .optimize = optimize,
             }) });
@@ -930,55 +938,57 @@ fn buildBinary(
                     .optimize = optimize,
                 });
                 if (macos_sdk != null) {
-                    test_exe.addSystemIncludePath(macos_sdk.?.path("usr/include"));
-                    test_exe.addLibraryPath(macos_sdk.?.path("usr/lib"));
-                    test_exe.addFrameworkPath(macos_sdk.?.path("System/Library/Frameworks"));
+                    exe.addSystemIncludePath(macos_sdk.?.path("usr/include"));
+                    exe.addLibraryPath(macos_sdk.?.path("usr/lib"));
+                    exe.addFrameworkPath(macos_sdk.?.path("System/Library/Frameworks"));
                 }
             }
 
             if (t.os.tag == .windows) {
-                test_exe.linkSystemLibrary("ws2_32");
+                exe.linkSystemLibrary("ws2_32");
             }
 
             if (t.os.tag.isDarwin()) {
                 // Requires llvm@18 homebrew installation
                 if (cfg.asan or cfg.ubsan)
-                    test_exe.addLibraryPath(.{
+                    exe.addLibraryPath(.{
                         .cwd_relative = "/opt/homebrew/opt/llvm@18/lib/clang/18/lib/darwin",
                     });
-                if (cfg.asan) test_exe.linkSystemLibrary("clang_rt.asan_osx_dynamic");
-                if (cfg.ubsan) test_exe.linkSystemLibrary("clang_rt.ubsan_osx_dynamic");
+                if (cfg.asan) exe.linkSystemLibrary("clang_rt.asan_osx_dynamic");
+                if (cfg.ubsan) exe.linkSystemLibrary("clang_rt.ubsan_osx_dynamic");
             }
 
-            test_exe.stack_size = 0;
-            test_exe.linkLibC();
-            for (tst.deps) |dep| {
-                test_exe.linkLibrary(dep);
+            exe.stack_size = 0;
+            exe.linkLibC();
+            for (prog.deps) |dep| {
+                exe.linkLibrary(dep);
             }
             //  events-test #includes events.c, which #includes "murmur3.h".
             //  the noun artifact already links murmur3, but the header isn't
             //  on the test's compile include path — add it explicitly.
             //
-            if (std.mem.eql(u8, tst.name, "events-test")) {
-                test_exe.addIncludePath(b.path("ext/murmur3/vendor"));
+            if (std.mem.eql(u8, prog.name, "events-test")) {
+                exe.addIncludePath(b.path("ext/murmur3/vendor"));
             }
             if (cfg.tracy_enable) {
-                test_exe.linkLibrary(tracy.?.artifact("tracy"));
-                test_exe.addIncludePath(tracy.?.path(""));
+                exe.linkLibrary(tracy.?.artifact("tracy"));
+                exe.addIncludePath(tracy.?.path(""));
             }
-            test_exe.addCSourceFiles(.{
-                .files = &.{tst.file},
+            exe.addCSourceFiles(.{
+                .files = &.{prog.file},
                 .flags = urbit_flags.items,
             });
-            const exe_install = b.addInstallArtifact(test_exe, .{});
-            const run_unit_tests = b.addRunArtifact(test_exe);
+            const exe_install = b.addInstallArtifact(exe, .{});
+            step.dependOn(&exe_install.step);
+            if (prog.install_only != null) continue;
+
+            const run_unit_tests = b.addRunArtifact(exe);
             if (t.os.tag.isDarwin() and (cfg.asan or cfg.ubsan)) {
                 //  disable libmalloc warnings
                 run_unit_tests.setEnvironmentVariable("MallocNanoZone", "0");
             }
             run_unit_tests.skip_foreign_checks = true;
-            test_step.dependOn(&run_unit_tests.step);
-            test_step.dependOn(&exe_install.step);
+            step.dependOn(&run_unit_tests.step);
         }
     }
 }

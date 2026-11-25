@@ -440,6 +440,7 @@ const c_source_files = [_][]const u8{
     "retrieve.c",
     "ship.c",
     "serial.c",
+    "jam_query.c",
     "trace.c",
     "urth.c",
     "vortex.c",
