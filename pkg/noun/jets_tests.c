@@ -1128,12 +1128,47 @@ _test_bulk_trees(void)
 
 }
 
+static void
+_test_map_union(void)
+{
+  u3_noun a = 0, b = 0, want = 0;
+  for ( c3_w i = 0; i < 2048; ++i ) {
+    u3_noun key = i;
+    switch ( i ) {
+      case 0: key = u3i_chub(UINT64_C(0xc001d00d0000b33f)); break;
+      case 1: key = u3i_chub(UINT64_C(0xc001d00d00012a3e)); break;
+      case 2: key = 114115; break;
+      case 3: key = 136618; break;
+    }
+    if ( !(i & 1) || !(i % 5) ) a = u3kdb_put(a, u3k(key), 11);
+    if ( (i & 1) || !(i % 5) ) b = u3kdb_put(b, u3k(key), 22);
+    want = u3kdb_put(want, key, ((i & 1) || !(i % 5)) ? 22 : 11);
+  }
+  u3_noun got = u3qdb_uni(a, b);
+  u3_assert(c3y == u3r_sing(got, want));
+  u3z(got);
+
+  // Independently allocated equal keys may exceed the streaming tie budget.
+  u3_noun ka = 0, kb = 0;
+  for ( c3_w i = 0; i < 96; ++i ) {
+    ka = u3nc(i, ka);
+    kb = u3nc(i, kb);
+  }
+  a = u3kdb_put(a, ka, 33);
+  b = u3kdb_put(b, u3k(kb), 44);
+  want = u3kdb_put(want, kb, 44);
+  got = u3kdb_uni(a, b);
+  u3_assert(c3y == u3r_sing(got, want));
+  u3z(got); u3z(want);
+}
+
 static c3_i
 _test_jets(void)
 {
   c3_i ret_i = 1;
 
   _test_bulk_trees();
+  _test_map_union();
 
   // Both alternating triples are longest. The earlier right endpoint wins.
   u3_noun left = u3nc(1, u3nq(2, 1, 2, 0));
