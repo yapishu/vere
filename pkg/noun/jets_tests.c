@@ -1130,6 +1130,36 @@ _test_bulk_trees(void)
 }
 
 static void
+_test_bif(void)
+{
+  u3_noun map = 0, set = 0;
+  for ( c3_w i = 0; i < 64; i++ ) {
+    map = u3kdb_put(map, i, i + 1);
+    set = u3kdi_put(set, i);
+  }
+
+  for ( c3_w key = 0; key <= 64; key++ ) {
+    u3_noun maps[2] = {0}, sets[2] = {0};
+    for ( c3_w i = 0; i < 64; i++ ) {
+      if ( i != key ) {
+        c3_o side = u3qc_gor(i, key);
+        maps[side] = u3kdb_put(maps[side], i, i + 1);
+        sets[side] = u3kdi_put(sets[side], i);
+      }
+    }
+    u3_noun m = u3qdb_bif(map, key);
+    u3_noun t = u3qdi_bif(set, key);
+    u3_assert(c3y == u3r_sing(u3h(m), maps[0]));
+    u3_assert(c3y == u3r_sing(u3t(m), maps[1]));
+    u3_assert(c3y == u3r_sing(u3h(t), sets[0]));
+    u3_assert(c3y == u3r_sing(u3t(t), sets[1]));
+    u3z(m); u3z(t);
+    u3z(maps[0]); u3z(maps[1]); u3z(sets[0]); u3z(sets[1]);
+  }
+  u3z(map); u3z(set);
+}
+
+static void
 _test_map_union(void)
 {
   u3_noun a = 0, b = 0, want = 0;
@@ -1257,6 +1287,7 @@ _test_jets(void)
 
   _test_bulk_trees();
   _test_map_union();
+  _test_bif();
 
   // Both alternating triples are longest. The earlier right endpoint wins.
   u3_noun left = u3nc(1, u3nq(2, 1, 2, 0));
