@@ -5,6 +5,21 @@
 #include "jets/w.h"
 
 #include "noun.h"
+
+// Union visits every node of a shared branch. Validate the cells it
+// destructures before returning the branch with its existing sharing.
+static void
+_by_uni_check(u3_noun tree)
+{
+  while ( u3_nul != tree ) {
+    u3_noun pair, left, right;
+    u3x_trel(tree, &pair, &left, &right);
+    if ( c3n == u3du(pair) ) u3m_bail(c3__exit);
+    if ( left != right ) _by_uni_check(left);
+    tree = right;
+  }
+}
+
 u3_noun
 u3qdb_uni(u3_noun a, u3_noun b)
 {
@@ -25,9 +40,19 @@ u3qdb_uni(u3_noun a, u3_noun b)
     u3x_cell(n_b, &p_n_b, &q_n_b);
 
     if ( c3y == u3r_sing(p_n_a, p_n_b) ) {
-      return u3nt(u3k(n_b),
-                  u3qdb_uni(l_a, l_b),
-                  u3qdb_uni(r_a, r_b));
+      if ( a == b ) {
+        if ( l_b != r_b ) _by_uni_check(l_b);
+        _by_uni_check(r_b);
+        return u3k(b);
+      }
+      u3_noun left = u3qdb_uni(l_a, l_b);
+      u3_noun right = u3qdb_uni(r_a, r_b);
+      if ( left == l_b && right == r_b ) {
+        u3z(left);
+        u3z(right);
+        return u3k(b);
+      }
+      return u3nt(u3k(n_b), left, right);
     }
     else if ( c3y == u3qc_mor(p_n_a, p_n_b) ) {
       u3_noun new_a, old_b;

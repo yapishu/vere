@@ -1096,6 +1096,10 @@ _test_bulk_trees(void)
     u3_noun built_map = u3qdb_gas(u3_nul, pairs);
     u3_assert(c3y == u3r_sing(set, built_set));
     u3_assert(c3y == u3r_sing(map, built_map));
+    u3_noun edited = u3qdb_put(map, map ? u3h(u3h(map)) : 0, 99);
+    u3_noun merged = u3qdb_uni(map, edited);
+    u3_assert(merged == edited);
+    u3z(merged); u3z(edited);
     u3_noun projected = u3qdb_key(map);
     u3_assert(c3y == u3r_sing(projected, set));
     u3z(projected);
