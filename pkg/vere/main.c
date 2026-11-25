@@ -5,6 +5,7 @@
 #include "noun.h"
 #include "events.h" // XX remove, see full replay in _cw_play()
 #include "ivory.h"
+#include "jam_search.h"
 #include "ur/ur.h"
 #include "rsignal.h"
 #include "ship.h"
@@ -836,6 +837,7 @@ _cw_usage(c3_c* bin_c)
     "  %s dock %.*s              copy binary:\n",
     "  %s grab %.*s              measure memory usage:\n",
     "  %s info %.*s              print pier info:\n",
+    "  %s jam-search EPOCH PATTERN...  search event nouns:\n",
     "  %s meld %.*s              deduplicate and minimize snapshot:\n",
     "  %s melt %.*s              deduplicate snapshot:\n",
     "  %s pack %.*s              defragment snapshot:\n",
@@ -3285,6 +3287,9 @@ _cw_utils(c3_i argc, c3_c* argv[])
     if ( 4 == strlen(argv[1]) ) {
       c3_c* s = argv[1];
       mot_m = c3_s4(s[0], s[1], s[2], s[3]);
+    }
+    else if ( 0 == strcmp(argv[1], "jam-search") ) {
+      exit(u3_ve_jam_search(argc - 1, argv + 1));
     }
     else if ( 0 == strcmp(argv[1], "upgrade") ) {
       mot_m = c3__next;

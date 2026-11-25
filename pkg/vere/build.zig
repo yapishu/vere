@@ -257,6 +257,7 @@ const c_source_files = [_][]const u8{
     "io/term.c",
     "io/unix.c",
     "ivory/ivory.c",
+    "jam_search.c",
     "king.c",
     "lord.c",
     "mars.c",

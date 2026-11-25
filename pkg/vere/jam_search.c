@@ -1,5 +1,6 @@
 /// @file
 
+#include "jam_search.h"
 #include "serial.h"
 #include "lmdb/lmdb.h"
 
@@ -57,7 +58,7 @@ _search(MDB_cursor* cursor, const u3_jam_query* query, char* const* patterns)
 }
 
 int
-main(int argc, char** argv)
+u3_ve_jam_search(int argc, char** argv)
 {
   if ( argc == 2 && !strcmp(argv[1], "--help") ) {
     _usage(stdout);

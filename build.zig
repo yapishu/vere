@@ -760,7 +760,6 @@ fn buildBinary(
             gmp.artifact("gmp"),
         };
         const serial_deps = noun_test_deps.* ++ .{pkg_ur.artifact("ur")};
-        const search_deps = noun_test_deps.* ++ .{lmdb.artifact("lmdb")};
         const vere_test_deps = &.{
             pkg_vere.artifact("vere"),
             pkg_noun.artifact("noun"),
@@ -865,8 +864,8 @@ fn buildBinary(
             // pkg_vere
             .{
                 .name = "jam-search",
-                .file = "pkg/vere/jam_search.c",
-                .deps = &search_deps,
+                .file = "pkg/vere/jam_search_main.c",
+                .deps = &.{pkg_vere.artifact("vere")},
                 .install_only = "Build the read-only event log search tool",
             },
             .{
@@ -980,7 +979,10 @@ fn buildBinary(
             });
             const exe_install = b.addInstallArtifact(exe, .{});
             step.dependOn(&exe_install.step);
-            if (prog.install_only != null) continue;
+            if (prog.install_only != null) {
+                b.getInstallStep().dependOn(&exe_install.step);
+                continue;
+            }
 
             const run_unit_tests = b.addRunArtifact(exe);
             if (t.os.tag.isDarwin() and (cfg.asan or cfg.ubsan)) {
