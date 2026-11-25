@@ -1178,6 +1178,18 @@ _test_jets(void)
   u3_assert(c3y == u3r_sing(common, expected));
   u3z(left); u3z(right); u3z(common); u3z(expected);
 
+  // Shifted alternating lists have two optimal answers across several
+  // machine words. The right list without its last element ends earlier.
+  left = right = expected = u3_nul;
+  for ( c3_w i = 193; i > 0; --i ) {
+    left = u3nc(i & 1, left);
+    right = u3nc((i + 1) & 1, right);
+    if ( i < 193 ) expected = u3nc((i + 1) & 1, expected);
+  }
+  common = u3qe_loss(left, right);
+  u3_assert(c3y == u3r_sing(common, expected));
+  u3z(left); u3z(right); u3z(common); u3z(expected);
+
   // Escapes on either side of a word boundary, including zero and DEL.
   const c3_y bytes[] = {'a','b','c','d','e','f','g','"',0,'\\',10,127,'z'};
   u3_noun json = u3nc(c3__s, u3i_bytes(sizeof(bytes), bytes));
