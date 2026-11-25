@@ -1194,6 +1194,39 @@ _test_map_union(void)
 }
 
 static void
+_test_tree_intersection(void)
+{
+  u3_noun maps[2] = {0}, sets[2] = {0};
+  u3_noun common = 0, values[2] = {0};
+  for ( c3_w i = 0; i < 1024; ++i ) {
+    for ( c3_w side = 0; side < 2; ++side ) {
+      if ( (i & 1) == side || !(i % 3) ) {
+        maps[side] = u3kdb_put(maps[side], i, i + side);
+        sets[side] = u3kdi_put(sets[side], i);
+      }
+      if ( !(i % 3) ) values[side] = u3kdb_put(values[side], i, i + side);
+    }
+    if ( !(i % 3) ) common = u3kdi_put(common, i);
+  }
+  for ( c3_w side = 0; side < 2; ++side ) {
+    u3_noun map = u3qdb_int(maps[1 - side], maps[side]);
+    u3_noun set = u3qdi_int(sets[1 - side], sets[side]);
+    u3_assert(c3y == u3r_sing(map, values[side]));
+    u3_assert(c3y == u3r_sing(set, common));
+    u3z(map); u3z(set);
+  }
+  u3_noun leaf = u3kdb_put(0, 27, 42);
+  u3_noun from_tree = u3qdb_int(leaf, maps[0]);
+  u3_noun from_leaf = u3qdb_int(maps[0], leaf);
+  u3_assert(27 == u3t(u3h(from_tree)));
+  u3_assert(c3y == u3r_sing(from_leaf, leaf));
+  u3z(from_tree); u3z(from_leaf); u3z(leaf); u3z(common);
+  for ( c3_w side = 0; side < 2; ++side ) {
+    u3z(maps[side]); u3z(sets[side]); u3z(values[side]);
+  }
+}
+
+static void
 _check_fond_van(u3_noun van, u3_noun wing, u3_weak want)
 {
   u3_noun cor = u3nt(0, u3nc(c3__read, wing), van);
@@ -1287,6 +1320,7 @@ _test_jets(void)
 
   _test_bulk_trees();
   _test_map_union();
+  _test_tree_intersection();
   _test_bif();
 
   // Both alternating triples are longest. The earlier right endpoint wins.

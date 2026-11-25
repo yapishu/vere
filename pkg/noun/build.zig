@@ -341,6 +341,7 @@ const c_source_files = [_][]const u8{
     "jets/d/in_tap.c",
     "jets/d/in_uni.c",
     "jets/d/in_wyt.c",
+    "jets/d/tree_merge.c",
     "jets/e/adler.c",
     "jets/e/aes_cbc.c",
     "jets/e/aes_ecb.c",
