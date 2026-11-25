@@ -295,6 +295,7 @@
 #   define u3qfu_van_rib  58
 #   define u3qfu_van_vet  59
 
+    u3_noun u3qfu_rest_key(u3_noun van, u3_noun sut, u3_noun leg);
     void u3qf_test(const c3_c*, u3_noun);
 
 
