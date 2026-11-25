@@ -160,6 +160,8 @@ typedef struct {
   c3_w count;
 } _n_fold_scan;
 
+// The walk evaluates each shared subtree once, as in Lohrey and Maneth's
+// treatment of DAG-compressed trees (https://doi.org/10.1016/j.tcs.2006.07.024).
 // Bit t is the answer for binary truth table t. In that table, bits
 // 0..3 give the products for (0,0), (0,1), (1,0), and (1,1).
 static int

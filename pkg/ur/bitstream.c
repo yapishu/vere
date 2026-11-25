@@ -734,6 +734,8 @@ ur_bsr_token(ur_bsr_t *bsr, ur_cue_token_t *token)
     word >>= bsr->off;
     unsigned prefix = 0;
     if ( (word & 3) == 1 ) {
+      // Vigna's broadword parenthesis queries motivate scanning structural
+      // tags a word at a time here (https://arxiv.org/abs/1301.5468).
       // A left descent is the little-endian pattern 01 01 ... . The
       // sentinel bounds the run to 28 tags at every starting alignment.
       uint64_t diff = (word ^ UINT64_C(0x5555555555555555))

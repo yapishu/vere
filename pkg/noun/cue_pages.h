@@ -110,6 +110,8 @@ _cue_page_mark(_cue_page* page, c3_d bit, size_t slot)
   page->bits[word] |= UINT64_C(1) << (bit & 63);
 }
 
+// Poptrie (Asai and Ohara) uses bitmap rank to index packed children.
+// https://doi.org/10.1145/2785956.2787474
 static size_t
 _cue_sparse_find(const _cue_directory* dir, c3_d key)
 {

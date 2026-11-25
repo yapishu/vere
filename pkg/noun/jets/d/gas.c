@@ -96,6 +96,8 @@ _gas_close(u3a_pile* spine, u3_noun right)
 
 // In key order, only the right spine is open. Close each lower-priority
 // subtree once. The last subtree closed becomes the next node's left child.
+// These open nodes are the suffix minima in the Cartesian-tree construction
+// of Davoodi, Raman and Satti (https://arxiv.org/abs/1410.4963).
 static u3_noun
 _gas_tree(_gas_row* rows, size_t n, c3_t map)
 {
