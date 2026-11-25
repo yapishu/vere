@@ -247,6 +247,7 @@
     u3_noun u3qf_hike(u3_noun, u3_noun);
     u3_noun u3qf_look(u3_noun, u3_noun);
     u3_noun u3qf_loot(u3_noun, u3_noun);
+    u3_noun u3qf_loot_136(u3_noun, u3_noun);
     u3_noun u3qf_slot(u3_atom, u3_noun);
     u3_noun u3qf_type(u3_noun);
 

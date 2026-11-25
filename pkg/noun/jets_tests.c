@@ -1,6 +1,7 @@
 /// @file
 
 #include "noun.h"
+#include "jets/w.h"
 
 /* _setup(): prepare for tests.
 */
@@ -1162,10 +1163,51 @@ _test_map_union(void)
   u3z(got); u3z(want);
 }
 
+static void
+_check_fond(u3_noun sut, u3_noun wing, u3_weak want)
+{
+  u3_noun cor = u3nt(0, u3nc(c3__read, wing), u3nt(0, sut, 0));
+  u3_weak got = u3wfu_fond_137(cor);
+  if ( want == u3_none ) u3_assert(got == u3_none);
+  else {
+    u3_assert(got != u3_none && c3y == u3r_sing(got, want));
+    u3z(got);
+    u3z(want);
+  }
+  u3z(cor);
+}
+
+static void
+_test_fond(void)
+{
+  u3_noun pair = u3nt(c3__cell, c3__noun, u3nt(c3__face, 'x', c3__noun));
+  u3_noun axis = u3nc(0, 3);
+  u3_noun path = u3nt(0, u3nc(0, 1), u3nc(u3k(axis), 0));
+
+  // Resolve axis 3 first, then x at the root of that leg.
+  _check_fond(u3k(pair), u3nt('x', u3k(axis), 0), u3nq(0, path, 0, c3__noun));
+  _check_fond(pair, u3nc('y', 0), u3nt(1, 0, 0));
+  // A later step can require the interpreter, including after reaching void.
+  _check_fond(u3nt(c3__cell, c3__noun, u3nt(c3__hold, 0, 0)),
+              u3nt('x', u3k(axis), 0), u3_none);
+  _check_fond(c3__void, u3nt('x', 'y', 0), u3_none);
+  u3z(axis);
+
+  u3_noun deep = c3__noun;
+  for ( c3_w i = 0; i < 32; ++i ) deep = u3nt(c3__cell, deep, c3__void);
+  axis = u3nc(0, u3i_chub(1ULL << 32));
+  u3_weak want = (c3y == u3a_is_cat(u3t(axis)))
+               ? u3nq(0, u3nc(u3k(axis), 0), 0, c3__noun)
+               : u3_none;
+  _check_fond(deep, u3nc(axis, 0), want);
+}
+
 static c3_i
 _test_jets(void)
 {
   c3_i ret_i = 1;
+
+  _test_fond();
 
   _test_bulk_trees();
   _test_map_union();
