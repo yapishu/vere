@@ -1200,6 +1200,31 @@ _test_bulk_trees(void)
 }
 
 static void
+_test_put_rotation(void)
+{
+  // An equal-key put still rotates an out-of-order ancestor.
+  u3_noun top = 1, key = 2;
+  if ( c3y == u3qc_mor(top, key) ) {
+    top = 2;
+    key = 1;
+  }
+  c3_o left_o = u3qc_gor(key, top);
+  for ( c3_t map_t = 0; map_t < 2; map_t++ ) {
+    u3_noun node = map_t ? u3nc(top, 10) : top;
+    u3_noun item = map_t ? u3nc(key, 20) : key;
+    u3_noun child = u3nt(u3k(item), 0, 0);
+    u3_noun tree = (c3y == left_o) ? u3nt(u3k(node), child, 0)
+                                   : u3nt(u3k(node), 0, child);
+    u3_noun leaf = u3nt(node, 0, 0);
+    u3_noun want = (c3y == left_o) ? u3nt(item, 0, leaf)
+                                   : u3nt(item, leaf, 0);
+    u3_noun got = map_t ? u3qdb_put(tree, key, 20) : u3qdi_put(tree, key);
+    u3_assert(c3y == u3r_sing(got, want));
+    u3z(got); u3z(want); u3z(tree);
+  }
+}
+
+static void
 _test_bif(void)
 {
   u3_noun map = 0, set = 0;
@@ -1438,6 +1463,7 @@ _test_jets(void)
   _test_map_union();
   _test_tree_intersection();
   _test_bif();
+  _test_put_rotation();
 
   // Both alternating triples are longest. The earlier right endpoint wins.
   u3_noun left = u3nc(1, u3nq(2, 1, 2, 0));
