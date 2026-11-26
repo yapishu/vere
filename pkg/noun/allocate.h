@@ -338,15 +338,21 @@ STATIC_ASSERT( u3a_vits <= u3a_min_log,
       U3_DEFINE_PAIR(u3a_road, U3A_ROAD_BODY);
       typedef u3a_road u3_road;
 
-    /* Child roads remember expensive comparisons between ancestor nouns.
-    ** These references expire when the child stack is unwound.
+    /* Borrowed ancestor references expire when the child stack is unwound.
     */
       typedef struct {
         u3_noun a, b;
       } u3a_equal_pair;
 
       typedef struct {
+        u3_noun parent, location;
+      } u3a_jet_parent;
+
+      typedef struct {
         u3a_road       road;
+        u3a_jet_parent parents[8];
+        c3_d           registry_d;
+        c3_o           hashless_o;
         u3a_equal_pair pairs[8];
         u3a_equal_pair nested;    // inner matches preserve the eight root entries
         c3_y           next_y;

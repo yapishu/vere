@@ -1096,6 +1096,61 @@ _factory_formula(c3_w index, u3_noun clue)
   return u3nt(7, core, u3nt(11, u3nc(c3__fast, _lit(clue)), _slot(1)));
 }
 
+static c3_o
+_registered_gate(u3_noun gate)
+{
+  u3j_site site;
+  u3j_gate_prep(&site, u3k(gate));
+  c3_o found = __(site.loc != u3_none);
+  u3j_gate_lose(&site);
+  return found;
+}
+
+static void
+_parent_registration(void)
+{
+  u3m_hate(0);
+  u3_noun par = u3nc(_lit(4721), 0);
+  u3_noun gat = u3nt(_lit(4722), 0, u3k(par));
+  u3j_mine(u3nt(u3i_string("outer"), _lit(0), 0), u3k(par));
+  u3j_mine(u3nt(u3i_string("inner"), _slot(7), 0), u3k(gat));
+  u3_noun bat = u3h(par);
+  u3_weak bar = u3h_get(u3R->jed.cod_p, bat);
+  u3_assert(bar != u3_none);
+
+  u3_noun empty = u3nt(0, 0, 0);
+  u3a_road* outer = u3R;
+  u3m_hate(1 << 16);
+  u3_assert(c3y == _registered_gate(gat));
+
+  // Profiling can run on an ancestor while the evaluating road is suspended.
+  u3a_road* inner = u3R;
+  u3R = outer;
+  u3j_load(u3nc(u3nc(u3k(bat), u3k(empty)), 0));
+  u3R = inner;
+  u3_assert(c3n == _registered_gate(gat));
+  u3R = outer;
+  u3j_load(u3nc(u3nc(u3k(bat), u3k(bar)), 0));
+  u3R = inner;
+  u3_assert(c3y == _registered_gate(gat));
+
+  // A local registry for this battery shadows the ancestor registration.
+  u3j_load(u3nc(u3nc(u3k(bat), u3k(empty)), 0));
+  u3_assert(c3n == _registered_gate(gat));
+  u3j_load(u3nc(u3nc(u3k(bat), u3k(bar)), 0));
+  u3_assert(c3y == _registered_gate(gat));
+
+  // The same change reaches this road when a child returns.
+  u3m_hate(0);
+  u3j_load(u3nc(u3nc(u3k(bat), u3k(empty)), 0));
+  u3z(u3m_love(0));
+  u3_assert(c3n == _registered_gate(gat));
+  u3z(u3m_love(0));
+
+  u3z(empty); u3z(bar); u3z(gat); u3z(par);
+  u3z(u3m_love(0));
+}
+
 static void
 _factory_cases(void)
 {
@@ -1408,6 +1463,7 @@ int
 main(void)
 {
   u3m_boot_lite(1 << 27);
+  _parent_registration();
   _arm_result_cases();
   _list_masks();
   _test_list_weld();

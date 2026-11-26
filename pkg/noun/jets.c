@@ -2,6 +2,8 @@
 
 #include "jets.h"
 
+#include <stdatomic.h>
+
 #include "allocate.h"
 #include "hashtable.h"
 #include "imprison.h"
@@ -507,6 +509,55 @@ _cj_find_warm(u3_noun loc)
 
 static u3_weak _cj_spot(u3_noun cor, u3_weak* bas);
 
+// The profiler can run Nock on the home road while a child is suspended.
+static _Atomic c3_d _cj_registry_d;
+
+/* _cj_reg_change(): invalidate observations of the jet registry.
+*/
+static void
+_cj_reg_change(void)
+{
+  u3n_arm_reset();
+  atomic_fetch_add_explicit(&_cj_registry_d, 1, memory_order_relaxed);
+}
+
+/* _cj_parent(): locate an enclosing core shared by successive calls.
+**   The child road borrows both nouns from its ancestors. A lookup can
+**   itself register a hot jet, changing the search order for this parent.
+*/
+static u3_weak
+_cj_parent(u3_noun par)
+{
+  if ( !u3R->par_p || c3n == u3du(par) || c3n == u3a_is_senior(u3R, par) ) {
+    return _cj_spot(par, NULL);
+  }
+
+  u3a_child_road* kid_u = (u3a_child_road*)u3R;
+  size_t i = ((par >> 3) ^ (par >> 11)) % c3_array_len(kid_u->parents);
+  u3a_jet_parent* ent_u = &kid_u->parents[i];
+  c3_o haz_o = __(u3C.wag_h & u3o_hashless);
+
+  c3_d gen_d = atomic_load_explicit(&_cj_registry_d, memory_order_relaxed);
+  if ( kid_u->registry_d != gen_d || kid_u->hashless_o != haz_o ) {
+    memset(kid_u->parents, 0, sizeof(kid_u->parents));
+    kid_u->registry_d = gen_d;
+    kid_u->hashless_o = haz_o;
+  }
+  if ( ent_u->parent == par ) {
+    return u3k(ent_u->location);
+  }
+
+  u3_weak loc = _cj_spot(par, NULL);
+  if ( loc != u3_none &&
+       gen_d == atomic_load_explicit(&_cj_registry_d, memory_order_relaxed) &&
+       c3y == u3a_is_senior(u3R, loc) ) {
+    u3m_hold();
+    *ent_u = (u3a_jet_parent){par, loc};
+    u3m_hold_done();
+  }
+  return loc;
+}
+
 /* _cj_reg_find(): locate core within registry. RETAIN.
  */
 static u3_weak
@@ -528,7 +579,7 @@ _cj_reg_find(u3_noun reg, u3_noun cor)
       u3_weak par = u3r_at(axe, cor),
               pel;
       if ( u3_none != par ) {
-        pel = _cj_spot(par, NULL);
+        pel = _cj_parent(par);
         if ( u3_none != pel ) {
           u3_noun nit = u3qdb_get(lol, pel);
           u3z(pel);
@@ -650,7 +701,7 @@ _cj_spot(u3_noun cor, u3_weak* bas)
         reg = _cj_gust(reg, _cj_loc_axe(loc), _cj_loc_pel(loc), u3k(loc));
         u3_noun bat_sole = u3m_sole_home(u3k(u3h(cor)));
         u3_noun val = u3m_sole_home(u3nc(u3k(*bas), u3k(reg)));
-        u3n_arm_reset();
+        _cj_reg_change();
         u3h_put(u3R->jed.cod_p, bat_sole, val);
         u3z(bat_sole);
         /* caution: could overwrites old value, debug batteries etc.
@@ -822,7 +873,7 @@ _cj_hot_mean(c3_l par_l, u3_noun nam)
 c3_w
 u3j_boot(c3_o nuu_o)
 {
-  u3n_arm_reset();
+  _cj_reg_change();
   u3_assert(u3R == &(u3H->rod_u));
 
   u3D.len_l = _cj_count(0, u3D.dev_u);
@@ -2143,7 +2194,7 @@ _cj_mine(u3_noun cey, u3_noun cor, u3_noun bas)
     hap   = _cj_warm_hump(jax_l, u3t(u3t(loc)));
     u3_noun bat_sole = u3m_sole_home(u3k(bat));
     act   = u3nq(jax_l, hap, bal, _cj_jit(jax_l, bat_sole));
-    u3n_arm_reset();
+    _cj_reg_change();
     u3h_put(u3R->jed.cod_p, bat_sole, u3m_sole_home(u3nc(u3k(bas), reg)));
     u3h_put(u3R->jed.war_p, loc, u3m_sole_home(act)); // see note in _cj_spot
     u3z(pel); u3z(axe); u3z(bat_sole);
@@ -2369,7 +2420,7 @@ _cj_merge_hank_cb(u3_noun kev, void* wit)
 void
 u3j_reap(u3a_jets jed_u)
 {
-  u3n_arm_reset();
+  _cj_reg_change();
   u3h_uni(u3R->jed.war_p, jed_u.war_p);
   u3h_free(jed_u.war_p);
 
@@ -2494,7 +2545,7 @@ _cj_ream_hank(u3_noun kev)
 void
 u3j_ream(void)
 {
-  u3n_arm_reset();
+  _cj_reg_change();
   u3_noun rel = u3_nul;
   u3_assert(u3R == &(u3H->rod_u));
   u3h_free(u3R->jed.war_p);
@@ -2613,7 +2664,7 @@ _cj_prune_drop(u3_noun kev, void* ptr_v)
 c3_w
 u3j_prune(c3_w* tot_w, c3_w* dea_w)
 {
-  u3n_arm_reset();
+  _cj_reg_change();
   _cj_prune_ctx ctx_u;
   c3_w          num_w = 0;
 
@@ -2699,7 +2750,7 @@ u3j_stay(void)
 void
 u3j_load(u3_noun rel)
 {
-  u3n_arm_reset();
+  _cj_reg_change();
   u3_noun ler = rel;
   u3_noun lor;
 
@@ -2938,7 +2989,7 @@ u3j_free_hank(u3_noun kev)
 void
 u3j_free(void)
 {
-  u3n_arm_reset();
+  _cj_reg_change();
   u3h_walk(u3R->jed.han_p, u3j_free_hank);
   u3h_free(u3R->jed.war_p);
   u3h_free(u3R->jed.cod_p);
@@ -2954,7 +3005,7 @@ u3j_free(void)
 void
 u3j_reclaim(void)
 {
-  u3n_arm_reset();
+  _cj_reg_change();
   //  re-establish the warm jet state
   //
   //    XX might this reduce fragmentation?
