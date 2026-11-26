@@ -289,6 +289,7 @@ _cu_ref_to_noun(ur_root_t* rot_u, ur_nref ref, _cu_loom* lom_u)
           vat = (c3_w)u3i_halfs(2, wor_h);
         }
 
+        ((u3a_atom*)u3a_to_ptr(vat))->mug_w = ur_nref_mug(rot_u, ref);
         ur_dictn_put(0, &lom_u->map_u, ref, (c3_w)vat);
         return vat;
       }
@@ -305,6 +306,7 @@ static void
 _cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u)
 {
   _cu_loom  lom_u = {0};
+  c3_o      mug_o = c3y;
   c3_d i_d, fil_d;
 
   ur_dictn_grow(0, &lom_u.map_u, ur_fib11, ur_fib12);
@@ -319,7 +321,16 @@ _cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u)
     lom_u.vat = calloc(fil_d, sizeof(u3_atom));
 
     for ( i_d = 0; i_d < fil_d; i_d++ ) {
-      lom_u.vat[i_d] = u3i_bytes(len_d[i_d], byt_y[i_d]);
+      u3_atom vat = lom_u.vat[i_d] = u3i_bytes(len_d[i_d], byt_y[i_d]);
+
+      // The loom hashes atom byte lengths as 32-bit values. For larger
+      // atoms, compute cell mugs on the loom with its own length semantics.
+      if ( len_d[i_d] > UINT32_MAX ) {
+        mug_o = c3n;
+      }
+      else if ( c3y == u3a_is_pug(vat) ) {
+        ((u3a_atom*)u3a_to_ptr(vat))->mug_w = rot_u->atoms.mugs[i_d];
+      }
     }
   }
 
@@ -337,7 +348,12 @@ _cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u)
       cel = u3nc(_cu_ref_to_noun(rot_u, hed[i_d], &lom_u),
                  _cu_ref_to_noun(rot_u, tal[i_d], &lom_u));
       lom_u.cel[i_d] = cel;
-      u3r_mug(cel);
+      if ( c3y == mug_o ) {
+        ((u3a_cell*)u3a_to_ptr(cel))->mug_w = rot_u->cells.mugs[i_d];
+      }
+      else {
+        u3r_mug(cel);
+      }
     }
   }
 
