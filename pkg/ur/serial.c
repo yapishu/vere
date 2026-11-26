@@ -40,6 +40,9 @@ struct ur_jam_s {
   ur_walk_fore_t *w;
   ur_dict64_t  dict;
   ur_bsw_t      bsw;
+  uint64_t     *positions;
+  uint64_t      bound;
+  uint64_t      until_index;
 };
 
 static void
@@ -67,17 +70,67 @@ _jam_atom(ur_root_t *r, ur_nref ref, void *ptr)
   }
 }
 
+/* A parent follows its children in the arena. Once at least one in sixteen
+** possible cells is reached, a direct table costs at most 16 words per
+** visited cell. Small subtrees of large arenas can stay in the dictionary.
+*/
+static void
+_jam_index_cells(ur_jam_t *j)
+{
+  j->positions = calloc(j->bound, sizeof(*j->positions));
+  if ( !j->positions ) {
+    return;
+  }
+
+  ur_dict64_t *dict = &j->dict;
+  for ( uint64_t i = 0; i < dict->size; i++ ) {
+    ur_pail64_t *bucket = &dict->buckets[i];
+    for ( uint8_t k = 0; k < dict->fills[i]; k++ ) {
+      ur_nref ref = bucket->refs[k];
+      if ( ur_icell == ur_nref_tag(ref) ) {
+        j->positions[ur_nref_idx(ref)] = 1 + bucket->vals[k];
+      }
+    }
+  }
+}
+
+static uint64_t
+_jam_cell_pos(ur_jam_t *j, ur_nref ref)
+{
+  uint64_t pos = j->bsw.bits;
+
+  if ( !j->positions ) {
+    uint64_t bak;
+    if ( ur_dict64_get(j->r, &j->dict, ref, &bak) ) {
+      return bak;
+    }
+    if ( j->until_index && 0 == --j->until_index ) {
+      _jam_index_cells(j);
+    }
+    if ( !j->positions ) {
+      ur_dict64_put(j->r, &j->dict, ref, pos);
+      return pos;
+    }
+  }
+
+  //  Store position plus one so zero marks an unvisited cell.
+  //
+  uint64_t *slot = &j->positions[ur_nref_idx(ref)];
+  if ( *slot ) {
+    return *slot - 1;
+  }
+  *slot = 1 + pos;
+  return pos;
+}
+
 static ur_bool_t
 _jam_cell(ur_root_t *r, ur_nref ref, void *ptr)
 {
-  ur_jam_t       *j = ptr;
-  ur_dict64_t *dict = &j->dict;
-  ur_bsw_t     *bsw = &j->bsw;
-  uint64_t      bak;
+  ur_jam_t   *j = ptr;
+  ur_bsw_t *bsw = &j->bsw;
+  uint64_t  bak = _jam_cell_pos(j, ref);
 
-  if ( !ur_dict64_get(r, dict, ref, &bak) ) {
-    ur_dict64_put(r, dict, ref, bsw->bits);
-
+  if ( bak == bsw->bits ) {
     ur_bsw_cell(bsw);
     return 1;
   }
@@ -93,8 +146,14 @@ _jam(ur_jam_t   *j,
      uint64_t *len,
      uint8_t **byt)
 {
+  j->bound = ur_nref_idx(ref) + 1;
+  //  A reused dictionary may have many empty buckets to scan.
+  //
+  j->until_index = (ur_max(j->bound, j->dict.size) + 15) / 16;
   ur_bsw_init(&j->bsw, ur_fib11, ur_fib12);
   ur_walk_fore_with(j->w, ref, j, _jam_atom, _jam_cell);
+  free(j->positions);
+  j->positions = 0;
   return ur_bsw_done(&j->bsw, len, byt);
 }
 

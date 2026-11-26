@@ -1816,7 +1816,7 @@ _test_jam_spec(const char    *cap,
 
   ur_jam(r, ref, &out_len, &out);
 
-  if ( 0 != memcmp(out, res, len) ) {
+  if ( out_len != len || 0 != memcmp(out, res, len) ) {
     fprintf(stderr, "\033[31mjam %s fail\033[0m\r\n", cap);
 
     fprintf(stderr, "  actual: { ");
@@ -1865,6 +1865,45 @@ _test_cue_spec(const char    *cap,
     ret = 0;
   }
 
+  return ret;
+}
+
+/* The same shared subtree has the same encoding at any arena offset,
+** including when a jam handle is reused for a different root.
+*/
+static int
+_test_jam_positions(void)
+{
+  const unsigned offsets[] = { 0, 48, 4096 };
+  const uint8_t   single[] = { 0x01, 0xdf, 0x2c, 0x6c, 0x8e, 0x3e, 0x09 };
+  const uint8_t   expect[] = { 0x05, 0x7c, 0xb3, 0xb0, 0x39, 0xfa,
+                               0xcc, 0x62, 0x64, 0x33, 0x27, 0x01 };
+  int ret = 1;
+
+  for ( unsigned i = 0; i < sizeof(offsets) / sizeof(*offsets); i++ ) {
+    ur_root_t *r = ur_root_init();
+    ur_jam_t  *j = ur_jam_init_with(r, 2, 3, ur_fib10, ur_fib11);
+    for ( unsigned k = 0; k < offsets[i]; k++ ) {
+      ur_cons(r, k, 0);
+    }
+
+    ur_nref atom = 0x74736166;
+    ur_nref pair = ur_cons(r, atom, atom);
+    ur_nref tail = ur_cons(r, ur_cons(r, 1, 2), ur_cons(r, atom, pair));
+    ur_nref tree = ur_cons(r, pair, tail);
+    for ( unsigned k = 0; k < 2; k++ ) {
+      uint8_t *out;
+      uint64_t len, bits = ur_jam_with(j, tree, &len, &out);
+      ret &= (89 == bits && sizeof(expect) == len && !memcmp(out, expect, len));
+      free(out);
+
+      bits = ur_jam_with(j, pair, &len, &out);
+      ret &= (52 == bits && sizeof(single) == len && !memcmp(out, single, len));
+      free(out);
+    }
+    ur_jam_done(j);
+    ur_root_free(r);
+  }
   return ret;
 }
 
@@ -1986,7 +2025,7 @@ _test_ur(void)
     ret = 0;
   }
 
-  if ( !_test_jam_cue() ) {
+  if ( !_test_jam_cue() || !_test_jam_positions() ) {
     fprintf(stderr, "ur test jam/cue failed\r\n");
     ret = 0;
   }
