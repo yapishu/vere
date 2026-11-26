@@ -345,14 +345,21 @@ _test_shared_comparisons(void)
     }
   }
 
+  // The same left cell also compares against two different right cells.
+  u3_noun left = u3nc(u3k(a), u3k(a));
+  u3_noun right = u3nc(u3k(b), u3nc(u3k(u3h(b)), u3k(u3t(b))));
+  u3_noun wrong = u3nc(u3k(b), u3nc(u3k(u3h(b)), 42));
   u3_noun x = u3nc(u3k(a), 1), y = u3nc(u3k(b), 2);
   u3m_hate(0);
   u3_post cap = u3R->cap_p;
+  u3_assert(c3y == u3r_sing(left, right));
+  u3_assert(c3n == u3r_sing(left, wrong));
   u3_assert(c3y == u3r_sing(a, b));
   u3_assert(c3y == u3r_sing(b, a));
   u3_assert(c3n == u3r_sing(x, y));
   u3_assert(cap == u3R->cap_p);
   u3z(u3m_love(0));
+  u3z(left); u3z(right); u3z(wrong);
   u3z(x); u3z(y); u3z(a); u3z(b);
 }
 

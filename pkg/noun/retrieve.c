@@ -3,7 +3,6 @@
 #include "retrieve.h"
 
 #include "allocate.h"
-#include "hashtable.h"
 #include "imprison.h"
 #include "murmur3.h"
 #include "trace.h"
@@ -304,43 +303,14 @@ _cr_sing_atom(u3_atom a, u3_noun b)
   return c3y;
 }
 
-/* _cr_sing_cape_test(): check for previous comparison of [a] and [b].
-*/
-static inline c3_o
-_cr_sing_cape_test(u3p(u3h_root) har_p, u3_noun a, u3_noun b)
-{
-  u3_noun key = u3nc(u3a_to_off(a) >> u3a_vits,
-                     u3a_to_off(b) >> u3a_vits);
-  u3_noun val;
-
-  u3t_off(euq_o);
-  val = u3h_git(har_p, key);
-  u3t_on(euq_o);
-
-  u3z(key);
-  return ( u3_none != val ) ? c3y : c3n;
-}
-
-/* _cr_sing_cape_keep(): store [a] and [b] to short-circuit subsequent tests.
-**                   NB: [a] and [b] (which MUST be equal nouns)
-**                       are cons'd as offsets (direct atoms) to avoid refcount churn.
-*/
-static inline void
-_cr_sing_cape_keep(u3p(u3h_root) har_p, u3_noun a, u3_noun b)
-{
-  //  only store if [a] and [b] are copies of each other
-  //
-  if ( a != b ) {
-    c3_dessert( (c3n == u3a_is_cat(a)) && (c3n == u3a_is_cat(b)) );
-
-    u3_noun key = u3nc(u3a_to_off(a) >> u3a_vits,
-                       u3a_to_off(b) >> u3a_vits);
-    u3t_off(euq_o);
-    u3h_put(har_p, key, c3y);
-    u3t_on(euq_o);
-    u3z(key);
-  }
-}
+// Completed cell pairs for a single traversal. The road owns the buckets.
+#define NAME    _cr_pairs
+#define KEY_TY  u3a_equal_pair
+#define HASH_FN(p) vt_hash_integer((c3_d)(p).a * UINT64_C(0x9e3779b97f4a7c15) + (p).b)
+#define CMPR_FN(x, y) ((x).a == (y).a && (x).b == (y).b)
+#define MALLOC_FN u3a_malloc
+#define FREE_FN(ptr, size) u3a_free(ptr)
+#include "verstable.h"
 
 static inline __attribute__((always_inline)) void
 _cr_sing_wed(u3_noun *restrict a, u3_noun *restrict b)
@@ -367,7 +337,7 @@ _cr_sing_checkpoint(const u3a_pile* pile, const u3a_cell* a, const u3a_cell* b)
  *                  (tightly coupled to _cr_sing)
  */
 static c3_o
-_cr_sing_cape(u3a_pile* pil_u, u3p(u3h_root) har_p)
+_cr_sing_cape(u3a_pile* pil_u, _cr_pairs* pairs)
 {
   eqframe* fam_u = u3a_peek(pil_u);
   u3_noun   a, b;
@@ -413,7 +383,8 @@ _cr_sing_cape(u3a_pile* pil_u, u3p(u3h_root) har_p)
           //  short-circuiting re-comparison check
           //
           fam_u->remember = _cr_sing_checkpoint(pil_u, a_u, b_u);
-          if ( fam_u->remember && c3y == _cr_sing_cape_test(har_p, a, b) ) {
+          if ( fam_u->remember &&
+               !_cr_pairs_is_end(_cr_pairs_get(pairs, (u3a_equal_pair){a, b})) ) {
             fam_u = u3a_pop(pil_u);
             continue;
           }
@@ -463,7 +434,11 @@ _cr_sing_cape(u3a_pile* pil_u, u3p(u3h_root) har_p)
 
     //  track equal pairs to short-circuit possible (re-)comparison
     //
-    if ( fam_u->remember ) _cr_sing_cape_keep(har_p, a, b);
+    if ( fam_u->remember ) {
+      if ( _cr_pairs_is_end(_cr_pairs_insert(pairs, (u3a_equal_pair){a, b})) ) {
+        u3m_bail(c3__meme);
+      }
+    }
 
     fam_u = u3a_pop(pil_u);
   }
@@ -592,9 +567,10 @@ _cr_sing(u3_noun a, u3_noun b)
     }
     // On overflow, remember equal subtrees within this comparison as well.
     else if ( 0 == ovr_s ) {
-      u3p(u3h_root) har_p = u3h_new();
-      c3_o ret_o = _cr_sing_cape(&pil_u, har_p);
-      u3h_free(har_p);
+      _cr_pairs pairs;
+      _cr_pairs_init(&pairs);
+      c3_o ret_o = _cr_sing_cape(&pil_u, &pairs);
+      _cr_pairs_cleanup(&pairs);
       u3R->cap_p = pil_u.top_p;
       if ( c3n == ret_o ) return c3n;
       break;
