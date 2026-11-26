@@ -26,6 +26,7 @@ typedef struct {
   u3_noun van;
   const _fond_seen* seen;
   c3_w fuel;
+  c3_y kel_y;
 } _fond_walk;
 
 static u3_weak
@@ -81,7 +82,8 @@ _fond_fork(u3_noun set, u3_noun name, u3_noun way, u3_noun vein,
   return _fond_fork(rit, name, way, vein, axe_w, dep_w-1, walk, port);
 }
 
-/* +repo calls +rest on this singleton list. Reuse a completed expansion
+/* +repo uses a leg at Kelvin 135 and a list of legs at Kelvin 137.
+** Reuse a completed expansion
 ** on this road. Unknown expansions and fan cycles go through Hoon.
 */
 static u3_weak
@@ -98,7 +100,7 @@ _fond_hold(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
   }
   if ( c3y == u3qdi_has(fan, item) ) return u3_none;
 
-  u3_noun leg = u3nc(u3k(item), u3_nul);
+  u3_noun leg = (135 == walk->kel_y) ? u3k(item) : u3nc(u3k(item), u3_nul);
   u3_noun key = u3qfu_rest_key(walk->van, sut, leg);
   u3_weak typ = u3z_find(u3z_memo_toss, key);
   u3z(key);
@@ -157,7 +159,10 @@ _fond_name(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
       if ( c3n == u3r_mean(sut, {58, &pol}, {59, &met}, {63, &dom}) ||
            (pol != c3__wet && pol != c3__dry) ) return u3_none;
 
-      u3_noun arm = u3qf_loot_136(name, dom);
+      //  Kelvin 135 stores the arm map directly in each chapter.
+      //
+      u3_noun arm = (135 == walk->kel_y) ? u3qf_loot(name, dom)
+                                         : u3qf_loot_136(name, dom);
       if ( arm != u3_nul ) {
         u3_noun hit = u3t(arm);
         u3_noun axe = u3qc_peg(2, u3h(hit));
@@ -201,8 +206,8 @@ _fond_axis(u3_noun sut, u3_noun way, c3_w axe_w)
   return bit_w ? u3_none : u3k(sut);
 }
 
-u3_weak
-u3wfu_fond_137(u3_noun cor)
+static u3_weak
+_fond(u3_noun cor, c3_y kel_y)
 {
   u3_noun way, hyp, sut;
   if ( c3n == u3r_mean(cor, {u3x_sam_2, &way}, {u3x_sam_3, &hyp},
@@ -213,7 +218,7 @@ u3wfu_fond_137(u3_noun cor)
 
   u3_noun limbs[16];
   c3_w len_w = 0;
-  _fond_walk walk = {.van = u3x_at(u3x_con, cor), .fuel = 256};
+  _fond_walk walk = {.van = u3x_at(u3x_con, cor), .fuel = 256, .kel_y = kel_y};
   while ( hyp != u3_nul ) {
     if ( len_w == 16 || c3n == u3du(hyp) ) return u3_none;
     limbs[len_w++] = u3h(hyp);
@@ -260,4 +265,16 @@ u3wfu_fond_137(u3_noun cor)
     port = next;
   }
   return port;
+}
+
+u3_weak
+u3wfu_fond_135(u3_noun cor)
+{
+  return _fond(cor, 135);
+}
+
+u3_weak
+u3wfu_fond_137(u3_noun cor)
+{
+  return _fond(cor, 137);
 }

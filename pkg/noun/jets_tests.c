@@ -1345,10 +1345,10 @@ _test_tree_intersection(void)
 }
 
 static void
-_check_fond_van(u3_noun van, u3_noun wing, u3_weak want)
+_check_fond_van(c3_y kel_y, u3_noun van, u3_noun wing, u3_weak want)
 {
   u3_noun cor = u3nt(0, u3nc(c3__read, wing), van);
-  u3_weak got = u3wfu_fond_137(cor);
+  u3_weak got = (135 == kel_y) ? u3wfu_fond_135(cor) : u3wfu_fond_137(cor);
   if ( want == u3_none ) u3_assert(got == u3_none);
   else {
     u3_assert(got != u3_none && c3y == u3r_sing(got, want));
@@ -1361,7 +1361,7 @@ _check_fond_van(u3_noun van, u3_noun wing, u3_weak want)
 static void
 _check_fond(u3_noun sut, u3_noun wing, u3_weak want)
 {
-  _check_fond_van(u3nt(0, sut, 0), wing, want);
+  _check_fond_van(137, u3nt(0, sut, 0), wing, want);
 }
 
 static void
@@ -1419,12 +1419,30 @@ _test_fond(void)
   u3_noun hol = u3nt(c3__hold, c3__noun, u3nc(c3__tune, 'x'));
   u3_noun van = u3nt(0, u3k(hol), u3nc(u3nt(0, 0, c3y), 0));
   u3_noun leg = u3nc(u3k(u3t(hol)), 0);
-  _check_fond_van(u3k(van), u3nc('x', 0), u3_none);
+  _check_fond_van(137, u3k(van), u3nc('x', 0), u3_none);
   u3_noun key = u3qfu_rest_key(van, hol, leg);
   u3z(u3z_save(u3z_memo_toss, key, u3qf_forq(hol, fac)));
-  _check_fond_van(u3k(van), u3nc('x', 0), u3nq(0, path, 0, c3__noun));
-  _check_fond_van(u3i_edit(u3k(van), u3qfu_van_vet, c3n), u3nc('x', 0), u3_none);
-  _check_fond_van(u3i_edit(van, u3qfu_van_fan, u3qdi_put(0, u3t(hol))),
+  _check_fond_van(137, u3k(van), u3nc('x', 0), u3nq(0, path, 0, c3__noun));
+  _check_fond_van(137, u3i_edit(u3k(van), u3qfu_van_vet, c3n), u3nc('x', 0), u3_none);
+  _check_fond_van(137, u3i_edit(van, u3qfu_van_fan, u3qdi_put(0, u3t(hol))),
+                  u3nc('x', 0), u3_none);
+  // Kelvin 135 resolves a raw arm map and looks up the hold by its leg.
+  //
+  arms = u3nt(u3nc('x', u3nc(c3__dtls, 0)), 0, 0);
+  dom = u3nt(u3nc(0, arms), 0, 0);
+  coil = u3nq(u3nt(0, c3__dry, c3__gold), c3__noun, 0, dom);
+  ca = u3nt(c3__core, c3__noun, coil);
+  foot = u3nc(c3__dry, u3nc(c3__dtls, 0));
+  set = u3nt(u3nc(u3k(ca), foot), 0, 0);
+  _check_fond_van(135, u3nt(0, ca, 0), u3nc('x', 0),
+                  u3nq(0, u3nc(u3nc(0, 1), 0), 1, u3nc(2, set)));
+  van = u3nt(0, u3k(hol), u3nc(u3nt(0, 0, c3y), 0));
+  _check_fond_van(135, u3k(van), u3nc('x', 0), u3_none);
+  key = u3qfu_rest_key(van, hol, u3t(hol));
+  u3z(u3z_save(u3z_memo_toss, key, u3k(fac)));
+  _check_fond_van(135, u3k(van), u3nc('x', 0),
+                  u3nq(0, u3nt(0, u3nc(0, 1), 0), 0, c3__noun));
+  _check_fond_van(135, u3i_edit(van, u3qfu_van_fan, u3qdi_put(0, u3t(hol))),
                   u3nc('x', 0), u3_none);
   u3z(leg); u3z(hol); u3z(fac); u3z(fat); u3z(atom);
 }
