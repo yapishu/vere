@@ -1474,6 +1474,46 @@ _test_nest(void)
   u3z(atom);
 }
 
+static void
+_check_redo(u3_noun sut, u3_noun ref, u3_noun want)
+{
+  u3_noun arm = u3nc(1, 97);
+  u3_noun van = u3nt(u3k(arm), sut, u3nc(u3nt(0, 0, c3y), 0));
+  u3_noun cor = u3nt(arm, ref, van);
+  u3_noun pro = u3wfu_redo(cor);
+  u3_assert(c3y == u3r_sing(want, pro));
+  u3z(pro); u3z(cor); u3z(want);
+}
+
+static void
+_test_redo(void)
+{
+  u3_noun atom = u3nt(c3__atom, 'u', 0);
+  u3_noun x = u3nt(c3__face, 'x', u3k(atom));
+  u3_noun yx = u3nt(c3__face, 'y', u3k(x));
+  u3_noun xyx = u3nt(c3__face, 'x', u3k(yx));
+  u3_noun ref = u3nt(c3__face, 'z',
+                      u3nt(c3__hint, 0, u3nt(c3__face, 'x',
+                        u3nt(c3__face, 'y', u3nt(c3__face, 'x', c3__noun)))));
+
+  //  Both x and xyx overlap. The longest overlap leaves just z to add.
+  //
+  _check_redo(u3k(xyx), u3k(ref), u3nt(c3__face, 'z', u3k(xyx)));
+  _check_redo(u3nt(c3__cell, u3k(x), c3__void),
+              u3nt(c3__cell, u3nt(c3__face, 'y', c3__noun), u3k(ref)),
+              u3nt(c3__cell, u3k(yx), c3__void));
+  _check_redo(u3k(x), u3nt(c3__face, 'x', u3nt(c3__atom, 'u', 0)), u3k(x));
+
+  //  A residual tail runs the whole arm after releasing the completed head.
+  //
+  _check_redo(u3nt(c3__cell, u3k(x), u3nt(c3__hold, 7, 8)),
+              u3nt(c3__cell, u3k(ref), u3k(x)), 97);
+  u3_noun deep = u3k(x);
+  for ( c3_w i_w = 0; i_w < 32; ++i_w ) deep = u3nt(c3__face, 'q', deep);
+  _check_redo(deep, u3k(ref), 97);
+  u3z(ref); u3z(xyx); u3z(yx); u3z(x); u3z(atom);
+}
+
 static c3_i
 _test_jets(void)
 {
@@ -1481,6 +1521,7 @@ _test_jets(void)
 
   _test_fond();
   _test_nest();
+  _test_redo();
 
   _test_bulk_trees();
   _test_map_union();
