@@ -702,6 +702,7 @@ static u3j_harm _135_two_cat_a[] = {{".2", u3wc_cat, c3y}, {}};
 static u3j_harm _135_two_con_a[] = {{".2", u3wc_con, c3y}, {}};
 static u3j_harm _135_two_cut_a[] = {{".2", u3wc_cut, c3y}, {}};
 static u3j_harm _135_two_dis_a[] = {{".2", u3wc_dis, c3y}, {}};
+static u3j_harm _135_two_aor_a[] = {{".2", u3wc_aor, c3y}, {}};
 static u3j_harm _135_two_dor_a[] = {{".2", u3wc_dor, c3y}, {}};
 static u3j_harm _135_two_end_a[] = {{".2", u3wc_end, c3y}, {}};
 static u3j_harm _135_two_gor_a[] = {{".2", u3wc_gor, c3y}, {}};
@@ -1210,6 +1211,7 @@ static u3j_core _135_two_d[] =
     { "welp", 7, _135_two_welp_a, 0, no_hashes },
     { "zing", 7, _135_two_zing_a, 0, no_hashes },
 
+    { "aor",  7, _135_two_aor_a, 0, no_hashes },
     { "bex",  7, _135_two_bex_a, 0, no_hashes },
     { "cat",  7, _135_two_cat_a, 0, no_hashes },
     { "can",  7, _135_two_can_a, 0, no_hashes },
