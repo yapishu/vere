@@ -6,8 +6,8 @@
 /// units, plus 1; 0 is empty) and its probe distance: five bytes, 12
 /// buckets to a 64-byte line, at either width. Linear probing
 /// in Robin Hood order, with backward-shift deletion: no tombstones,
-/// and neither a lookup nor an erase reads another member's box except
-/// to compare one with the same home bucket. The hash is the mug, so a
+/// and a lookup reads another member's box only if it shares the home
+/// bucket and the mug bits held in the key. The hash is the mug, so a
 /// lookup by value needs no noun; a resize reads each member's mug from
 /// its box. Sizes aren't powers of two (multiply-shift).
 ///
@@ -59,6 +59,7 @@ typedef struct {
   c3_d      cap_d;          //  buckets, _CS_PER * lin_d
   c3_d      len_d;          //  members
   c3_d      flo_d;          //  fewest lines a rebuild may use, or 0
+  c3_h      tag_h;          //  key bits above the loom's largest slot
   c3_y      dmx_y;          //  no distance here is larger
   c3_t      cel_t;          //  cells, else atoms
 } _cs_tab;
@@ -133,12 +134,34 @@ _cs_slot(u3_noun som)
   return (c3_h)(((c3_d)u3a_to_off(som) / _CS_UNIT) + 1);
 }
 
+/* _cs_tag_mask(): of the high byte, the bits an address on this loom
+**   cannot use. Keep low mug bits there to rule out unequal members
+**   before reading their boxes (https://abseil.io/about/design/swisstables).
+*/
+static c3_h
+_cs_tag_mask(c3_d wor_d)
+{
+  c3_d top_d = wor_d / _CS_UNIT;  //  largest slot index plus one
+  c3_h tag_h = 0xff000000U;
+
+  while ( tag_h && (top_d > (c3_h)~tag_h) ) {
+    tag_h <<= 1;
+  }
+  return tag_h;
+}
+
+static inline c3_h
+_cs_member(_cs_tab* tab_u, u3_noun som, c3_h mug_h)
+{
+  return _cs_slot(som) | ((mug_h << 24) & tab_u->tag_h);
+}
+
 /* _cs_noun(): the member whose key is [key_h].
 */
 static inline u3_noun
 _cs_noun(_cs_tab* tab_u, c3_h key_h)
 {
-  c3_w off_w = (c3_w)((c3_d)(key_h - 1) * _CS_UNIT);
+  c3_w off_w = (c3_w)((c3_d)((key_h & ~tab_u->tag_h) - 1) * _CS_UNIT);
   return ( tab_u->cel_t ) ? u3a_to_pom(off_w) : u3a_to_pug(off_w);
 }
 
@@ -179,6 +202,7 @@ static void
 _cs_init(_cs_tab* tab_u, c3_t cel_t)
 {
   tab_u->cel_t = cel_t;
+  tab_u->tag_h = _cs_tag_mask(u3C.wor_i);
   tab_u->flo_d = 0;
   _cs_alloc(tab_u, _CS_LIN_MIN);
 }
@@ -372,9 +396,9 @@ _cs_seek(_cs_tab* tab_u,
       break;
     }
 
-    //  the same home bucket: compare
+    //  the same home bucket and mug tag: compare
     //
-    if ( dis_y == d_d ) {
+    if ( (dis_y == d_d) && !((key_h ^ (mug_h << 24)) & tab_u->tag_h) ) {
       _cs_met.der_d++;
       if ( pre_f(_cs_noun(tab_u, key_h), ptr_v) ) {
         fon_t = 1;
@@ -426,12 +450,14 @@ static inline c3_d
 _cs_add(_cs_tab* tab_u, u3_noun som)
 {
   c3_d i_d;
+  c3_h mug_h;
 
   _cs_room(tab_u);
-  i_d = _cs_home(tab_u, u3r_mug(som));
+  mug_h = u3r_mug(som);
+  i_d = _cs_home(tab_u, mug_h);
 
   return _cs_fits(tab_u, i_d, 0)
-         ? _cs_place_from(tab_u, _cs_slot(som), i_d, 0)
+         ? _cs_place_from(tab_u, _cs_member(tab_u, som, mug_h), i_d, 0)
          : ~0ULL;
 }
 
@@ -456,7 +482,7 @@ _cs_put(_cs_tab* tab_u, u3_noun som, c3_h mug_h,
     *pos_d = ~0ULL;
     return u3_none;
   }
-  *pos_d = _cs_place_from(tab_u, _cs_slot(som), i_d, dis_d);
+  *pos_d = _cs_place_from(tab_u, _cs_member(tab_u, som, mug_h), i_d, dis_d);
   return som;
 }
 
@@ -476,7 +502,7 @@ _cs_erase(_cs_tab* tab_u, u3_noun som)
     c3_y dis_y = *_cs_dis(tab_u, i_d);
 
     if ( !kei_h || (dis_y < dis_d) ) return ~0ULL;
-    if ( kei_h == key_h ) break;
+    if ( (kei_h & ~tab_u->tag_h) == key_h ) break;
     i_d = _cs_next(tab_u, i_d);
     dis_d++;
   }

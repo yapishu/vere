@@ -1877,16 +1877,30 @@ _test_soletab(void)
   c3_d    len_d = 0;
   _cs_tab tab_u;
 
-  //  keys round-trip, for cells and atoms
+  //  A larger loom leaves fewer bits for the mug. Even the last slot
+  //  needs its index plus one; a table with full-width slots has no tag.
+  //
+  if (  (0xff000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 23)))
+     || (0xfe000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 24)))
+     || (0x80000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 30)))
+     || (0           != _cs_tag_mask(_CS_UNIT * (1ULL << 31))) )
+  {
+    fprintf(stderr, "test: soletab: tag overlaps loom offsets\r\n");
+    ret_i = 0;
+  }
+
+  //  tagged keys round-trip, for cells and atoms
   //
   {
     u3_noun c = u3nc(1, 2);
     c3_d    big_d[2] = { 0x123456789abcdefULL, 0xfedcba987654321ULL };
     u3_noun a = u3i_chubs(2, big_d);
 
-    _cs_tab vat_u = { .cel_t = 0 }, cet_u = { .cel_t = 1 };
-    if (  (c != _cs_noun(&cet_u, _cs_slot(c)))
-       || (a != _cs_noun(&vat_u, _cs_slot(a))) )
+    c3_h    tag_h = _cs_tag_mask(u3C.wor_i);
+    _cs_tab vat_u = { .cel_t = 0, .tag_h = tag_h };
+    _cs_tab cet_u = { .cel_t = 1, .tag_h = tag_h };
+    if (  (c != _cs_noun(&cet_u, _cs_member(&cet_u, c, 0xff)))
+       || (a != _cs_noun(&vat_u, _cs_member(&vat_u, a, 0xff))) )
     {
       fprintf(stderr, "test: soletab: keys don't round-trip\r\n");
       ret_i = 0;
