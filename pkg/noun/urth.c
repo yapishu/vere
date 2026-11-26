@@ -422,6 +422,7 @@ _cu_realloc(FILE* fil_u, ur_root_t** tor_u, ur_nvec_t* doc_u)
   //    NB: hot jet state is not yet re-established
   //
   u3m_pave(c3y);
+  u3m_toss();
 
   //  reallocate all nouns on the loom
   //
@@ -1007,6 +1008,7 @@ u3u_uncram(c3_c* dir_c, c3_d eve_d)
   //    NB: hot jet state is not yet re-established
   //
   u3m_pave(c3y);
+  u3m_toss();
 
   //  cue rock, restore persistent state
   //
