@@ -303,11 +303,12 @@ _cu_ref_to_noun(ur_root_t* rot_u, ur_nref ref, _cu_loom* lom_u)
 **                    subsequently reconstructed via tracing.
 */
 static void
-_cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u)
+_cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u,
+                c3_d tom_d, c3_d cel_d)
 {
   _cu_loom  lom_u = {0};
   c3_o      mug_o = c3y;
-  c3_d i_d, fil_d;
+  c3_d i_d;
 
   ur_dictn_grow(0, &lom_u.map_u, ur_fib11, ur_fib12);
 
@@ -317,10 +318,9 @@ _cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u)
     c3_d*  len_d = rot_u->atoms.lens;
     c3_y** byt_y = rot_u->atoms.bytes;
 
-    fil_d = rot_u->atoms.fill;
-    lom_u.vat = calloc(fil_d, sizeof(u3_atom));
+    lom_u.vat = calloc(tom_d, sizeof(u3_atom));
 
-    for ( i_d = 0; i_d < fil_d; i_d++ ) {
+    for ( i_d = 0; i_d < tom_d; i_d++ ) {
       u3_atom vat = lom_u.vat[i_d] = u3i_bytes(len_d[i_d], byt_y[i_d]);
 
       // The loom hashes atom byte lengths as 32-bit values. For larger
@@ -341,10 +341,9 @@ _cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u)
     ur_nref* tal = rot_u->cells.tails;
     u3_noun  cel;
 
-    fil_d = rot_u->cells.fill;
-    lom_u.cel = c3_calloc(fil_d * sizeof(u3_noun));
+    lom_u.cel = c3_calloc(cel_d * sizeof(u3_noun));
 
-    for ( i_d = 0; i_d < fil_d; i_d++ ) {
+    for ( i_d = 0; i_d < cel_d; i_d++ ) {
       cel = u3nc(_cu_ref_to_noun(rot_u, hed[i_d], &lom_u),
                  _cu_ref_to_noun(rot_u, tal[i_d], &lom_u));
       lom_u.cel[i_d] = cel;
@@ -384,10 +383,14 @@ _cu_all_to_loom(ur_root_t* rot_u, ur_nref ken, ur_nvec_t* cod_u)
   ur_dict_free((ur_dict_t*)&lom_u.map_u);
 }
 
-/* _cu_realloc(): hash-cons roots off-loom, reallocate on loom.
+static c3_o
+_cu_rock_write(c3_c* dir_c, c3_d eve_d, ur_root_t* rot_u,
+               ur_nref ken, const ur_nvec_t* cod_u);
+
+/* _cu_realloc(): evacuate the roots, optionally write a rock, and restore them.
 */
-static ur_nref
-_cu_realloc(FILE* fil_u, ur_root_t** tor_u, ur_nvec_t* doc_u)
+static c3_o
+_cu_realloc(FILE* fil_u, c3_c* dir_c, c3_d roc_d)
 {
 #ifdef U3_MEMORY_DEBUG
   u3_assert(0);
@@ -424,9 +427,16 @@ _cu_realloc(FILE* fil_u, ur_root_t** tor_u, ur_nvec_t* doc_u)
   u3m_pave(c3y);
   u3m_toss();
 
-  //  reallocate all nouns on the loom
+  //  The rock envelope extends the arena. Only the evacuated roots and
+  //  their descendants belong on the new loom.
   //
-  _cu_all_to_loom(rot_u, ken, &cod_u);
+  c3_d tom_d = rot_u->atoms.fill;
+  c3_d cel_d = rot_u->cells.fill;
+  c3_o ret_o = dir_c ? _cu_rock_write(dir_c, roc_d, rot_u, ken, &cod_u) : c3y;
+
+  _cu_all_to_loom(rot_u, ken, &cod_u, tom_d, cel_d);
+  ur_nvec_free(&cod_u);
+  ur_root_free(rot_u);
 
   //  allocate new hot jet state
   //
@@ -451,10 +461,7 @@ _cu_realloc(FILE* fil_u, ur_root_t** tor_u, ur_nvec_t* doc_u)
   //
   u3m_foul();
 
-  *tor_u = rot_u;
-  *doc_u = cod_u;
-
-  return ken;
+  return ret_o;
 }
 
 /* u3u_meld(): globally deduplicate memory, returns u3a_open delta.
@@ -470,18 +477,11 @@ u3u_meld(void)
 c3_w
 u3u_meld(void)
 {
-  c3_w       pre_w = u3a_open(u3R);
-  ur_root_t* rot_u;
-  ur_nvec_t  cod_u;
+  c3_w pre_w = u3a_open(u3R);
 
   u3_assert( &(u3H->rod_u) == u3R );
 
-  _cu_realloc(stderr, &rot_u, &cod_u);
-
-  //  dispose off-loom structures
-  //
-  ur_nvec_free(&cod_u);
-  ur_root_free(rot_u);
+  _cu_realloc(stderr, 0, 0);
   return (u3a_open(u3R) - pre_w);
 }
 #endif
@@ -783,6 +783,30 @@ _cu_rock_save(c3_c* dir_c, c3_d eve_d, c3_d len_d, c3_y* byt_y)
   return c3y;
 }
 
+/* _cu_rock_write(): encode and save the evacuated image. */
+static c3_o
+_cu_rock_write(c3_c* dir_c, c3_d eve_d, ur_root_t* rot_u,
+               ur_nref ken, const ur_nvec_t* cod_u)
+{
+  ur_nref cod = u3_nul;
+  c3_d  len_d;
+  c3_y* byt_y;
+
+  for ( c3_d i_d = 0; i_d < cod_u->fill; i_d++ ) {
+    cod = ur_cons(rot_u, cod_u->refs[i_d], cod);
+  }
+
+  c3_y has_y[] = "hashboard";
+  ur_nref has = ur_coin_bytes(rot_u, sizeof(has_y) - 1, has_y);
+  ur_nref doc = ur_cons(rot_u, has, cod);
+  ur_nref roc = ur_cons(rot_u, c3__arvo, ur_cons(rot_u, ken, doc));
+
+  ur_jam(rot_u, roc, &len_d, &byt_y);
+  c3_o ret_o = _cu_rock_save(dir_c, eve_d, len_d, byt_y);
+  c3_free(byt_y);
+  return ret_o;
+}
+
 /* u3u_cram(): globably deduplicate memory, and write a rock to disk.
 */
 #ifdef U3_MEMORY_DEBUG
@@ -796,55 +820,8 @@ u3u_cram(c3_c* dir_c, c3_d eve_d)
 c3_o
 u3u_cram(c3_c* dir_c, c3_d eve_d)
 {
-  c3_o  ret_o = c3y;
-  c3_d  len_d;
-  c3_y* byt_y;
-
   u3_assert( &(u3H->rod_u) == u3R );
-
-  {
-    ur_root_t* rot_u;
-    ur_nvec_t  cod_u;
-    ur_nref      ken = _cu_realloc(stderr, &rot_u, &cod_u);
-
-    {
-      ur_nref roc = u3_nul;
-      c3_d  max_d = cod_u.fill;
-      c3_d    i_d;
-
-      //  cons vector of cold jet-state entries onto a list
-      //
-      for ( i_d = 0; i_d < max_d; i_d++) {
-        roc = ur_cons(rot_u, cod_u.refs[i_d], roc);
-      }
-
-      {
-        c3_c* has_c = "hashboard";
-        ur_nref has = ur_coin_bytes(rot_u, strlen(has_c), (c3_y*)has_c);
-        roc = ur_cons(rot_u, has, roc);
-      }
-
-      roc = ur_cons(rot_u, ur_coin64(rot_u, c3__arvo),
-                           ur_cons(rot_u, ken, roc));
-
-      ur_jam(rot_u, roc, &len_d, &byt_y);
-    }
-
-    //  dispose off-loom structures
-    //
-    ur_nvec_free(&cod_u);
-    ur_root_free(rot_u);
-  }
-
-  //  write jam-buffer into pier
-  //
-  if ( c3n == _cu_rock_save(dir_c, eve_d, len_d, byt_y) ) {
-    ret_o = c3n;
-  }
-
-  c3_free(byt_y);
-
-  return ret_o;
+  return _cu_realloc(stderr, dir_c, eve_d);
 }
 #endif
 
