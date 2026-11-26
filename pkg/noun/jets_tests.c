@@ -1763,6 +1763,18 @@ _test_byte_text(void)
   u3_assert(c3y == u3r_sing(lis, exp));
   u3z(txt); u3z(lis); u3z(exp);
 
+  const c3_y eol_y[] = {10, 'a', 0, 'b', 13, 10, 10};
+  txt = u3i_bytes(sizeof(eol_y), eol_y);
+  lis = u3qe_lune(txt);
+  exp = u3nq(0, 0x0d620061, 0, 0);
+  u3_assert(c3y == u3r_sing(lis, exp));
+  u3z(txt); u3z(lis); u3z(exp);
+  u3_assert(u3_nul == u3qe_lune(0));
+
+  u3_noun err = u3m_soft(0, u3qe_lune, 'a');
+  u3_assert(c3__exit == u3h(err));
+  u3z(err);
+
   const c3_y dat_y[] = {0xff, 0x00, 0x01, 0x02, 0, 3, 0, 4, 5, 6, 7, 8};
   u3_atom big = u3i_bytes(sizeof(dat_y) - 3, dat_y + 3);
   lis = u3nc(0xff, u3nq(0, 0x0100, big, 0));
