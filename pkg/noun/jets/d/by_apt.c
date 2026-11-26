@@ -68,7 +68,7 @@ _by_apt(u3_noun a, u3_weak l, u3_weak r)
 u3_noun
 u3qdb_apt(u3_noun a)
 {
-  u3_weak ok = u3q_tree_apt(a, 1, 1);
+  u3_weak ok = u3q_tree_apt(a, 1, 1, 0);
   if ( ok != u3_none ) return ok;
   return _by_apt(a, u3_none, u3_none);
 }

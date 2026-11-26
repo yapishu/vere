@@ -3,7 +3,7 @@
 #include "jets/q.h"
 #include "jets/w.h"
 
-#include "noun.h"
+#include "tree_merge.h"
 
 //  [a] is RETAINED, [set] is TRANSFERRED
 //
@@ -69,7 +69,10 @@ _by_key_project(u3_noun map)
 u3_noun
 u3qdb_key(u3_noun a)
 {
-  if ( c3y == u3qdb_apt(a) ) return _by_key_project(a);
+  u3_noun keys;
+  u3_weak ok = u3q_tree_apt(a, 1, 1, &keys);
+  if ( c3y == ok ) return keys;
+  if ( u3_none == ok && c3y == u3qdb_apt(a) ) return _by_key_project(a);
   return _by_key(a, u3_nul);
 }
 

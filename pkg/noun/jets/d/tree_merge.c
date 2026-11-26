@@ -92,7 +92,7 @@ _merge_cmp(_merge_node a, c3_h x, _merge_node b, c3_h y)
 // down the tree so each node needs one mug and one heap priority.
 static u3_weak
 _tree_apt(u3_noun tree, _merge_node lo, _merge_node hi, c3_t from_left,
-          c3_t map_t, c3_t strict_t, unsigned depth)
+          c3_t map_t, c3_t strict_t, unsigned depth, u3_noun* out)
 {
   while ( tree ) {
     _merge_node node, parent = from_left ? hi : lo;
@@ -112,13 +112,27 @@ _tree_apt(u3_noun tree, _merge_node lo, _merge_node hi, c3_t from_left,
       if ( cmp == _merge_unknown ) return u3_none;
       if ( cmp > 0 || (strict_t && !cmp) ) return c3n;
     }
-    u3_noun branches = u3t(tree);
-    if ( u3h(branches) ) {
+    u3_noun branches = u3t(tree), left = u3h(branches), right = u3t(branches);
+    u3a_cell* slots = 0;
+    if ( out ) {
+      if ( !left && !right ) {
+        *out = u3nc(u3k(node.key), u3k(branches));
+        return c3y;
+      }
+      // Only the projection owns these slots. Initializing both to ~ lets
+      // the caller release the entire prefix if a later comparison fails.
+      // See https://arxiv.org/abs/2102.09823 for destination passing.
+      *out = u3nt(u3k(node.key), u3_nul, u3_nul);
+      slots = u3a_to_ptr(u3t(*out));
+    }
+    if ( left ) {
       if ( depth == _merge_slots ) return u3_none;
-      u3_weak ok = _tree_apt(u3h(branches), lo, node, 1, map_t, strict_t, depth + 1);
+      u3_weak ok = _tree_apt(left, lo, node, 1, map_t, strict_t, depth + 1,
+                             slots ? &slots->hed : 0);
       if ( ok != c3y ) return ok;
     }
-    tree = u3t(branches);
+    tree = right;
+    if ( slots ) out = &slots->tel;
     from_left = 0;
     lo = node;
   }
@@ -126,16 +140,25 @@ _tree_apt(u3_noun tree, _merge_node lo, _merge_node hi, c3_t from_left,
 }
 
 u3_weak
-u3q_tree_apt(u3_noun tree, c3_t map_t, c3_t strict_t)
+u3q_tree_apt(u3_noun tree, c3_t map_t, c3_t strict_t, u3_noun* keys)
 {
   // A leaf has no ordering constraints, even when its key is expensive to hash.
   u3_noun item, left, right;
+  if ( keys ) *keys = u3_nul;
   if ( !tree ) return c3y;
   if ( c3n == u3r_trel(tree, &item, &left, &right) ||
        (map_t && c3n == u3du(item)) ) return u3_none;
-  if ( !left && !right ) return c3y;
+  if ( !left && !right ) {
+    if ( keys ) *keys = u3nc(u3k(map_t ? u3h(item) : item), u3k(u3t(tree)));
+    return c3y;
+  }
   _merge_node empty = {0};
-  return _tree_apt(tree, empty, empty, 0, map_t, strict_t, 0);
+  u3_weak ok = _tree_apt(tree, empty, empty, 0, map_t, strict_t, 0, keys);
+  if ( keys && ok != c3y ) {
+    u3z(*keys);
+    *keys = u3_nul;
+  }
+  return ok;
 }
 
 // The kth smallest priority estimates inverse size without walking either

@@ -1184,6 +1184,19 @@ _test_bulk_trees(void)
   u3_assert(c3y == u3r_sing(expected, actual));
   u3z(list); u3z(expected); u3z(tree); u3z(actual);
 
+  // Distinct keys with a long common prefix can tie in both tree orders.
+  a = u3i_chub(UINT64_C(0xc001d00d0000b33f));
+  b = u3i_chub(UINT64_C(0xc001d00d00012a3e));
+  for ( c3_w i = 0; i < 96; ++i ) {
+    a = u3nc(i, a);
+    b = u3nc(i, b);
+  }
+  u3_assert(u3r_mug(a) == u3r_mug(b));
+  tree = u3kdb_put(u3kdb_put(0, u3k(a), 8), u3k(b), 9);
+  expected = u3kdi_put(u3kdi_put(0, a), b);
+  actual = u3qdb_key(tree);
+  u3_assert(c3y == u3r_sing(expected, actual));
+  u3z(tree); u3z(expected); u3z(actual);
 }
 
 static void

@@ -48,7 +48,7 @@ _in_apt_140(u3_noun a, u3_weak l, u3_weak r)
 u3_noun
 u3qdi_apt_140(u3_noun a)
 {
-  u3_weak ok = u3q_tree_apt(a, 0, 0);
+  u3_weak ok = u3q_tree_apt(a, 0, 0, 0);
   if ( ok != u3_none ) return ok;
   return _in_apt_140(a, u3_none, u3_none);
 }
@@ -113,7 +113,7 @@ _in_apt(u3_noun a, u3_weak l, u3_weak r)
 u3_noun
 u3qdi_apt(u3_noun a)
 {
-  u3_weak ok = u3q_tree_apt(a, 0, 1);
+  u3_weak ok = u3q_tree_apt(a, 0, 1, 0);
   if ( ok != u3_none ) return ok;
   return _in_apt(a, u3_none, u3_none);
 }
