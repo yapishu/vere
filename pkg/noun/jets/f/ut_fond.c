@@ -177,6 +177,27 @@ _fond_name(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
   }
 }
 
+/* An anonymous limb selects the current type through one name. Hints
+** are transparent. A fork or hold defers to the full wing evaluator.
+*/
+static u3_weak
+_fond_anon(u3_noun sut, u3_noun skip, u3_noun vein)
+{
+  for ( c3_w i = 0; i < 40; i++ ) {
+    if ( sut == c3__void ) return u3_nul;
+    if ( sut != c3__noun ) {
+      u3_noun tag, p, q;
+      if ( c3n == u3r_trel(sut, &tag, &p, &q) ) return u3_none;
+      if ( tag == c3__hint ) { sut = q; continue; }
+      if ( tag == c3__face ) sut = q;
+      else if ( tag != c3__atom && tag != c3__cell && tag != c3__core ) return u3_none;
+    }
+    if ( skip ) return u3nt(c3n, c3y, skip - 1);
+    return u3nq(c3y, u3nt(u3_nul, u3nc(u3_nul, 1), u3k(vein)), c3y, u3k(sut));
+  }
+  return u3_none;
+}
+
 static u3_weak
 _fond_axis(u3_noun sut, u3_noun way, c3_w axe_w)
 {
@@ -202,19 +223,12 @@ _fond_axis(u3_noun sut, u3_noun way, c3_w axe_w)
   return bit_w ? u3_none : u3k(sut);
 }
 
-static u3_weak
-_fond(u3_noun cor, c3_y kel_y)
+u3_weak
+u3qfu_fond(u3_noun van, u3_noun sut, u3_noun way, u3_noun hyp, c3_y kel_y)
 {
-  u3_noun way, hyp, sut;
-  if ( c3n == u3r_mean(cor, {u3x_sam_2, &way}, {u3x_sam_3, &hyp},
-                            {u3x_con_sam, &sut}) ||
-       (way != c3__read && way != c3__rite && way != c3__free && way != c3__both) ) {
-    return u3_none;
-  }
-
   u3_noun limbs[16];
   c3_w len_w = 0;
-  _fond_walk walk = {.van = u3x_at(u3x_con, cor), .fuel = 256, .kel_y = kel_y};
+  _fond_walk walk = {.van = van, .fuel = 256, .kel_y = kel_y};
   while ( hyp != u3_nul ) {
     if ( len_w == 16 || c3n == u3du(hyp) ) return u3_none;
     limbs[len_w++] = u3h(hyp);
@@ -251,9 +265,14 @@ _fond(u3_noun cor, c3_y kel_y)
     else {
       u3_noun tag, skip, unit, mark, name;
       if ( c3y == u3r_trel(limb, &tag, &skip, &unit) && tag == c3n &&
-           skip == 0 && c3y == u3r_cell(unit, &mark, &name) &&
-           mark == u3_nul && c3y == u3ud(name) ) {
-        next = _fond_name(sut, name, way, vein, 1, 40, &walk);
+           c3y == u3a_is_cat(skip) ) {
+        if ( unit == u3_nul ) {
+          next = _fond_anon(sut, skip, vein);
+        }
+        else if ( !skip && c3y == u3r_cell(unit, &mark, &name) &&
+                  mark == u3_nul && c3y == u3ud(name) ) {
+          next = _fond_name(sut, name, way, vein, 1, 40, &walk);
+        }
       }
     }
     u3z(port);
@@ -263,14 +282,27 @@ _fond(u3_noun cor, c3_y kel_y)
   return port;
 }
 
+static u3_weak
+_fond_gate(u3_noun cor, c3_y kel_y)
+{
+  u3_noun way, hyp, sut;
+  if ( c3n == u3r_mean(cor, {u3x_sam_2, &way}, {u3x_sam_3, &hyp},
+                            {u3x_con_sam, &sut}) ||
+       (way != c3__read && way != c3__rite && way != c3__free && way != c3__both) ) {
+    return u3_none;
+  }
+
+  return u3qfu_fond(u3x_at(u3x_con, cor), sut, way, hyp, kel_y);
+}
+
 u3_weak
 u3wfu_fond_135(u3_noun cor)
 {
-  return _fond(cor, 135);
+  return _fond_gate(cor, 135);
 }
 
 u3_weak
 u3wfu_fond_137(u3_noun cor)
 {
-  return _fond(cor, 137);
+  return _fond_gate(cor, 137);
 }

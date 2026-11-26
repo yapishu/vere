@@ -298,6 +298,7 @@
 #   define u3qfu_van_vet  59
 
     u3_weak u3qfu_nest_find(u3_noun van, u3_noun sut, u3_noun ref);
+    u3_weak u3qfu_fond(u3_noun van, u3_noun sut, u3_noun way, u3_noun hyp, c3_y kel);
     u3_weak u3qfu_rest_find(u3_noun van, u3_noun sut, c3_y kel);
     u3_noun u3qfu_rest_key(u3_noun van, u3_noun sut, u3_noun leg);
     void u3qf_test(const c3_c*, u3_noun);

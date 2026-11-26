@@ -1421,6 +1421,56 @@ _check_fond(u3_noun sut, u3_noun wing, u3_weak want)
 }
 
 static void
+_check_toss(u3_noun sut, u3_noun wing, u3_noun mur, u3_weak want)
+{
+  u3_noun foot = u3nt(c3__dry, 0, 1);
+  u3_noun men = u3nc(u3nc(sut, u3k(foot)), 0);
+  u3_noun cor = u3nt(0, u3nt(wing, mur, men), u3nt(0, c3__noun, 0));
+  u3_weak got = u3wfu_toss_137(cor);
+  if ( want == u3_none ) u3_assert(got == u3_none);
+  else {
+    u3_noun out = u3nt(u3k(u3h(want)), u3nc(u3k(u3t(want)), u3k(foot)), 0);
+    u3_assert(got != u3_none && c3y == u3r_sing(got, out));
+    u3z(out); u3z(want); u3z(got);
+  }
+  u3z(cor); u3z(foot);
+}
+
+static void
+_test_toss(void)
+{
+  u3_noun anon = u3nt(c3n, 0, 0);
+  u3_noun wing = u3nt(u3k(anon), u3nc(0, 3), 0);
+  u3_noun atom = u3nt(c3__atom, c3__ud, 0);
+  u3_noun note = u3nc(c3__noun, 0);
+  u3_noun name = u3nt(c3__face, 'x', c3__noun);
+  u3_noun hint = u3nt(c3__hint, u3k(note), name);
+  u3_noun pair = u3nt(c3__cell, c3__noun, hint);
+
+  //  A hint preserves the anonymous step for the named field below it.
+  //
+  name = u3nt(c3__face, 'x', u3k(atom));
+  hint = u3nt(c3__hint, u3k(note), name);
+  _check_toss(u3k(pair), u3k(wing), u3k(atom),
+              u3nc(3, u3nt(c3__cell, c3__noun, hint)));
+  _check_toss(pair, wing, c3__void, u3nc(3, c3__void));
+  _check_toss(c3__noun, u3nc(u3nc(0, 2), 0), u3k(atom),
+              u3nc(2, u3nt(c3__cell, u3k(atom), c3__noun)));
+  _check_toss(u3nc(c3__hold, 0), u3nc(u3k(anon), 0), u3k(atom), u3_none);
+  _check_fond(u3k(atom), u3nc(u3nt(c3n, 3, 0), 0), u3nt(c3n, c3y, 2));
+  _check_fond(c3__void, u3nc(anon, 0), u3_nul);
+  //  Hoon checks axis agreement across arms and requires a nonempty list.
+  //
+  u3_noun leg = u3nc(c3__noun, u3nt(c3__dry, 0, 1));
+  u3_noun men = u3nt(u3k(leg), leg, 0);
+  u3_noun cor = u3nt(0, u3nt(0, u3k(atom), men), u3nt(0, c3__noun, 0));
+  u3_assert(u3_none == u3wfu_toss_135(cor));
+  cor = u3i_edit(cor, u3x_sam_7, u3_nul);
+  u3_assert(u3_none == u3wfu_toss_137(cor));
+  u3z(cor); u3z(note); u3z(atom);
+}
+
+static void
 _test_fond(void)
 {
   u3_noun pair = u3nt(c3__cell, c3__noun, u3nt(c3__face, 'x', c3__noun));
@@ -1667,6 +1717,7 @@ _test_jets(void)
 
   _test_arm_axes();
   _test_fond();
+  _test_toss();
   _test_nest();
   _test_redo();
 
