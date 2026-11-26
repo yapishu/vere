@@ -3,10 +3,9 @@
 /// Comparisons for hash-consing tables off the loom: melt's, and the
 /// home-road set's (soletab.h).
 ///
-/// Members are canonical nouns, and the children of a member cell are
-/// members, so cells compare by mug and child pointers alone: a cell is
-/// looked up only once its children are canonical. Atoms compare by
-/// value. The tables hold no references.
+/// Members are canonical nouns. Two cells with canonical children are
+/// equal if their child pointers agree. The home-road set also checks
+/// the cached mugs. Atoms compare by value. The tables hold no references.
 
 #ifndef U3_CANON_H
 #define U3_CANON_H

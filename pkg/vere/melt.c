@@ -8,10 +8,10 @@
 #include "vortex.h"
 #include "vere.h"
 
-/* _canon_hash(): table hash, from the (cached) mug.
+/* _melt_atom_hash(): table hash, from the atom's mug.
 */
 static inline c3_d
-_canon_hash(u3_noun som)
+_melt_atom_hash(u3_atom som)
 {
   return u3r_mug(som) * 11400714819323198485ULL;
 }
@@ -20,14 +20,36 @@ _canon_hash(u3_noun som)
 */
 #define NAME    _canon_atoms
 #define KEY_TY  u3_atom
-#define HASH_FN _canon_hash
+#define HASH_FN _melt_atom_hash
 #define CMPR_FN _canon_cmp_atoms
 #include "verstable.h"
 
+/* A member's children are canonical. Their ordered handles identify
+** the cell for this pass (Filliâtre and Conchon, "Type-Safe Modular
+** Hash-Consing", https://usr.lmf.cnrs.fr/~jcf/publis/hash-consing2.pdf).
+*/
+static inline c3_d
+_melt_cell_hash(u3_cell som)
+{
+  u3a_cell* cel_u = u3a_to_ptr(som);
+  return vt_hash_integer((c3_d)cel_u->hed * UINT64_C(0x9e3779b97f4a7c15)
+                                          + cel_u->tel);
+}
+
+static inline c3_i
+_melt_cell_eq(u3_cell a, u3_cell b)
+{
+  if ( a == b ) return 1;
+
+  u3a_cell* a_u = u3a_to_ptr(a);
+  u3a_cell* b_u = u3a_to_ptr(b);
+  return a_u->hed == b_u->hed && a_u->tel == b_u->tel;
+}
+
 #define NAME    _canon_cells
 #define KEY_TY  u3_cell
-#define HASH_FN _canon_hash
-#define CMPR_FN _canon_cmp_cells
+#define HASH_FN _melt_cell_hash
+#define CMPR_FN _melt_cell_eq
 #include "verstable.h"
 
 typedef struct {
@@ -53,8 +75,15 @@ _melt_canon_next(_melt_ctx *can_u, u3_noun som)
       return vit_u.data->key;
     }
 
-    cit_u = vt_get(&can_u->cel_u, som);
-    if ( !vt_is_end(cit_u) ) return cit_u.data->key;
+    u3a_cell* cel_u = u3a_to_ptr(som);
+
+    //  A shared cell can end the descent if its children already match.
+    //  For a single reference, one lookup on the way back up suffices.
+    //
+    if ( cel_u->use_w > 1 ) {
+      cit_u = vt_get(&can_u->cel_u, som);
+      if ( !vt_is_end(cit_u) ) return cit_u.data->key;
+    }
 
     if ( can_u->len_w == can_u->siz_w ) {
       can_u->siz_w += c3_min(can_u->siz_w, 1024);
@@ -62,7 +91,7 @@ _melt_canon_next(_melt_ctx *can_u, u3_noun som)
     }
 
     can_u->tac[can_u->len_w++] = u3a_to_off(som) >> u3a_vits;
-    som = u3h(som);
+    som = cel_u->hed;
     continue;
   }
 }
@@ -162,6 +191,16 @@ u3_melt_all(FILE *fil_u, c3_w opt_w)
   vt_init(&can_u.cel_u);
 
   u3m_reclaim();
+
+  //  Size the temporary tables from the live home set. Both grow as
+  //  needed if the hint is small or the reservation fails.
+  //
+  {
+    c3_d vat_d, cel_d, byt_d;
+    u3m_sole_stat(&vat_d, &cel_d, &byt_d);
+    (void)vt_reserve(&can_u.vat_u, vat_d);
+    (void)vt_reserve(&can_u.cel_u, cel_d);
+  }
 
   _melt_canon_ptr(&can_u, &(u3A->roc));
 

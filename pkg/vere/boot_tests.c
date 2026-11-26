@@ -88,6 +88,28 @@ _test_lily()
   }
 }
 
+/* Equal cells with distinct children and different mug cache states
+** acquire one representative. Swapping the children gives another.
+*/
+static void
+_test_melt_cells(void)
+{
+  u3_noun a = u3nc(u3nc(u3i_string("melt test atom"), 7), 42);
+  u3_noun b = u3nc(u3nc(u3i_string("melt test atom"), 7), 42);
+  u3_noun c = u3nc(42, u3k(u3h(b)));
+  u3_noun d;
+
+  (void)u3r_mug(a);
+  u3h_put(u3R->cax.per_p, c3__melt, u3nq(a, u3k(b), b, c));
+  (void)u3_melt_all(0, 0);
+
+  u3_weak val = u3h_git(u3R->cax.per_p, c3__melt);
+  u3_assert(u3_none != val && c3y == u3r_qual(val, &a, &b, &c, &d));
+  u3_assert(a == b && b == c && a != d);
+  u3_assert(u3h(a) == u3t(d) && u3t(a) == 42 && u3h(d) == 42);
+  u3h_del(u3R->cax.per_p, c3__melt);
+}
+
 /* main(): run all test cases.
 */
 int
@@ -96,6 +118,7 @@ main(int argc, char* argv[])
   _setup();
 
   _test_lily();
+  _test_melt_cells();
 
   fprintf(stderr, "test boot: ok\n");
   return 0;
