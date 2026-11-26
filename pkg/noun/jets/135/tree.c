@@ -306,7 +306,7 @@ static u3j_harm _135_pen__ut_crop_a[] = {{".2", u3wfu_crop}, {}};
 static u3j_harm _135_pen__ut_fish_a[] = {{".2", u3wfu_fish}, {}};
 static u3j_harm _135_pen__ut_fond_a[] = {{".2", u3wfu_fond_135}, {}};
 static u3j_harm _135_pen__ut_fuse_a[] = {{".2", u3wfu_fuse}, {}};
-static u3j_harm _135_pen__ut_redo_a[] = {{".2", u3wfu_redo}, {}};
+static u3j_harm _135_pen__ut_redo_a[] = {{".2", u3wfu_redo_135}, {}};
 static u3j_harm _135_pen__ut_mint_a[] = {{".2", u3wfu_mint}, {}};
 static u3j_harm _135_pen__ut_mull_a[] = {{".2", u3wfu_mull}, {}};
 

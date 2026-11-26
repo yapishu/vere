@@ -15,6 +15,27 @@ typedef struct {
   c3_t    seg_t, reg_t;
 } _nest_walk;
 
+static c3_m
+_nest_fun(u3_weak vet)
+{
+  return 141 + c3__dext + ((!!vet) << 8);
+}
+
+u3_weak
+u3qfu_nest_find(u3_noun van, u3_noun sut, u3_noun ref)
+{
+  u3_weak vet = u3r_at(u3qfu_van_vet, van);
+  if ( vet > 1 ) return u3_none;
+  u3_noun key = u3z_key_3(_nest_fun(vet), sut, ref, u3h(van));
+  u3_weak pro = u3z_find(u3z_memo_toss, key);
+  u3z(key);
+  if ( pro != u3_none && pro > 1 ) {
+    u3z(pro);
+    return u3_none;
+  }
+  return pro;
+}
+
 static u3_noun
 _nest_save(u3_noun key, u3_noun pro, c3_t seg_t, c3_t reg_t)
 {
@@ -155,7 +176,7 @@ u3wfu_nest_dext1(u3_noun dext_core)
   }
   else {
     u3_weak vet = u3r_at(u3qfu_van_vet, van);
-    c3_m  fun_m = 141 + c3__dext + ((!!vet) << 8);
+    c3_m  fun_m = _nest_fun(vet);
     c3_t loose_t = (c3n == u3r_at(u3x_sam_2, nest_core));
     u3_noun key = u3z_key_3(fun_m, sut, ref, bat);
     u3_weak pro = u3z_find(u3z_memo_toss, key);

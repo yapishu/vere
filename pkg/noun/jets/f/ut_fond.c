@@ -100,11 +100,7 @@ _fond_hold(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
   }
   if ( c3y == u3qdi_has(fan, item) ) return u3_none;
 
-  u3_noun leg = (135 == walk->kel_y) ? u3k(item) : u3nc(u3k(item), u3_nul);
-  u3_noun key = u3qfu_rest_key(walk->van, sut, leg);
-  u3_weak typ = u3z_find(u3z_memo_toss, key);
-  u3z(key);
-  u3z(leg);
+  u3_weak typ = u3qfu_rest_find(walk->van, sut, walk->kel_y);
   if ( typ == u3_none ) return u3_none;
 
   _fond_seen here = {sut, walk->seen};

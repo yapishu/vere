@@ -1560,6 +1560,59 @@ _check_redo(u3_noun sut, u3_noun ref, u3_noun want)
 }
 
 static void
+_save_redo_leg(u3_noun van, u3_noun sut, u3_noun typ, c3_y kel)
+{
+  u3_noun leg = u3t(sut);
+  u3_noun arg = kel == 135 ? u3k(leg) : u3nc(u3k(leg), 0);
+  u3_noun key = u3qfu_rest_key(van, sut, arg);
+  u3z(u3z_save(u3z_memo_toss, key, u3k(typ)));
+  u3z(arg);
+}
+
+static void
+_test_redo_hold(c3_y kel, c3_t warm, c3_t loop, c3_t rename)
+{
+  u3_noun atom = u3nt(c3__atom, 'u', 0);
+  u3_noun typ = u3nt(c3__cell, u3k(atom), c3__noun);
+  u3_noun leg = u3nc(c3__noun, u3nt(c3__hand, u3k(typ), u3nc(1, 0)));
+  u3_noun sut = u3nc(c3__hold, u3k(leg));
+  u3_noun ref = rename ? u3nt(c3__cell, u3nt(c3__face, 'x', u3k(atom)), c3__noun)
+                       : u3k(typ);
+  u3_noun fan = loop ? u3nt(u3k(leg), 0, 0) : 0;
+  u3_noun arm = u3nt(7, u3nc(1, 8*kel + 4*warm + 2*loop + rename), u3nc(1, 97));
+  u3_noun van = u3nt(u3k(arm), u3k(sut), u3nc(u3nt(fan, 0, c3y), 0));
+  if ( warm ) _save_redo_leg(van, sut, typ, kel);
+  u3_noun cor = u3nt(arm, u3k(ref), van);
+  u3_noun pro = kel == 135 ? u3wfu_redo_135(cor) : u3wfu_redo(cor);
+  u3_noun want = !warm || loop ? 97 : (rename ? ref : sut);
+  u3_assert(c3y == u3r_sing(pro, want));
+  u3z(pro); u3z(cor); u3z(ref); u3z(sut); u3z(leg); u3z(typ); u3z(atom);
+}
+
+//  Both holds expand to cells with their respective holds in the tail.
+//  Revisiting the ordered pair ends that descent. The renamed head still
+//  changes the result of the enclosing hold.
+//
+static void
+_test_redo_recursion(void)
+{
+  u3_noun sut = u3nt(c3__hold, c3__noun, 's');
+  u3_noun ref = u3nt(c3__hold, c3__noun, 'r');
+  u3_noun name = u3nt(c3__face, 'x', c3__noun);
+  u3_noun a = u3nt(c3__cell, c3__noun, u3k(sut));
+  u3_noun b = u3nt(c3__cell, u3k(name), u3k(ref));
+  u3_noun arm = u3nc(1, 97);
+  u3_noun van = u3nt(u3k(arm), u3k(sut), u3nc(u3nt(0, 0, c3y), 0));
+  _save_redo_leg(van, sut, a, 137);
+  _save_redo_leg(van, ref, b, 137);
+  u3_noun cor = u3nt(arm, ref, van);
+  u3_noun pro = u3wfu_redo(cor);
+  u3_noun want = u3nt(c3__cell, name, sut);
+  u3_assert(c3y == u3r_sing(pro, want));
+  u3z(want); u3z(pro); u3z(cor); u3z(a); u3z(b);
+}
+
+static void
 _test_redo(void)
 {
   u3_noun atom = u3nt(c3__atom, 'u', 0);
@@ -1578,12 +1631,31 @@ _test_redo(void)
               u3nt(c3__cell, u3k(yx), c3__void));
   _check_redo(u3k(x), u3nt(c3__face, 'x', u3nt(c3__atom, 'u', 0)), u3k(x));
 
+  // Exactly one alternative intersects the subject. Two matching names
+  // need +dear's tool-stack set and go through the original gate.
+  //
+  u3_noun one = u3nt(c3__atom, 'u', u3nc(0, 1));
+  u3_noun two = u3nt(c3__atom, 'u', u3nc(0, 2));
+  u3_noun named = u3nt(c3__face, 'a', u3k(one));
+  u3_noun other = u3nt(c3__face, 'b', two);
+  _check_redo(u3k(one), u3qf_forq(named, other), u3k(named));
+  _check_redo(u3k(atom), u3qf_forq(named, other), 97);
+  u3z(named); u3z(other); u3z(one);
+
+  _test_redo_recursion();
+  for ( c3_y kel = 135; kel <= 137; kel += 2 ) {
+    _test_redo_hold(kel, 1, 0, 0);
+    _test_redo_hold(kel, 1, 0, 1);
+    _test_redo_hold(kel, 0, 0, 1);
+    _test_redo_hold(kel, 1, 1, 1);
+  }
+
   //  A residual tail runs the whole arm after releasing the completed head.
   //
   _check_redo(u3nt(c3__cell, u3k(x), u3nt(c3__hold, 7, 8)),
               u3nt(c3__cell, u3k(ref), u3k(x)), 97);
   u3_noun deep = u3k(x);
-  for ( c3_w i_w = 0; i_w < 32; ++i_w ) deep = u3nt(c3__face, 'q', deep);
+  for ( c3_w i_w = 0; i_w < 128; ++i_w ) deep = u3nt(c3__face, 'q', deep);
   _check_redo(deep, u3k(ref), 97);
   u3z(ref); u3z(xyx); u3z(yx); u3z(x); u3z(atom);
 }
