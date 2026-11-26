@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 
 #include "allocate.h"
+#include "events.h"
 #include "hashtable.h"
 #include "imprison.h"
 #include "jets.h"
@@ -52,6 +53,15 @@ _cu_atom_to_ref(ur_root_t* rot_u, u3a_atom* vat_u)
       //  caused by an overestimate in [len_d]
       //
       ref = ur_coin_bytes(rot_u, len_d, byt_y);
+
+      // The arena owns the bytes. Keep the forwarding record, including
+      // buf_w[0], and return whole pages inside the payload to the OS.
+      // See Kermany and Petrank on releasing pages during compaction:
+      // https://csaws.cs.technion.ac.il/~erez/Papers/compressor-pldi.pdf
+      if ( vat_u->len_w > (2ULL << u3a_page) ) {
+        u3e_toss(u3a_outa(vat_u->buf_w + 1),
+                 u3a_outa(vat_u->buf_w + vat_u->len_w));
+      }
     } break;
   }
 
