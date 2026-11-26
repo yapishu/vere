@@ -728,23 +728,54 @@ _cell_hash(ur_nref hed, ur_nref tal)
   return x ^ (x >> 33);
 }
 
-/* A slot holds the cell index plus one in its low bits and a hash
-** fingerprint in the unused high bits. Zero marks an empty slot.
+/* Cell handles increase with allocation order. The first possible parent
+** of a cell is the next handle after it. A pair stored there can always
+** be found from its children, so it needs no entry in the hash table.
 */
+static inline uint64_t
+_cell_parent(ur_nref hed, ur_nref tal)
+{
+  ur_nref child = hed > tal ? hed : tal;
+  return ur_nref_tag(child) == ur_icell ? ur_nref_idx(child) + 1 : UINT64_MAX;
+}
+
+// A compact slot keeps the low hash word for both probing and table growth.
+// Larger arena indices fit in a tagged slot without a cached hash.
+static inline uint64_t
+_cell_slot(uint64_t hash, uint64_t index)
+{
+  return index < INT32_MAX
+       ? (hash << 32) | ((index + 1) << 1)
+       : (index << 1) | 1;
+}
+
+static inline uint64_t
+_cell_index(uint64_t slot)
+{
+  return (slot & 1) ? slot >> 1 : ((uint32_t)slot >> 1) - 1;
+}
+
 static void
 _cell_index_grow(ur_cells_t *cells)
 {
-  uint64_t size = cells->index_size ? 2 * cells->index_size : 256;
+  uint64_t size = cells->index_size ? cells->index_size * 2 : 256;
   uint64_t mask = size - 1;
   uint64_t *slots = _oom("cell_index_grow", calloc(size, sizeof(*slots)));
-
-  for ( uint64_t i = 0; i < cells->fill; i++ ) {
-    uint64_t hash = _cell_hash(cells->heads[i], cells->tails[i]);
+  for ( uint64_t i = 0; i < cells->index_size; i++ ) {
+    uint64_t entry = cells->slots[i];
+    if ( !entry ) {
+      continue;
+    }
+    uint64_t hash = entry >> 32;
+    if ( (entry & 1) || mask > UINT32_MAX ) {
+      uint64_t index = _cell_index(entry);
+      hash = _cell_hash(cells->heads[index], cells->tails[index]);
+    }
     uint64_t pos = hash & mask;
     while ( slots[pos] ) {
       pos = (pos + 1) & mask;
     }
-    slots[pos] = (hash & ~mask) | (i + 1);
+    slots[pos] = entry;
   }
   free(cells->slots);
   cells->slots = slots;
@@ -755,38 +786,43 @@ ur_nref
 ur_cons(ur_root_t *r, ur_nref hed, ur_nref tal)
 {
   ur_cells_t *cells = &r->cells;
-  uint64_t hash = _cell_hash(hed, tal);
+  uint64_t index = cells->fill;
+  uint64_t parent = _cell_parent(hed, tal);
+  uint64_t pos = 0, hash = 0;
+  if ( parent != index ) {
+    if (  parent < index
+       && cells->heads[parent] == hed
+       && cells->tails[parent] == tal ) {
+      return ((uint64_t)ur_icell << 62) | parent;
+    }
 
-  while ( 1 ) {
+    hash = _cell_hash(hed, tal);
     uint64_t mask = cells->index_size - 1;
-    uint64_t fingerprint = hash & ~mask;
-    uint64_t pos = hash & mask;
-    uint64_t slot;
-    while ( (slot = cells->slots[pos]) ) {
-      uint64_t i = (slot & mask) - 1;
-      if (  (slot & ~mask) == fingerprint
+    pos = hash & mask;
+    uint64_t entry;
+    while ( (entry = cells->slots[pos]) ) {
+      uint64_t i = _cell_index(entry);
+      if (  ((entry & 1) || (entry >> 32) == (uint32_t)hash)
          && cells->heads[i] == hed
-         && cells->tails[i] == tal )
-      {
+         && cells->tails[i] == tal ) {
         return ((uint64_t)ur_icell << 62) | i;
       }
       pos = (pos + 1) & mask;
     }
-
-    //  Keep one quarter of the slots empty for linear probing.
-    //
-    if ( cells->fill == cells->index_size - cells->index_size / 4 ) {
-      _cell_index_grow(cells);
-      continue;
-    }
-    if ( cells->fill == cells->size ) {
-      ur_cells_grow(cells);
-    }
-    ur_mug mug = ur_mug_both(ur_nref_mug(r, hed), ur_nref_mug(r, tal));
-    ur_nref cel = _cons_unsafe(cells, mug, hed, tal);
-    cells->slots[pos] = fingerprint | (ur_nref_idx(cel) + 1);
-    return cel;
   }
+
+  if ( index == cells->size ) {
+    ur_cells_grow(cells);
+  }
+  ur_mug mug = ur_mug_both(ur_nref_mug(r, hed), ur_nref_mug(r, tal));
+  ur_nref cel = _cons_unsafe(cells, mug, hed, tal);
+  if ( parent != index ) {
+    cells->slots[pos] = _cell_slot(hash, index);
+    if ( ++cells->index_fill == cells->index_size - cells->index_size / 4 ) {
+      _cell_index_grow(cells);
+    }
+  }
+  return cel;
 }
 
 static void

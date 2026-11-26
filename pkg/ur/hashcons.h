@@ -89,6 +89,7 @@ typedef struct ur_dict_s {
 typedef struct ur_cells_s {
   uint64_t *slots;
   uint64_t  index_size;
+  uint64_t  index_fill;
   uint64_t  prev;
   uint64_t  size;
   uint64_t  fill;

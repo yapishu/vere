@@ -1817,9 +1817,16 @@ _test_cons(void)
   for ( unsigned i = 0; i < 1024; i++ ) {
     refs[i] = ur_cons(r, i, leaf);
   }
+  ur_nref chain[1025] = {refs[1023]};
+  for ( unsigned i = 0; i < 1024; i++ ) {
+    chain[i+1] = (i & 1) ? ur_cons(r, refs[i], chain[i])
+                         : ur_cons(r, chain[i], refs[i]);
+  }
   uint64_t count = r->cells.fill;
   for ( unsigned i = 0; i < 1024; i++ ) {
     ret &= (refs[i] == ur_cons(r, i, leaf));
+    ret &= (chain[i+1] == ((i & 1) ? ur_cons(r, refs[i], chain[i])
+                                  : ur_cons(r, chain[i], refs[i])));
   }
   ret &= (leaf == ur_cons(r, 7, 9));
   ret &= (left == ur_cons(r, leaf, 0) && right == ur_cons(r, 0, leaf));
