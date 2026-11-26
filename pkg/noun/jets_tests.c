@@ -1773,6 +1773,32 @@ _test_byte_text(void)
 }
 
 static void
+_test_byte_reverse(void)
+{
+  const c3_y bytes[] = {0, 1, 0x80, 2, 0xff, 0, 3, 0xfe, 4, 5, 0, 6, 7, 8, 9, 10, 11};
+  for ( c3_w len_w = 0; len_w <= sizeof(bytes); len_w++ ) {
+    u3_atom src = u3i_bytes(len_w, bytes);
+    for ( c3_w wid_w = 0; wid_w <= sizeof(bytes) + 1; wid_w++ ) {
+      c3_y expected[sizeof(bytes) + 1] = {0};
+      for ( c3_w i_w = 0; i_w < c3_min(len_w, wid_w); i_w++ ) {
+        expected[wid_w - 1 - i_w] = bytes[i_w];
+      }
+      u3_atom want = u3i_bytes(wid_w, expected);
+      u3_atom got = u3qc_rev(3, wid_w, src);
+      u3_assert(c3y == u3r_sing(want, got));
+      u3z(got);
+      if ( wid_w == u3r_met(3, src) ) {
+        got = u3qc_swp(3, src);
+        u3_assert(c3y == u3r_sing(want, got));
+        u3z(got);
+      }
+      u3z(want);
+    }
+    u3z(src);
+  }
+}
+
+static void
 _test_byte_list(void)
 {
   c3_y bytes[4097];
@@ -1810,6 +1836,7 @@ _test_jets(void)
 
   _test_bulk_trees();
   _test_byte_text();
+  _test_byte_reverse();
   _test_byte_list();
   _test_map_union();
   _test_tree_intersection();

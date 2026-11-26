@@ -17,9 +17,18 @@
       return u3m_bail(c3__fail);
     }
 
+    if ( 3 == boz && len <= 8 ) {
+      if ( !len ) {
+        return 0;
+      }
+      c3_d rev_d = __builtin_bswap64(u3r_chub(0, dat));
+      return u3i_chub(rev_d >> (8 * (8 - len)));
+    }
+
     dat = u3qc_end(boz, len, dat);
     c3_w met = u3r_met(boz, dat);
-    return u3kc_lsh(boz, (len - met), u3kc_swp(boz, dat));
+    dat = u3kc_swp(boz, dat);
+    return (len == met) ? dat : u3kc_lsh(boz, len - met, dat);
   }
 
   u3_noun
