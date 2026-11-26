@@ -330,6 +330,24 @@ _test_hcons(void)
   return ret_i;
 }
 
+// The enclosing tails still decide equality after a proven head is skipped.
+static void
+_test_wrapped_comparisons(u3_noun a, u3_noun b)
+{
+  u3_post cap = u3R->cap_p;
+  u3_noun left = u3nc(0, u3nc(u3k(a), 1));
+  u3_noun same = u3nc(0, u3nc(u3k(b), 1));
+  u3_noun diff = u3nc(0, u3nc(u3k(b), 2));
+
+  u3_assert(c3n == u3r_sing(left, diff));
+  u3_assert(c3n == u3r_sing(diff, left));
+  u3_assert(c3y == u3r_sing(left, same));
+  same = u3i_edit(same, 7, 3);
+  u3_assert(c3n == u3r_sing(left, same));
+  u3_assert(cap == u3R->cap_p);
+  u3z(left); u3z(same); u3z(diff);
+}
+
 // Two independent DAGs represent exponentially large trees. The inner
 // road can compare them but cannot unify their home-road children.
 static void
@@ -352,6 +370,10 @@ _test_shared_comparisons(void)
   u3_noun x = u3nc(u3k(a), 1), y = u3nc(u3k(b), 2);
   u3m_hate(0);
   u3_post cap = u3R->cap_p;
+  _test_wrapped_comparisons(a, b);
+  u3m_hate(0);
+  _test_wrapped_comparisons(a, b);
+  u3z(u3m_love(0));
   u3_assert(c3y == u3r_sing(left, right));
   u3_assert(c3n == u3r_sing(left, wrong));
   u3_assert(c3y == u3r_sing(a, b));

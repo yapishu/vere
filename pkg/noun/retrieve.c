@@ -447,26 +447,68 @@ _cr_sing_cape(u3a_pile* pil_u, _cr_pairs* pairs)
   return c3y;
 }
 
+// Limit the pile to the outermost pair of ancestor cells on the active path.
+// Both stay live until this road exits. The enclosing frames wait on the pile.
+static c3_t
+_cr_sing_region(u3a_pile* pile, u3a_equal_pair* pair)
+{
+  u3_post parent = pile->top_p;
+  while ( parent != u3R->cap_p ) {
+    u3_post child = parent + pile->mov_ws;
+    eqframe* frame = u3to(eqframe, child + pile->off_ws);
+    u3_noun a = frame->a, b = frame->b;
+    if ( a != b && c3y == u3du(a) && c3y == u3du(b) &&
+         c3y == u3a_is_senior(u3R, a) && c3y == u3a_is_senior(u3R, b) ) {
+      pile->top_p = pile->beg_p = parent;
+      *pair = (u3a_equal_pair){c3_min(a, b), c3_max(a, b)};
+      return 1;
+    }
+    parent = child;
+  }
+  return 0;
+}
+
+static inline c3_t
+_cr_sing_known(const u3a_child_road* child, u3a_equal_pair pair)
+{
+  for ( size_t i = 0; i < c3_array_len(child->pairs); i++ ) {
+    if ( child->pairs[i].a == pair.a && child->pairs[i].b == pair.b ) {
+      return 1;
+    }
+  }
+  return child->nested.a == pair.a && child->nested.b == pair.b;
+}
+
 /* _cr_sing(): unifying equality.
 */
 static c3_o
 _cr_sing(u3_noun a, u3_noun b)
 {
   u3a_child_road* child = NULL;
-  u3_noun lhs = a, rhs = b;
+  u3a_equal_pair pair;
   c3_s     ovr_s = 0;
   u3a_cell*  a_u;
   u3a_cell*  b_u;
   eqframe* fam_u;
-  u3a_pile pil_u;
+  u3a_pile pil_u, whole_u;
+  c3_t resumed = 0;
+
+  if ( u3R->par_p &&
+       c3y == u3a_is_senior(u3R, a) && c3y == u3a_is_senior(u3R, b) &&
+       _cr_sing_known((u3a_child_road*)u3R,
+                      (u3a_equal_pair){c3_min(a, b), c3_max(a, b)}) ) {
+    return c3y;
+  }
 
   //  initialize stack control, push arguments onto the stack (none-frame)
   //
   u3a_pile_prep(&pil_u, sizeof(eqframe), alignof(eqframe));
+  whole_u = pil_u;
   fam_u = _cr_sing_push(&pil_u, a, b);
 
   //  loop while arguments are on the stack
   //
+  compare:
   while ( c3n == u3a_pile_done(&pil_u) ) {
     a = fam_u->a;
     b = fam_u->b;
@@ -481,16 +523,14 @@ _cr_sing(u3_noun a, u3_noun b)
         }
         else if ( c3y == u3a_is_atom(a) ) {
           if ( c3n == _cr_sing_atom(a, b) ) {
-            u3R->cap_p = pil_u.top_p;
-            return c3n;
+            goto different;
           }
           else {
             break;
           }
         }
         else if ( c3y == u3a_is_atom(b) ) {
-          u3R->cap_p = pil_u.top_p;
-          return c3n;
+          goto different;
         }
         //  [a] and [b] are cells
         //
@@ -501,8 +541,7 @@ _cr_sing(u3_noun a, u3_noun b)
           //  short-circuiting mug check
           //
           if ( c3n == _cr_sing_mug((u3a_noun*)a_u, (u3a_noun*)b_u) ) {
-            u3R->cap_p = pil_u.top_p;
-            return c3n;
+            goto different;
           }
           //  upgrade none-frame to head-frame, check heads
           //
@@ -548,21 +587,13 @@ _cr_sing(u3_noun a, u3_noun b)
       } break;
     }
 
-    // Give small comparisons a head start before checking for a previous
-    // traversal. Both root addresses stay live and immutable on this road.
-    if ( ++ovr_s == 64 && u3R->par_p &&
-         c3y == u3a_is_senior(u3R, lhs) && c3y == u3a_is_senior(u3R, rhs) ) {
-      if ( lhs > rhs ) {
-        u3_noun tmp = lhs;
-        lhs = rhs;
-        rhs = tmp;
-      }
+    // Probe for a proven subtree once the comparison does substantial work.
+    if ( ++ovr_s == 64 && u3R->par_p && !resumed &&
+         _cr_sing_region(&pil_u, &pair) ) {
       child = (u3a_child_road*)u3R;
-      for ( c3_w i = 0; i < c3_array_len(child->pairs); i++ ) {
-        if ( child->pairs[i].a == lhs && child->pairs[i].b == rhs ) {
-          u3R->cap_p = pil_u.top_p;
-          return c3y;
-        }
+      if ( pil_u.top_p != whole_u.top_p && _cr_sing_known(child, pair) ) {
+        u3R->cap_p = pil_u.top_p;
+        goto resume;
       }
     }
     // On overflow, remember equal subtrees within this comparison as well.
@@ -572,19 +603,38 @@ _cr_sing(u3_noun a, u3_noun b)
       c3_o ret_o = _cr_sing_cape(&pil_u, &pairs);
       _cr_pairs_cleanup(&pairs);
       u3R->cap_p = pil_u.top_p;
-      if ( c3n == ret_o ) return c3n;
+      if ( c3n == ret_o ) goto different;
       break;
     }
 
     fam_u = u3a_pop(&pil_u);
   }
 
-  // Reserve the eight entries for roots that took substantial work to prove.
+  // Keep only expensive, fully checked pairs.
   if ( child && (!ovr_s || ovr_s >= 1024) ) {
-    c3_w slot = child->next_y++ % c3_array_len(child->pairs);
-    child->pairs[slot] = (u3a_equal_pair){lhs, rhs};
+    if ( pil_u.top_p == whole_u.top_p ) {
+      c3_w slot = child->next_y++ % c3_array_len(child->pairs);
+      child->pairs[slot] = pair;
+    }
+    else {
+      child->nested = pair;
+    }
   }
+
+  resume:
+  if ( pil_u.top_p != whole_u.top_p ) {
+    pil_u = whole_u;
+    fam_u = u3a_peek(&pil_u);
+    child = NULL;
+    resumed = 1;
+    goto compare;
+  }
+  u3R->cap_p = whole_u.beg_p;
   return c3y;
+
+  different:
+  u3R->cap_p = whole_u.beg_p;
+  return c3n;
 }
 
 /* u3r_sing(): Yes iff [a] and [b] are the same noun.
