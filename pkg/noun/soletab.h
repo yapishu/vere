@@ -612,6 +612,18 @@ _cs_reserve(_cs_tab* tab_u, c3_d len_d)
   }
 }
 
+/* _cs_reset(): empty the table, keeping its allocation.
+*/
+static void
+_cs_reset(_cs_tab* tab_u)
+{
+  memset(tab_u->lin_u, 0, tab_u->lin_d * sizeof(_cs_line));
+  tab_u->far_t = 0;
+  tab_u->len_d = 0;
+  tab_u->dmx_y = 0;
+  tab_u->flo_d = 0;
+}
+
 /* _cs_clear(): remove everything, calling [fun_f] on each member first.
 */
 static void
@@ -627,11 +639,7 @@ _cs_clear(_cs_tab* tab_u, void (*fun_f)(u3_noun))
       }
     }
   }
-  memset(tab_u->lin_u, 0, tab_u->lin_d * sizeof(_cs_line));
-  tab_u->far_t = 0;
-  tab_u->len_d = 0;
-  tab_u->dmx_y = 0;
-  tab_u->flo_d = 0;
+  _cs_reset(tab_u);
 }
 
 /* _cs_bytes(): memory held.

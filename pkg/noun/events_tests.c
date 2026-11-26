@@ -4,6 +4,7 @@
 
 #include "events.h"
 #include "manage.h"
+#include "noun.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -11,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "./events.c"
@@ -590,10 +592,68 @@ _test_save_dryrun(void)
   fprintf(stderr, "test_save_dryrun: ok\r\n");
 }
 
+/* A saved set with equal mugs keeps every distinct cell searchable.
+** A saved graph with duplicate cells or atoms converges on one handle.
+*/
+static void
+_test_sole_checkpoint(void)
+{
+  c3_c* dir_c = _tmpdir();
+
+  for ( c3_w run_w = 0; run_w < 4; run_w++ ) {
+    pid_t pid_i = fork();
+    u3_assert(pid_i >= 0);
+
+    if ( !pid_i ) {
+      u3m_boot(dir_c, 1 << 26);
+      u3p(u3h_root) har_p = u3R->cax.per_p;
+
+      for ( c3_w i_w = 1; i_w <= 2048; i_w++ ) {
+        if ( !run_w ) {
+          u3_noun cel = u3nc(i_w, 4711);
+          if ( i_w <= 200 ) ((u3a_cell*)u3a_to_ptr(cel))->mug_w = 0x2468ace;
+          u3h_put(har_p, i_w, u3m_sole_try(cel));
+        }
+        else {
+          u3_noun cel = u3h_git(har_p, i_w);
+          u3_assert(u3_none != cel && u3a_is_sole(cel));
+          u3_assert(cel == u3m_sole_find_cell(u3r_mug(cel), i_w, 4711));
+        }
+      }
+
+      if ( run_w >= 2 ) {
+        u3_noun cel = u3h_git(har_p, 3001);
+        u3_assert(u3_none != cel && cel == u3h_git(har_p, 3002));
+        u3_assert(cel == u3m_sole_find_cell(u3r_mug(cel), u3h(cel), u3t(cel)));
+        if ( 3 == run_w ) u3_assert(u3h(cel) == u3m_sole_find_atom(u3h(cel)));
+      }
+      if ( (1 == run_w) || (2 == run_w) ) {
+        for ( c3_w i_w = 0; i_w < 2; i_w++ ) {
+          u3_atom hed = (1 == run_w) ? 47 : u3i_chub(0xf000000000000123ULL);
+          u3_noun cel = u3nc(hed, u3nc(917, 918));
+          (void)u3r_mug(cel);
+          u3h_put(har_p, 3001 + i_w, cel);
+        }
+        u3_assert(u3h_git(har_p, 3001) != u3h_git(har_p, 3002));
+      }
+      u3m_save();
+      _exit(0);
+    }
+
+    c3_i sat_i;
+    u3_assert(pid_i == waitpid(pid_i, &sat_i, 0));
+    u3_assert(WIFEXITED(sat_i) && !WEXITSTATUS(sat_i));
+  }
+  _rmtree(dir_c);
+  c3_free(dir_c);
+}
+
 int
 main(int argc, char* argv[])
 {
   (void)argc; (void)argv;
+
+  _test_sole_checkpoint();
 
 #ifdef VERE64
   _setup(32);   //  4 GiB virtual loom (8-byte words)

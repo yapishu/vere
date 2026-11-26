@@ -162,6 +162,7 @@ static c3_h u3m_Ford_fresh_road_depth_h = 0;
 
 static void _cm_vis_leap(void);
 static void _cm_sole_reset(void);
+static void _cm_sole_ream(c3_t boot_t);
 
 #if 0
 /* _cm_punt(): crudely print trace.
@@ -3138,7 +3139,7 @@ u3m_boot(c3_c* dir_c, size_t len_i)
   /* Rebuild the home-road hashcons set.
   */
   if ( c3n == nuu_o ) {
-    u3m_sole_ream();
+    _cm_sole_ream(1);
   }
 
   /* Initialize the jet system.
@@ -4423,13 +4424,13 @@ _cm_sole_ream_key(u3_noun kev, void* ptr_v)
   _cm_sole_canon_ptr(ptr_v, &kev_u->hed);
 }
 
-/* u3m_sole_ream(): rebuild the home-road set from persistent tables,
-**                  canonicalizing them in place.
-**
-**   on a ship whose tables are already canonical, this writes nothing.
+static c3_t _cm_sole_build(u3p(u3h_root)* roo_p);
+
+/* _cm_sole_ream(): rebuild the set from the home road's persistent
+**   tables. A canonical checkpoint needs no writes to the loom.
 */
-void
-u3m_sole_ream(void)
+static void
+_cm_sole_ream(c3_t boot_t)
 {
   _cm_walk       wal_u;
   struct timeval bef_u, aft_u;
@@ -4511,13 +4512,20 @@ u3m_sole_ream(void)
     _cs_bul_t = !u3R->hcz_w;  //  no saved size: fill in bulk
     _cm_sole_u.pat_y = 0;
 
-    for ( i_w = 0; i_w < 7; i_w++ ) {
-      _cm_sole_u.cls_y = cls_y[i_w];
-      u3h_walk_with(roo_p[i_w],
-                    ( 2 == i_w ) ? _cm_sole_ream_key : _cm_sole_ream_kev,
-                    &wal_u);
-      u3e_Meter.hcc_d[i_w] = _cm_sole_u.cel_u.len_d - pre_d;
-      pre_d = _cm_sole_u.cel_u.len_d;
+    //  At boot the home road is quiescent. The measuring walk also
+    //  records the origin of each member as it canonicalizes the roots.
+    //
+    c3_t build_t = boot_t && u3R->hcz_w && !_cm_sole_u.pag_h &&
+                   !(u3C.wag_h & u3o_debug_cpu);
+    if ( !build_t || !_cm_sole_build(roo_p) ) {
+      for ( i_w = 0; i_w < 7; i_w++ ) {
+        _cm_sole_u.cls_y = cls_y[i_w];
+        u3h_walk_with(roo_p[i_w],
+                      ( 2 == i_w ) ? _cm_sole_ream_key : _cm_sole_ream_kev,
+                      &wal_u);
+        u3e_Meter.hcc_d[i_w] = _cm_sole_u.cel_u.len_d - pre_d;
+        pre_d = _cm_sole_u.cel_u.len_d;
+      }
     }
 
     _cm_sole_u.cls_y = 0;
@@ -4558,6 +4566,14 @@ u3m_sole_ream(void)
               mil_d);
     }
   }
+}
+
+/* u3m_sole_ream(): see manage.h.
+*/
+void
+u3m_sole_ream(void)
+{
+  _cm_sole_ream(0);
 }
 
 /* _cm_sole_swap(): point [*som] at its canonical equal [can] (transferred).
@@ -4655,6 +4671,8 @@ _cm_vis_bit_clr(c3_w* map_w, c3_w idx_w)
 {
   map_w[idx_w / u3a_word_bits] &= ~((c3_w)1 << (idx_w % u3a_word_bits));
 }
+
+#include "solebuild.inc"
 
 /* u3m_yard_size(): see manage.h.
 */
