@@ -1803,6 +1803,28 @@ _test_bsr(void)
        & _test_bsr_token();
 }
 
+/* A byte string and its integer share one canonical atom. */
+static int
+_test_coin(void)
+{
+  ur_root_t *r = ur_root_init();
+  uint8_t bytes[] = {0x80, 0x91, 0xa2, 0xb3, 0xc4, 0xd5, 0xe6, 0x37, 0};
+  uint64_t val = 0;
+  int ret = (0 == ur_coin_bytes(r, 0, NULL));
+
+  for ( unsigned i = 0; i < 8; i++ ) {
+    val |= (uint64_t)bytes[i] << (8 * i);
+    ret &= (ur_coin_bytes(r, i + 1, bytes) == ur_coin64(r, val));
+  }
+  ret &= (ur_coin_bytes(r, sizeof(bytes), bytes) == ur_coin64(r, val));
+  bytes[7] |= 0x80;
+  ret &= (ur_coin_bytes(r, sizeof(bytes), bytes) == ur_coin64(r, val | (UINT64_C(1) << 63)));
+  memset(bytes, 0, sizeof(bytes));
+  ret &= (0 == ur_coin_bytes(r, sizeof(bytes), bytes));
+  ur_root_free(r);
+  return ret;
+}
+
 /* Distinct ordered pairs retain their handles and noun mugs across growth. */
 static int
 _test_cons(void)
@@ -2056,6 +2078,11 @@ _test_ur(void)
 
   if ( !_test_bsr() ) {
     fprintf(stderr, "ur test bsr failed\r\n");
+    ret = 0;
+  }
+
+  if ( !_test_coin() ) {
+    fprintf(stderr, "ur test coin failed\r\n");
     ret = 0;
   }
 

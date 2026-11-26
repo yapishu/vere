@@ -658,16 +658,12 @@ ur_coin_bytes(ur_root_t *r, uint64_t len, uint8_t *byt)
     len--;
   }
 
-  //  produce a direct atom if possible
-  //
-  if ( 62 >= ur_met0_bytes_unsafe(len, byt) ) {
-    uint64_t i, direct = 0;
-
-    for ( i = 0; i < len; i++ ) {
-      direct |= byt[i] << (8 * i);
+  if ( len <= sizeof(uint64_t) ) {
+    uint64_t val = 0;
+    for ( uint64_t i = 0; i < len; i++ ) {
+      val |= (uint64_t)byt[i] << (8 * i);
     }
-
-    return (ur_nref)direct;
+    return ur_coin64(r, val);
   }
   else {
     uint8_t *copy = _oom("coin_bytes", malloc(len));
