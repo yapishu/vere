@@ -4,27 +4,13 @@
 #include "jets/q.h"
 #include "jets/w.h"
 
-#include "noun.h"
+#include "tree_find.h"
 
 u3_noun
 u3qdi_has(u3_noun a,
           u3_noun b)
 {
-  if ( u3_nul == a ) {
-    return c3n;
-  }
-  else {
-    u3_noun n_a, lr_a;
-    u3x_cell(a, &n_a, &lr_a);
-
-    if ( (c3y == u3r_sing(b, n_a)) ) {
-      return c3y;
-    }
-    else {
-      return ( c3y == u3qc_gor(b, n_a) ) ? u3qdi_has(u3h(lr_a), b)
-                                         : u3qdi_has(u3t(lr_a), b);
-    }
-  }
+  return __(_tree_find(a, b, 0) != u3_none);
 }
 
 u3_noun

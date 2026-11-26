@@ -100,6 +100,8 @@
     u3_noun u3qdb_dif(u3_noun, u3_noun);
     u3_noun u3qdb_gas(u3_noun, u3_noun);
     u3_noun u3qdb_get(u3_noun, u3_noun);
+    // Return the borrowed value or u3_none. Both arguments are retained.
+    u3_weak u3qdb_git(u3_noun, u3_noun);
     u3_noun u3qdb_has(u3_noun, u3_noun);
     u3_noun u3qdb_int(u3_noun, u3_noun);
     u3_noun u3qdb_key(u3_noun);

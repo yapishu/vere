@@ -4,29 +4,21 @@
 #include "jets/q.h"
 #include "jets/w.h"
 
-#include "noun.h"
+#include "tree_find.h"
+
+u3_weak
+u3qdb_git(u3_noun a, u3_noun b)
+{
+  u3_weak item = _tree_find(a, b, 1);
+  return (u3_none == item) ? u3_none : u3t(item);
+}
 
 u3_noun
 u3qdb_get(u3_noun a,
           u3_noun b)
 {
-  if ( u3_nul == a ) {
-    return u3_nul;
-  }
-  else {
-    u3_noun n_a, lr_a;
-    u3_noun pn_a, qn_a;
-    u3x_cell(a, &n_a, &lr_a);
-    u3x_cell(n_a, &pn_a, &qn_a);
-
-    if ( (c3y == u3r_sing(b, pn_a)) ) {
-      return u3nc(u3_nul, u3k(qn_a));
-    }
-    else {
-      return ( c3y == u3qc_gor(b, pn_a) ) ? u3qdb_get(u3h(lr_a), b)
-                                          : u3qdb_get(u3t(lr_a), b);
-    }
-  }
+  u3_weak value = u3qdb_git(a, b);
+  return (u3_none == value) ? u3_nul : u3nc(u3_nul, u3k(value));
 }
 
 u3_noun
@@ -41,18 +33,10 @@ u3_weak
 u3kdb_get(u3_noun a,
           u3_noun b)
 {
-  u3_noun c = u3qdb_get(a, b);
+  u3_weak value = u3qdb_git(a, b);
+  if ( u3_none != value ) value = u3k(value);
   u3z(a); u3z(b);
-
-  if ( c3n == u3du(c) ) {
-    u3z(c);
-    return u3_none;
-  }
-  else {
-    u3_noun pro = u3k(u3t(c));
-    u3z(c);
-    return pro;
-  }
+  return value;
 }
 
 u3_noun

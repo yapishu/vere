@@ -570,13 +570,10 @@ _cj_parent(u3_noun par)
 static u3_weak
 _cj_reg_find(u3_noun reg, u3_noun cor)
 {
-  u3_noun rut = u3h(reg),
-          pas = u3t(reg),
-          rum = u3qdb_get(rut, u3t(cor));
-  if ( u3_nul != rum ) {
-    u3_noun loc = u3k(u3t(rum));
-    u3z(rum);
-    return loc;
+  u3_noun pas = u3t(reg);
+  u3_weak loc = u3qdb_git(u3h(reg), u3t(cor));
+  if ( u3_none != loc ) {
+    return u3k(loc);
   }
   else {
     while ( u3_nul != pas ) {
@@ -588,12 +585,10 @@ _cj_reg_find(u3_noun reg, u3_noun cor)
       if ( u3_none != par ) {
         pel = _cj_parent(par);
         if ( u3_none != pel ) {
-          u3_noun nit = u3qdb_get(lol, pel);
+          loc = u3qdb_git(lol, pel);
           u3z(pel);
-          if ( u3_nul != nit ) {
-            u3_noun loc = u3k(u3t(nit));
-            u3z(nit);
-            return loc;
+          if ( u3_none != loc ) {
+            return u3k(loc);
           }
         }
       }
@@ -821,7 +816,7 @@ _cj_nail(u3_noun loc, u3_noun axe,
     ret_o = c3n;
   }
   else {
-    u3_weak inx = u3kdb_get(u3k(hap), u3k(axe));
+    u3_weak inx = u3qdb_git(hap, axe);
     if ( u3_none == inx ) {
       ret_o = c3n;
     }
@@ -1024,15 +1019,14 @@ _cj_hook_in(u3_noun     cor,
   tem = u3i_string(tam_c);
   while ( 1 ) {
     u3x_trel(loc, &pat, &nam, &huc);
-    got = u3qdb_get(huc, tem);
-    if ( u3_nul != got ) {
+    got = u3qdb_git(huc, tem);
+    if ( u3_none != got ) {
       c3_l axe_l;
       u3_noun pro, fol;
       u3j_core* cop_u;
 
       u3z(tem);
-      fol = u3k(u3t(got));
-      u3z(got);
+      fol = u3k(got);
       axe_l = _cj_axis(fol);
       if ( 0 == axe_l ) {
         u3t_off(glu_o);
@@ -1054,7 +1048,7 @@ _cj_hook_in(u3_noun     cor,
         //
         u3t_off(glu_o);
         if ( (c3n == jet_o) ||
-             (u3_none == (inx_l = u3kdb_get(u3k(hap), axe_l))) ||
+             (u3_none == (inx_l = u3qdb_git(hap, axe_l))) ||
              (u3_none == (pro = _cj_kick_z(cor,
                                            cop_u,
                                            &cop_u->arm_u[inx_l],
@@ -1248,10 +1242,9 @@ _cj_hank_fill(u3j_hank* han_u, u3_noun tam, u3_noun cor)
 
   while ( 1 ) {
     u3x_trel(loc, &pat, &nam, &huc);
-    got = u3qdb_get(huc, tam);
-    if ( u3_nul != got ) {
-      u3_noun fol = u3k(u3t(got));
-      u3z(got);
+    got = u3qdb_git(huc, tam);
+    if ( u3_none != got ) {
+      u3_noun fol = u3k(got);
       sit_u->bat   = u3k(u3h(cor));
       sit_u->loc   = u3k(loc);
       sit_u->fin_p = _cj_cast(cor, loc);
@@ -1337,7 +1330,7 @@ u3j_kick(u3_noun cor, u3_noun axe)
 
       u3x_qual(act, &jax_l, &hap, &bal, &jit);
 
-      if ( u3_none == (inx = u3kdb_get(u3k(hap), u3k(axe))) ) {
+      if ( u3_none == (inx = u3qdb_git(hap, axe)) ) {
         u3t_off(glu_o);
         {
           c3_o pof_o = __(u3C.wag_h & u3o_debug_cpu);

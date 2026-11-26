@@ -1200,6 +1200,29 @@ _test_bulk_trees(void)
 }
 
 static void
+_test_tree_find(void)
+{
+  u3_noun a = u3i_chub(UINT64_C(0xc001d00d0000b33f));
+  u3_noun b = u3i_chub(UINT64_C(0xc001d00d00012a3e));
+  u3_assert(u3r_mug(a) == u3r_mug(b));
+  u3_noun map = u3kdb_put(u3kdb_put(0, u3k(a), 0), u3k(b), u3k(b));
+  u3_assert(0 == u3qdb_git(map, a));
+  u3_assert(u3_none == u3qdb_git(map, 0));
+  u3_assert(c3y == u3qdb_has(map, b));
+
+  // The result owns its value after both the map and the key are released.
+  u3_noun got = u3kdb_get(map, b);
+  u3_assert(u3r_chub(0, got) == UINT64_C(0xc001d00d00012a3e));
+  u3z(got);
+
+  // An equal root returns before its branches are inspected.
+  u3_noun set = u3nc(a, 17);
+  u3_noun key = u3i_chub(UINT64_C(0xc001d00d0000b33f));
+  u3_assert(c3y == u3qdi_has(set, key));
+  u3z(set); u3z(key);
+}
+
+static void
 _test_put_rotation(void)
 {
   // An equal-key put still rotates an out-of-order ancestor.
@@ -1464,6 +1487,7 @@ _test_jets(void)
   _test_tree_intersection();
   _test_bif();
   _test_put_rotation();
+  _test_tree_find();
 
   // Both alternating triples are longest. The earlier right endpoint wins.
   u3_noun left = u3nc(1, u3nq(2, 1, 2, 0));
