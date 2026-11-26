@@ -160,9 +160,10 @@
         void
         u3x_vmean(u3_noun a, u3r_mean_pair pairs[], c3_z len_z);
 
-#       define u3x_mean(a, ...) ({                                      \
-          u3r_mean_pair _pairs[] = {__VA_ARGS__};                       \
-          u3x_vmean(a, _pairs, sizeof(_pairs) / sizeof(u3r_mean_pair)); \
+#       define u3x_mean(a, ...) ({                               \
+          if ( c3n == u3r_mean(a, __VA_ARGS__) ) {               \
+            u3m_bail(c3__exit);                                  \
+          }                                                      \
         })
 
 #endif /* ifndef U3_XTRACT_H */

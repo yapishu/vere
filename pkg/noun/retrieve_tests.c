@@ -11,6 +11,32 @@ _setup(void)
   u3m_pave(c3y);
 }
 
+/* _test_mean(): share prefixes and publish fields in tree order.
+*/
+static void
+_test_mean(void)
+{
+  u3_noun a, b, c, d, e;
+  u3_noun tree = u3nc(u3nc(4, 5), u3nc(6, u3nc(14, 15)));
+
+  u3_assert(c3y == u3r_mean(tree, {4, &a}, {5, &b}, {6, &c},
+                                  {14, &d}, {15, &e}));
+  u3_assert(4 == a && 5 == b && 6 == c && 14 == d && 15 == e);
+
+  //  Axis 12 descends through the atom at 6. Only earlier fields are set.
+  //
+  c = d = u3_none;
+  u3_assert(c3n == u3r_mean(tree, {4, &a}, {5, &a}, {12, &c}, {7, &d}));
+  u3_assert(5 == a && u3_none == c && u3_none == d);
+
+  for ( c3_w i = 0; i < 7; i++ ) {
+    tree = u3nc(tree, 0);
+  }
+  u3_assert(c3y == u3r_mean(tree, {512, &a}, {513, &b}));
+  u3_assert(4 == a && 5 == b);
+  u3z(tree);
+}
+
 /* _test_mug(): spot check u3r_mug hashes.
 */
 static void
@@ -1913,6 +1939,7 @@ main(int argc, char* argv[])
 
   _test_mug();
   _test_at();
+  _test_mean();
   _test_bit_byte();
   _test_bytes();
   _test_words();

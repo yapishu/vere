@@ -128,9 +128,60 @@
         c3_o
         u3r_vmean(u3_noun a, u3r_mean_pair pairs[], c3_z len_z);
 
+        /* u3r_mean_paths(): specialize short axis lists in native callers.
+        ** Left-aligning the axes gives each subtree an interval at max_depth.
+        ** Disjoint intervals in increasing order admit a single head-first walk.
+        ** With literal axes the compiler folds the bounds and branch choices.
+        */
+        static inline __attribute__((always_inline)) c3_o
+        u3r_mean_paths(u3_noun a, u3r_mean_pair* pairs, c3_z count)
+        {
+          enum { max_depth = 6 };
+          unsigned end = 0;
+
+          if ( count > 5 ) {
+            return u3r_vmean(a, pairs, count);
+          }
+          for ( c3_z i = 0; i < count; i++ ) {
+            c3_w axis = pairs[i].axe_w;
+            if ( !axis || axis >= (2u << max_depth) ) {
+              return u3r_vmean(a, pairs, count);
+            }
+            unsigned shift = max_depth + 1 - c3_bits_word(axis);
+            unsigned first = (unsigned)axis << shift;
+            if ( first < end ) {
+              return u3r_vmean(a, pairs, count);
+            }
+            end = first + (1u << shift);
+          }
+
+          u3_noun path[max_depth + 1] = {a};
+          unsigned last = 0;
+          for ( c3_z i = 0; i < count; i++ ) {
+            unsigned axis = pairs[i].axe_w;
+            unsigned depth = c3_bits_half(axis) - 1;
+            unsigned first = axis << (max_depth - depth);
+            //  Restart at the common ancestor of this axis and the last.
+            //
+            unsigned d = i ? max_depth - c3_bits_half(last ^ first) : 0;
+            u3_noun value = path[d];
+            while ( d < depth ) {
+              if ( c3n == u3a_is_cell(value) ) {
+                return c3n;
+              }
+              d++;
+              value = (first >> (max_depth - d)) & 1 ? u3a_t(value) : u3a_h(value);
+              path[d] = value;
+            }
+            *pairs[i].som = value;
+            last = first;
+          }
+          return c3y;
+        }
+
 #       define u3r_mean(a, ...) ({                                      \
           u3r_mean_pair _pairs[] = {__VA_ARGS__};                       \
-          u3r_vmean(a, _pairs, sizeof(_pairs) / sizeof(u3r_mean_pair)); \
+          u3r_mean_paths(a, _pairs, c3_array_len(_pairs));              \
         })
 
       /* u3r_mug_both(): Join two mugs.
