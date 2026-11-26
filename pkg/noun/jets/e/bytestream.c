@@ -73,13 +73,7 @@ _qe_bytestream_rip_octs(u3_atom p_octs, u3_atom q_octs) {
     rip = u3nc(0x0, rip);
   }
 
-  buf_y += len_w - 1;
-
-  while (len_w--) {
-    rip = u3nc(*(buf_y--), rip);
-  }
-
-  return rip;
+  return u3i_byte_list(len_w, buf_y, rip);
 }
 
 u3_noun

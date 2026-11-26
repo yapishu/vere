@@ -155,6 +155,11 @@
           u3_atom
           u3i_string(const c3_c* a_c);
 
+        /* u3i_byte_list(): prepend bytes in buffer order to an owned tail.
+        */
+          u3_noun
+          u3i_byte_list(c3_w len_w, const c3_y* byt_y, u3_noun tel);
+
         /* u3i_tape(): from a C string, to a list of bytes.
         */
           u3_noun

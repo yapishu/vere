@@ -772,6 +772,41 @@ u3i_string(const c3_c* a_c)
   return u3i_bytes(strlen(a_c), (c3_y *)a_c);
 }
 
+/* u3i_byte_list(): prepend bytes in buffer order to an owned tail.
+*/
+u3_noun
+u3i_byte_list(c3_w len_w, const c3_y* byt_y, u3_noun tel)
+{
+  while ( len_w ) {
+    c3_w use_w = c3_min(len_w, u3R->cel.hav_w);
+    if ( !use_w ) {
+      tel = u3nc(byt_y[--len_w], tel);
+      continue;
+    }
+
+    // Pop a run from the cell cache. Byte heads need no further allocation.
+    // See Bonwick and Adams, section 3.1, on arrays of free objects:
+    // https://www.usenix.org/legacy/event/usenix01/full_papers/bonwick/bonwick.pdf
+    u3t_on(mal_o);
+    u3_post* cel_p = u3to(u3_post, u3R->cel.cel_p) + u3R->cel.hav_w;
+    u3R->cel.hav_w -= use_w;
+#ifdef U3_CPU_DEBUG
+    u3R->pro.cel_d += use_w;
+#endif
+    do {
+      u3_post   pos_p = *--cel_p;
+      u3a_cell* cel_u = u3to(u3a_cell, pos_p);
+      cel_u->use_w = 1;
+      cel_u->mug_w = 0;
+      cel_u->hed = byt_y[--len_w];
+      cel_u->tel = tel;
+      tel = u3a_to_pom(pos_p);
+    } while ( --use_w );
+    u3t_off(mal_o);
+  }
+  return tel;
+}
+
 /* u3i_tape(): from a C string, to a list of bytes.
 */
 u3_noun

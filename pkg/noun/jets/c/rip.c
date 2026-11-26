@@ -94,6 +94,13 @@ _block_rip(u3_atom bloq, u3_atom b)
 
   c3_g bloq_g = bloq;
 
+  if ( 3 == bloq_g ) {
+    c3_w        wor_w;
+    const c3_y* byt_y = (const c3_y*)u3r_word_buffer(&b, &wor_w);
+    STATIC_ASSERT(c3_endian == c3_endian_little, "");
+    return u3i_byte_list(u3r_met(3, b), byt_y, u3_nul);
+  }
+
   /*
     This is a fast-path for the case where all the resulting blocks will
     fit in (u3a_word_bits-1)-bit direct atoms.

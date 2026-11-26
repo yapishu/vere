@@ -8,8 +8,7 @@
 static void
 _setup(void)
 {
-  u3m_init(1 << 20);
-  u3m_pave(c3y);
+  u3m_boot_lite(1 << 24);
 }
 
 static inline c3_i
@@ -1773,6 +1772,30 @@ _test_byte_text(void)
   u3z(lis); u3z(txt); u3z(exp);
 }
 
+static void
+_test_byte_list(void)
+{
+  c3_y bytes[4097];
+  for ( size_t i = 0; i < sizeof(bytes); i++ ) {
+    bytes[i] = (c3_y)i;
+  }
+
+  // The nonempty tail stays shared across a cell-cache refill.
+  u3m_hate(0);
+  u3_noun tail = u3nc(42, 7);
+  u3_noun list = u3i_byte_list(sizeof(bytes), bytes, u3k(tail));
+  u3_noun next = list;
+  for ( size_t i = 0; i < sizeof(bytes); i++ ) {
+    u3_assert(bytes[i] == u3h(next));
+    next = u3t(next);
+  }
+  u3_assert(tail == next);
+  u3z(list);
+  u3_assert(42 == u3h(tail));
+  u3z(tail);
+  u3z(u3m_love(0));
+}
+
 static c3_i
 _test_jets(void)
 {
@@ -1787,6 +1810,7 @@ _test_jets(void)
 
   _test_bulk_trees();
   _test_byte_text();
+  _test_byte_list();
   _test_map_union();
   _test_tree_intersection();
   _test_bif();
