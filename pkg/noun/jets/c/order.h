@@ -20,12 +20,18 @@ _order_alpha(u3_atom a, u3_atom b)
   return cmp_i ? __(cmp_i < 0) : __(len_a <= len_b);
 }
 
-/* Equal heads leave only the tails to compare. Testing equality of
-** both whole cells here would revisit the suffix at every step.
+/* Whole-noun equality can recognize a shared graph in one walk even
+** when its cells cannot be unified. Once a difference is known, only
+** the first unequal field determines the order.
 */
 static inline c3_o
 _order_nouns(u3_noun a, u3_noun b, c3_t alpha_t)
 {
+  if ( a != b && c3y == u3du(a) && c3y == u3du(b) &&
+       c3y == u3r_sing(a, b) ) {
+    return c3y;
+  }
+
   while ( a != b ) {
     if ( c3y == u3ud(a) ) {
       if ( c3n == u3ud(b) ) return c3y;
