@@ -91,16 +91,20 @@ static c3_w
 _jam_intern(_jam_classes* c, c3_w left, c3_w right)
 {
   c3_t small = !right && left < 256;
-  c3_w slot = 0;
+  c3_w hash = 0, slot = 0;
   if ( small ) {
     if ( c->small[left] ) return c->small[left];
   }
   else {
     c3_w mask = c->shape_slots - 1;
-    slot = _jam_hash(left, right) & mask;
+    hash = _jam_hash(left, right);
+    slot = hash & mask;
     while ( c->shapes[slot] ) {
-      c3_w id = c->shapes[slot];
-      if ( _jam_same(&c->nodes[id - 1], left, right) ) return id;
+      c3_w entry = c->shapes[slot];
+      if ( !((entry ^ hash) & ~mask) ) {
+        c3_w id = entry & mask;
+        if ( _jam_same(&c->nodes[id - 1], left, right) ) return id;
+      }
       slot = (slot + 1) & mask;
     }
   }
@@ -115,16 +119,20 @@ _jam_intern(_jam_classes* c, c3_w left, c3_w right)
   c3_w id = ++c->count;
   c->nodes[id - 1] = (_jam_class){left, right, UINT64_MAX};
   if ( small ) c->small[left] = id;
-  else c->shapes[slot] = id;
+  // IDs fit below the table size. Spare high bits reject another hash
+  // before following its class ID into the node array.
+  // https://abseil.io/about/design/swisstables
+  else c->shapes[slot] = (hash & ~(c->shape_slots - 1)) | id;
   if ( id == c->shape_slots - c->shape_slots / 4 ) {
     c3_w size = _jam_double(c->shape_slots, sizeof(c3_w));
     c3_w* slots = u3a_calloc(size, sizeof(*slots));
     for ( c3_w i = 0; i < id; ++i ) {
       const _jam_class* n = &c->nodes[i];
       if ( !n->right && n->left < 256 ) continue;
-      c3_w j = _jam_hash(n->left, n->right) & (size - 1);
+      c3_w h = _jam_hash(n->left, n->right);
+      c3_w j = h & (size - 1);
       while ( slots[j] ) j = (j + 1) & (size - 1);
-      slots[j] = i + 1;
+      slots[j] = (h & ~(size - 1)) | (i + 1);
     }
     _jam_dispose(c->shapes, c->local_shapes);
     c->shapes = slots;
