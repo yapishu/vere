@@ -2626,6 +2626,33 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
     do_snoc:
     do_snol: {
       c3_t keep = pog[ip_w - 1] == SNOC;
+      // A mold binds its normalized value, compares it with an input field
+      // for unification, then returns the value. The field belongs to the
+      // context, so neither temporary subject needs a cell.
+      if ( pog[ip_w] == FABK || pog[ip_w] == FASK ) {
+        c3_w cursor = ip_w + 1;
+        c3_w axis = pog[ip_w] == FABK ? pog[cursor++] : _n_resh(pog, &cursor);
+        if ( axis >= 3 && pog[cursor] == SWAP && pog[cursor + 1] == HEAD &&
+             pog[cursor + 2] == SAME && pog[cursor + 3] == SNOL &&
+             pog[cursor + 4] == FABL && pog[cursor + 5] == 6 ) {
+          c3_w bit = 1U << (u3x_dep(axis) - 1);
+          if ( axis & bit ) {
+            ip_w = cursor + 6;
+            x = _n_pep(mov, off);
+            top = _n_peek(off);
+            u3_noun context = *top;
+            c3_w path = bit | (axis & (bit - 1));
+            o = path < 8 ? _n_proj_small(path, context) : _n_path3(path, context);
+            (void)u3r_sing(x, o);
+            if ( keep ) _n_push(mov, off, x);
+            else {
+              *top = x;
+              u3z(context);
+            }
+            BURN();
+          }
+        }
+      }
       // [value context] followed by [literal subject] produces one trel.
       // The literal table and the result own both operands of a %fast
       // hint that immediately registers the constructed core.

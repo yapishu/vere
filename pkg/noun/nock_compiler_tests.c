@@ -1049,6 +1049,26 @@ _bind_cases(void)
   _check(12, u3nt(8, _lit(42), u3nc(_slot(2), _slot(u3i_chub(1ULL << 36)))));
   _check(12, u3nt(8, _slot(2), _lit(42)));
 
+  // Discarding the boolean still unifies equal children of the two roots.
+  u3m_hate(0);
+  u3_noun a = u3nt(23, 7, 9), b = u3nt(23, 7, 9);
+  u3_assert(u3t(a) != u3t(b));
+  u3_noun eq = u3nt(5, _slot(7), _slot(2));
+  u3_noun norm = u3nt(8, _slot(2), u3nt(8, eq, _slot(6)));
+  u3_noun normalized = u3n_nock_on(u3nc(u3k(a), u3k(b)), norm);
+  u3_assert(u3t(a) == u3t(b) && c3y == u3r_sing(normalized, a));
+  u3z(normalized); u3z(a); u3z(b);
+  u3z(u3m_love(0));
+
+  c3_w fields[] = { 7, 14, 770 };
+  for ( c3_w i = 0; i < c3_array_len(fields); i++ ) {
+    u3_noun compare = u3nt(5, _slot(fields[i]), _slot(2));
+    u3_noun f = u3nt(8, _lit(42), u3nt(8, compare, _slot(6)));
+    _check(_numbered(10, 1), u3k(f));
+    _check(_numbered(10, 1), u3nc(u3k(f), _slot(1)));
+    _check(42, f);
+  }
+
   // A gate receives its new sample. The binding's slog precedes the slog
   // in the arm, including when selecting the replacement later bails.
   u3_noun arm = u3nt(11, u3nc(c3__slog, _lit(82)), _slot(6));
