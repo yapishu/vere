@@ -495,28 +495,15 @@ ur_atoms_grow(ur_atoms_t *atoms)
 void
 ur_cells_grow(ur_cells_t *cells)
 {
-  uint64_t  prev = cells->prev;
-  uint64_t  size = cells->size;
-  uint64_t  next = prev + size;
-  ur_nref *heads = cells->heads;
-  ur_nref *tails = cells->tails;
-  ur_mug   *mugs = cells->mugs;
-
-  cells->heads = _oom("cells_grow", malloc(next * ( sizeof(*cells->heads)
-                                                  + sizeof(*cells->heads)
-                                                  + sizeof(*cells->mugs) )));
-  cells->tails = (void*)((char*)cells->heads + (next * sizeof(*cells->heads)));
-  cells->mugs  = (void*)((char*)cells->tails + (next * sizeof(*cells->tails)));
-
-  if ( heads ) {
-    memcpy(cells->heads, heads, size * (sizeof(*heads)));
-    memcpy(cells->tails, tails, size * (sizeof(*tails)));
-    memcpy(cells->mugs,   mugs, size * (sizeof(*mugs)));
-
-    free(heads);
+  uint64_t next = cells->prev + cells->size;
+  if ( next < cells->size || next > SIZE_MAX / sizeof(*cells->heads) ) {
+    _oom("cells_grow", NULL);
   }
 
-  cells->prev = size;
+  cells->heads = _oom("cells_grow", realloc(cells->heads, next * sizeof(*cells->heads)));
+  cells->tails = _oom("cells_grow", realloc(cells->tails, next * sizeof(*cells->tails)));
+  cells->mugs  = _oom("cells_grow", realloc(cells->mugs, next * sizeof(*cells->mugs)));
+  cells->prev = cells->size;
   cells->size = next;
 }
 
@@ -947,6 +934,8 @@ _cells_free(ur_cells_t *cells)
 {
   free(cells->slots);
   free(cells->heads);
+  free(cells->tails);
+  free(cells->mugs);
 }
 
 void
