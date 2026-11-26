@@ -637,6 +637,9 @@ ur_coin_bytes_unsafe(ur_root_t *r, uint64_t len, uint8_t *byt)
       if (  (t_len == len)
          && (0 == memcmp(t_byt, byt, len)) )
       {
+        if ( byt != t_byt ) {
+          free(byt);
+        }
         return tom;
       }
     }

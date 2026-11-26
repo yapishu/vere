@@ -196,8 +196,8 @@ ur_met(ur_root_t *r, uint8_t bloq, ur_nref ref);
 /*
 **  find or allocate an atom in [r]
 **
-**  unsafe variant is unsafe wrt allocation (byte arrays must be
-**  allocated with system malloc) and trailing null bytes (not allowed).
+**  the unsafe variant takes ownership of a malloc-allocated byte array
+**  with no trailing zero bytes.
 */
 ur_nref
 ur_coin_bytes_unsafe(ur_root_t *r, uint64_t len, uint8_t *byt);
