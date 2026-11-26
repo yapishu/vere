@@ -3,7 +3,7 @@
 #include "jets/q.h"
 #include "jets/w.h"
 
-#include "noun.h"
+#include "tree_merge.h"
 
 static c3_o
 _by_apt(u3_noun a, u3_weak l, u3_weak r)
@@ -68,6 +68,8 @@ _by_apt(u3_noun a, u3_weak l, u3_weak r)
 u3_noun
 u3qdb_apt(u3_noun a)
 {
+  u3_weak ok = u3q_tree_apt(a, 1, 1);
+  if ( ok != u3_none ) return ok;
   return _by_apt(a, u3_none, u3_none);
 }
 

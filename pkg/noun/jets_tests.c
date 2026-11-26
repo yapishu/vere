@@ -1131,6 +1131,8 @@ _test_bulk_trees(void)
     }
     u3_noun built_set = u3qdi_gas(u3_nul, keys);
     u3_noun built_map = u3qdb_gas(u3_nul, pairs);
+    u3_assert(c3y == u3qdi_apt(built_set));
+    u3_assert(c3y == u3qdb_apt(built_map));
     u3_assert(c3y == u3r_sing(set, built_set));
     u3_assert(c3y == u3r_sing(map, built_map));
     u3_noun edited = u3qdb_put(map, map ? u3h(u3h(map)) : 0, 99);
@@ -1152,7 +1154,25 @@ _test_bulk_trees(void)
   u3_noun tie_set = u3qdi_gas(0, tie_keys);
   u3_noun tie_want = u3nt(x, u3nt(y, 0, 0), 0);
   u3_assert(c3y == u3r_sing(tie_set, tie_want));
+  u3_assert(c3y == u3qdi_apt(tie_set));
   u3z(tie_keys); u3z(tie_set); u3z(tie_want);
+
+  // Kernel 140 accepts equal keys. The current set validator rejects them.
+  u3_noun a = 0, b = 0;
+  for ( c3_w i = 0; i < 96; ++i ) {
+    a = u3nc(i, a);
+    b = u3nc(i, b);
+  }
+  u3_noun duplicates = u3nt(a, u3nt(b, 0, 0), 0);
+  u3_noun core = u3nq(0, 0, 0, u3nc(duplicates, 0));
+  u3_assert(c3n == u3qdi_apt(duplicates));
+  u3_assert(c3y == u3wdi_apt_140(core));
+  u3z(core);
+
+  // A heap-order violation decides the result before the child's shape.
+  u3_noun bad = u3nt(y, u3nc(x, 123), 456);
+  u3_assert(c3n == u3qdi_apt(bad));
+  u3z(bad);
 
   // A noncanonical map can place the same key on either side.
   u3_noun list = u3nc(4, u3nc(7, 0));
@@ -1160,6 +1180,7 @@ _test_bulk_trees(void)
   u3_noun tree = u3nt(u3nc(7, 0), u3nt(u3nc(7, 1), 0, 0),
                                     u3nt(u3nc(4, 2), 0, 0));
   u3_noun actual = u3qdb_key(tree);
+  u3_assert(c3n == u3qdb_apt(tree));
   u3_assert(c3y == u3r_sing(expected, actual));
   u3z(list); u3z(expected); u3z(tree); u3z(actual);
 

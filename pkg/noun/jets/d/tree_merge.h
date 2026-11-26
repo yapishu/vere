@@ -6,6 +6,10 @@
 // Validate the node shapes visited by self-union or self-intersection.
 void u3q_tree_check(u3_noun tree, c3_t map_t);
 
+// Check gor bounds and mor heap order. On an undecided comparison or a
+// malformed node, defer to the gate to preserve its short-circuit and bail order.
+u3_weak u3q_tree_apt(u3_noun tree, c3_t map_t, c3_t strict_t);
+
 typedef enum {
   u3_tree_map_union,
   u3_tree_map_intersection,

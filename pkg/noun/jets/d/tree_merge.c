@@ -58,7 +58,7 @@ _merge_read(u3_noun tree, _merge_node* out, c3_t map_t)
 // Cursors borrow nodes of both inputs. A key can contain one of those
 // nodes, so compare without unifying its subtrees. A long tie returns control
 // to the recursive operation.
-enum { _merge_unknown = 2 };
+enum { _merge_unknown = 2, _merge_slots = 64 };
 
 static c3_i
 _merge_order(u3_noun a, u3_noun b, unsigned* remaining)
@@ -88,10 +88,60 @@ _merge_cmp(_merge_node a, c3_h x, _merge_node b, c3_h y)
   return _merge_order(a.key, b.key, &remaining);
 }
 
+// The parent is one of the two bounds on key order. Carry both ranks
+// down the tree so each node needs one mug and one heap priority.
+static u3_weak
+_tree_apt(u3_noun tree, _merge_node lo, _merge_node hi, c3_t from_left,
+          c3_t map_t, c3_t strict_t, unsigned depth)
+{
+  while ( tree ) {
+    _merge_node node, parent = from_left ? hi : lo;
+    if ( !_merge_read(tree, &node, map_t) ) return u3_none;
+    if ( parent.tree ) {
+      c3_i cmp = _merge_cmp(parent, parent.priority, node, node.priority);
+      if ( cmp == _merge_unknown ) return u3_none;
+      if ( cmp > 0 || (strict_t && !cmp) ) return c3n;
+    }
+    if ( hi.tree ) {
+      c3_i cmp = _merge_cmp(node, node.mug, hi, hi.mug);
+      if ( cmp == _merge_unknown ) return u3_none;
+      if ( cmp > 0 || (strict_t && !cmp) ) return c3n;
+    }
+    if ( lo.tree ) {
+      c3_i cmp = _merge_cmp(lo, lo.mug, node, node.mug);
+      if ( cmp == _merge_unknown ) return u3_none;
+      if ( cmp > 0 || (strict_t && !cmp) ) return c3n;
+    }
+    u3_noun branches = u3t(tree);
+    if ( u3h(branches) ) {
+      if ( depth == _merge_slots ) return u3_none;
+      u3_weak ok = _tree_apt(u3h(branches), lo, node, 1, map_t, strict_t, depth + 1);
+      if ( ok != c3y ) return ok;
+    }
+    tree = u3t(branches);
+    from_left = 0;
+    lo = node;
+  }
+  return c3y;
+}
+
+u3_weak
+u3q_tree_apt(u3_noun tree, c3_t map_t, c3_t strict_t)
+{
+  // A leaf has no ordering constraints, even when its key is expensive to hash.
+  u3_noun item, left, right;
+  if ( !tree ) return c3y;
+  if ( c3n == u3r_trel(tree, &item, &left, &right) ||
+       (map_t && c3n == u3du(item)) ) return u3_none;
+  if ( !left && !right ) return c3y;
+  _merge_node empty = {0};
+  return _tree_apt(tree, empty, empty, 0, map_t, strict_t, 0);
+}
+
 // The kth smallest priority estimates inverse size without walking either
 // tree. The estimate selects an ordered scan for comparable inputs.
 // https://www.cs.tau.ac.il/~haimk/papers/p225-cohen.pdf
-enum { _merge_sample = 12, _merge_slots = 64 };
+enum { _merge_sample = 12 };
 
 static c3_h
 _merge_rank(_merge_node root, c3_t map_t)
