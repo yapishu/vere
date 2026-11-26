@@ -1381,12 +1381,58 @@ _test_fond(void)
   u3z(leg); u3z(hol); u3z(fac); u3z(fat); u3z(atom);
 }
 
+static void
+_check_nest(u3_noun arm, u3_noun sut, u3_noun ref,
+            u3_noun sets, c3_o tel_o, c3_o want_o)
+{
+  u3_noun van = u3nt(u3k(arm), sut, u3nc(u3nt(0, 0, c3y), 0));
+  u3_noun nest = u3nt(0, u3nc(tel_o, ref), van);
+  u3_noun cor = u3nc(arm, u3nt(0, sets, nest));
+  u3_noun pro = u3wfu_nest_dext1(cor);
+  u3_assert(pro == want_o);
+  u3z(pro); u3z(cor);
+}
+
+static void
+_test_nest(void)
+{
+  u3_noun atom = u3nt(c3__atom, 0, 0);
+  u3_noun pair = u3nt(c3__cell, u3k(atom), c3__noun);
+  u3_noun fork = u3qf_forq(pair, atom);
+  _check_nest(u3nc(1, c3n), u3k(fork), u3k(pair), u3nt(0, 0, 0), c3n, c3y);
+  _check_nest(u3nc(1, c3y), u3k(atom), fork, u3nt(0, 0, 0), c3n, c3n);
+
+  // A residual check sees the child types, the cleared seg and reg,
+  // and the enclosing gil after descending through the face.
+  //
+  u3_noun hold = u3nt(c3__hold, 7, 8);
+  u3_noun want = u3nt(u3nt(0, 0, 97), u3k(hold), u3k(atom));
+  u3_noun fields = u3nt(u3nc(0, 14), u3nc(0, 254), u3nc(0, 125));
+  u3_noun arm = u3nt(5, fields, u3nc(1, want));
+  _check_nest(arm, u3nt(c3__cell, c3__noun, u3nt(c3__face, 'x', hold)),
+              u3nt(c3__cell, u3k(pair), u3k(atom)), u3nt(12, 13, 97), c3n, c3y);
+
+  // A structural child still consumes a verdict already on this road.
+  //
+  arm = u3nc(0, 2);
+  u3_noun key = u3z_key_3(141 + c3__dext, c3__noun, atom, arm);
+  u3z(u3z_save(u3z_memo_toss, key, c3n));
+  _check_nest(arm, u3nt(c3__face, 'x', c3__noun), u3k(atom),
+              u3nt(0, 0, 0), c3n, c3n);
+
+  // The strict gate runs its own continuation.
+  //
+  _check_nest(u3nc(1, c3n), c3__noun, pair, u3nt(0, 0, 0), c3y, c3n);
+  u3z(atom);
+}
+
 static c3_i
 _test_jets(void)
 {
   c3_i ret_i = 1;
 
   _test_fond();
+  _test_nest();
 
   _test_bulk_trees();
   _test_map_union();
