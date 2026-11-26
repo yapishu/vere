@@ -4204,6 +4204,19 @@ _cm_sole_canon(_cm_walk* wal_u, u3_noun som)
           pro = som;
           break;
         }
+        //  During a rebuild, fetch the parent's bucket while walking its
+        //  children. Canonicalizing the children preserves the parent's mug.
+        //  The membership check runs on ascent, against the current table.
+        //  https://www.vldb.org/pvldb/vol9/p252-kocberber.pdf
+        //
+        if ( _cm_sole_u.reb_t ) {
+          u3a_cell* cel_u = u3a_to_ptr(som);
+          if ( cel_u->mug_w ) {
+            _cs_tab* tab_u = &_cm_sole_u.cel_u;
+            c3_d     buc_d = _cs_home(tab_u, cel_u->mug_w);
+            __builtin_prefetch(&tab_u->lin_u[buc_d / _CS_PER]);
+          }
+        }
         *fam_u = som;
         som    = u3h(som);
       }
