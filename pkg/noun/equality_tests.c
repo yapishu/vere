@@ -1840,10 +1840,10 @@ _ts_check(_cs_tab* tab_u)
   c3_d len_d = 0;
 
   for ( c3_d i_d = 0; i_d < tab_u->cap_d; i_d++ ) {
-    c3_h key_h = _cs_key(tab_u, i_d);
+    c3_w key_w = _cs_entry(tab_u, i_d);
 
-    if ( key_h ) {
-      u3_noun som   = _cs_noun(tab_u, key_h);
+    if ( key_w ) {
+      u3_noun som   = _cs_noun(tab_u, key_w);
       c3_d    hom_d = _cs_home(tab_u, u3r_mug(som));
       c3_d    dis_d = ( i_d >= hom_d ) ? i_d - hom_d : i_d + tab_u->cap_d - hom_d;
 
@@ -1877,13 +1877,12 @@ _test_soletab(void)
   c3_d    len_d = 0;
   _cs_tab tab_u;
 
-  //  A larger loom leaves fewer bits for the mug. Even the last slot
-  //  needs its index plus one; a table with full-width slots has no tag.
+  //  The final cell-sized slot fits just below the word limit.
   //
-  if (  (0xff000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 23)))
-     || (0xfe000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 24)))
-     || (0x80000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 30)))
-     || (0           != _cs_tag_mask(_CS_UNIT * (1ULL << 31))) )
+  if (  (0xff000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 24)))
+     || (0xfe000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 24) + 1))
+     || (0x80000000U != _cs_tag_mask(_CS_UNIT * (1ULL << 31)))
+     || (0           != _cs_tag_mask(_CS_UNIT * (1ULL << 31) + 1)) )
   {
     fprintf(stderr, "test: soletab: tag overlaps loom offsets\r\n");
     ret_i = 0;
@@ -1899,7 +1898,8 @@ _test_soletab(void)
     c3_h    tag_h = _cs_tag_mask(u3C.wor_i);
     _cs_tab vat_u = { .cel_t = 0, .tag_h = tag_h };
     _cs_tab cet_u = { .cel_t = 1, .tag_h = tag_h };
-    if (  (c != _cs_noun(&cet_u, _cs_member(&cet_u, c, 0xff)))
+    if (  !_cs_slot(c) || !_cs_slot(a)
+       || (c != _cs_noun(&cet_u, _cs_member(&cet_u, c, 0xff)))
        || (a != _cs_noun(&vat_u, _cs_member(&vat_u, a, 0xff))) )
     {
       fprintf(stderr, "test: soletab: keys don't round-trip\r\n");
@@ -1913,10 +1913,20 @@ _test_soletab(void)
   //  and isn't added
   //
   {
-    u3_noun yon = u3a_to_pom((c3_w)(_CS_KEY_MAX * _CS_UNIT));
-    u3_noun ner = u3a_to_pom((c3_w)((_CS_KEY_MAX - 1) * _CS_UNIT));
+    u3_noun yon = u3a_to_pom((c3_w)_cs_reach());
+    u3_noun ner = u3a_to_pom((c3_w)(_CS_KEY_MAX * _CS_UNIT));
 
-    if ( _cs_reaches(yon) || !_cs_reaches(ner) || u3m_sole_add(yon) ) {
+    _cs_tab vat_u = { .cel_t = 0, .tag_h = 0xf8000000U };
+    u3_atom big = u3a_to_pug((c3_w)((1ULL << 31) * _CS_UNIT));
+    c3_w    key_w = _cs_member(&vat_u, big, 0);
+
+    if ( !vat_u.far_t || _cs_tag(&vat_u, key_w)
+      || (big != _cs_noun(&vat_u, key_w)) ) {
+      fprintf(stderr, "test: soletab: full-range atom key\r\n");
+      ret_i = 0;
+    }
+    if (  _cs_reaches(yon) || !_cs_reaches(ner) || (_CS_KEY_MAX != _cs_slot(ner))
+       || u3m_sole_add(yon) ) {
       fprintf(stderr, "test: soletab: reach\r\n");
       ret_i = 0;
     }
@@ -1929,6 +1939,15 @@ _test_soletab(void)
   }
 
   _cs_init(&tab_u, 1);
+#ifdef VERE64
+  //  Exercise both key formats on this small loom. Reserve one bit on
+  //  which two allocated slots differ and run the same reference model.
+  //
+  {
+    c3_h dif_h = _cs_slot(cel[0]) ^ _cs_slot(cel[num_w - 1]);
+    tab_u.tag_h |= dif_h & -dif_h;
+  }
+#endif
   srand(1);
 
   for ( k_w = 0; ret_i && (k_w < 300000); k_w++ ) {

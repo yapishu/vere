@@ -2,9 +2,8 @@
 ///
 /// A compact open-addressing table for the home-road hashcons set.
 ///
-/// A bucket holds a member's slot index (its loom offset in cell-sized
-/// units, plus 1; 0 is empty) and its probe distance: five bytes, 12
-/// buckets to a 64-byte line, at either width. Linear probing
+/// A 64-byte line holds 12 four-byte slot indices, their one-byte probe
+/// distances, and a bitmap of full-range slots. Linear probing
 /// in Robin Hood order, with backward-shift deletion: no tombstones,
 /// and a lookup reads another member's box only if it shares the home
 /// bucket and the mug bits held in the key. The hash is the mug, so a
@@ -25,12 +24,10 @@
 #define _CS_DIS_MAX  254    //  largest distance a bucket holds
 #define _CS_LIN_MIN  64     //  fewest lines
 
-/* a key is a member's slot index + 1, or 0 for an empty bucket: its
-** loom offset in units of a cell's size. every noun box is at least a
-** cell's size, a power of two, naturally aligned, so this loses nothing;
-** members are home nouns, and the home road's heap is low (it's north),
-** so 4 bytes cover the whole 32-bit loom and 128 GiB of home heap at 64
-** bits. each bucket also holds its distance from its home bucket.
+/* A member's slot is its loom offset in cell-sized units. Home nouns
+** are naturally aligned and the first page holds the home road, so zero
+** is available for an empty bucket. Four bytes cover the 32-bit loom
+** and 128 GiB of home heap at 64 bits.
 */
 #define _CS_PER      12     //  buckets a line
 #define _CS_UNIT     ((c3_d)c3_wiseof(u3a_cell))  //  words a key step
@@ -39,7 +36,7 @@
 typedef struct {
   c3_h key_h[_CS_PER];      //  key
   c3_y dis_y[_CS_PER];      //  distance from the home bucket
-  c3_y pad_y[4];
+  c3_h far_h;               //  one bit per bucket for full-range slots
 } _cs_line;
 
 _Static_assert(64 == sizeof(_cs_line), "soletab: line size");
@@ -59,9 +56,11 @@ typedef struct {
   c3_d      cap_d;          //  buckets, _CS_PER * lin_d
   c3_d      len_d;          //  members
   c3_d      flo_d;          //  fewest lines a rebuild may use, or 0
-  c3_h      tag_h;          //  key bits above the loom's largest slot
+  c3_h      tag_h;          //  mug bits in a short slot
   c3_y      dmx_y;          //  no distance here is larger
   c3_t      cel_t;          //  cells, else atoms
+  c3_y      far_y;          //  high-byte mug mask for a full-range slot
+  c3_t      far_t;          //  a full-range slot has been stored
 } _cs_tab;
 
 /* meters, for both tables (U3_MEASURE).
@@ -96,12 +95,37 @@ _cs_key(_cs_tab* tab_u, c3_d i_d)
   return tab_u->lin_u[i_d / _CS_PER].key_h[i_d % _CS_PER];
 }
 
-/* _cs_key_put(): put [key_h] in bucket [i_d].
+/* A key in flight carries the line's full-range bit above its 32 bits.
+** Ordinary lookups need the bit only when the home bucket matches.
 */
-static inline void
-_cs_key_put(_cs_tab* tab_u, c3_d i_d, c3_h key_h)
+static inline c3_w
+_cs_read(_cs_tab* tab_u, _cs_line* lin_u, c3_w col_w)
 {
-  tab_u->lin_u[i_d / _CS_PER].key_h[i_d % _CS_PER] = key_h;
+  c3_w key_w = lin_u->key_h[col_w];
+
+  if ( (8 == sizeof(c3_w)) && c3_unlikely(tab_u->far_t) ) {
+    key_w |= (c3_d)((lin_u->far_h >> col_w) & 1) << 32;
+  }
+  return key_w;
+}
+
+static inline c3_w
+_cs_entry(_cs_tab* tab_u, c3_d i_d)
+{
+  return _cs_read(tab_u, &tab_u->lin_u[i_d / _CS_PER], i_d % _CS_PER);
+}
+
+static inline void
+_cs_key_put(_cs_tab* tab_u, c3_d i_d, c3_w key_w)
+{
+  _cs_line* lin_u = &tab_u->lin_u[i_d / _CS_PER];
+  c3_w      col_w = i_d % _CS_PER;
+
+  lin_u->key_h[col_w] = (c3_h)key_w;
+  if ( (8 == sizeof(c3_w)) && c3_unlikely(tab_u->far_t) ) {
+    c3_h bit_h = 1U << col_w;
+    lin_u->far_h = (lin_u->far_h & ~bit_h) | ((c3_h)((c3_d)key_w >> 32) << col_w);
+  }
 }
 
 static inline c3_y*
@@ -123,7 +147,7 @@ _cs_next(_cs_tab* tab_u, c3_d i_d)
 static inline c3_t
 _cs_reaches(u3_noun som)
 {
-  return (((c3_d)u3a_to_off(som) / _CS_UNIT) + 1) <= _CS_KEY_MAX;
+  return ((c3_d)u3a_to_off(som) / _CS_UNIT) <= _CS_KEY_MAX;
 }
 
 /* _cs_slot(): [som]'s key; see _cs_reaches().
@@ -131,7 +155,7 @@ _cs_reaches(u3_noun som)
 static inline c3_h
 _cs_slot(u3_noun som)
 {
-  return (c3_h)(((c3_d)u3a_to_off(som) / _CS_UNIT) + 1);
+  return (c3_h)((c3_d)u3a_to_off(som) / _CS_UNIT);
 }
 
 /* _cs_tag_mask(): of the high byte, the bits an address on this loom
@@ -141,7 +165,7 @@ _cs_slot(u3_noun som)
 static c3_h
 _cs_tag_mask(c3_d wor_d)
 {
-  c3_d top_d = wor_d / _CS_UNIT;  //  largest slot index plus one
+  c3_d top_d = (wor_d - 1) / _CS_UNIT;  //  largest slot index
   c3_h tag_h = 0xff000000U;
 
   while ( tag_h && (top_d > (c3_h)~tag_h) ) {
@@ -150,18 +174,39 @@ _cs_tag_mask(c3_d wor_d)
   return tag_h;
 }
 
-static inline c3_h
+/* Keep five mug bits on a wide loom while the actual slot fits. A
+** larger slot uses every address bit the loom requires and keeps any
+** remaining mug bits. A line bitmap identifies the exceptions, as in
+** patched bit packing (https://doi.org/10.1002/spe.2203).
+*/
+static inline c3_w
 _cs_member(_cs_tab* tab_u, u3_noun som, c3_h mug_h)
 {
-  return _cs_slot(som) | ((mug_h << 24) & tab_u->tag_h);
+  c3_h slot_h = _cs_slot(som);
+
+  if ( (8 == sizeof(c3_w)) && c3_unlikely(slot_h & tab_u->tag_h) ) {
+    tab_u->far_t = 1;
+    return (1ULL << 32) | slot_h | ((mug_h & tab_u->far_y) << 24);
+  }
+  return slot_h | ((mug_h << 24) & tab_u->tag_h);
 }
 
-/* _cs_noun(): the member whose key is [key_h].
-*/
-static inline u3_noun
-_cs_noun(_cs_tab* tab_u, c3_h key_h)
+static inline c3_h
+_cs_tag(_cs_tab* tab_u, c3_w key_w)
 {
-  c3_w off_w = (c3_w)((c3_d)((key_h & ~tab_u->tag_h) - 1) * _CS_UNIT);
+  return ((c3_d)key_w >> 32) ? (c3_h)tab_u->far_y << 24 : tab_u->tag_h;
+}
+
+static inline c3_h
+_cs_unkey(_cs_tab* tab_u, c3_w key_w)
+{
+  return (c3_h)key_w & ~_cs_tag(tab_u, key_w);
+}
+
+static inline u3_noun
+_cs_noun(_cs_tab* tab_u, c3_w key_w)
+{
+  c3_w off_w = (c3_w)((c3_d)_cs_unkey(tab_u, key_w) * _CS_UNIT);
   return ( tab_u->cel_t ) ? u3a_to_pom(off_w) : u3a_to_pug(off_w);
 }
 
@@ -182,7 +227,7 @@ _cs_home(_cs_tab* tab_u, c3_h mug_h)
 static inline c3_d
 _cs_reach(void)
 {
-  return _CS_KEY_MAX * _CS_UNIT;
+  return (_CS_KEY_MAX + 1) * _CS_UNIT;
 }
 
 /* _cs_alloc(): an empty table of [lin_d] lines.
@@ -202,7 +247,10 @@ static void
 _cs_init(_cs_tab* tab_u, c3_t cel_t)
 {
   tab_u->cel_t = cel_t;
+  tab_u->far_t = 0;
   tab_u->tag_h = _cs_tag_mask(u3C.wor_i);
+  tab_u->far_y = tab_u->tag_h >> 24;
+  if ( 8 == sizeof(c3_w) ) tab_u->tag_h |= 0xf8000000U;
   tab_u->flo_d = 0;
   _cs_alloc(tab_u, _CS_LIN_MIN);
 }
@@ -245,12 +293,12 @@ _cs_fits(_cs_tab* tab_u, c3_d i_d, c3_d dis_d)
   return (tab_u->dmx_y < _CS_DIS_MAX) || _cs_fits_walk(tab_u, i_d, dis_d);
 }
 
-/* _cs_place_from(): put [key_h], known absent and known to fit
+/* _cs_place_from(): put [key_w], known absent and known to fit
 **   (_cs_fits()), Robin Hood, from bucket [i_d] at distance [dis_d] from
 **   its home; produces its bucket.
 */
 static c3_d
-_cs_place_from(_cs_tab* tab_u, c3_h key_h, c3_d i_d, c3_d dis_d)
+_cs_place_from(_cs_tab* tab_u, c3_w key_w, c3_d i_d, c3_d dis_d)
 {
   c3_d pos_d = ~0ULL;
 
@@ -262,8 +310,9 @@ _cs_place_from(_cs_tab* tab_u, c3_h key_h, c3_d i_d, c3_d dis_d)
     //
     if ( !kei_h || (*dis_p < dis_d) ) {
       c3_y kis_y = *dis_p;
+      c3_w kei_w = _cs_entry(tab_u, i_d);
 
-      _cs_key_put(tab_u, i_d, key_h);
+      _cs_key_put(tab_u, i_d, key_w);
       *dis_p = (c3_y)dis_d;
       if ( dis_d > _cs_met.dmx_d ) _cs_met.dmx_d = dis_d;
       if ( dis_d > tab_u->dmx_y )  tab_u->dmx_y  = (c3_y)dis_d;
@@ -273,7 +322,7 @@ _cs_place_from(_cs_tab* tab_u, c3_h key_h, c3_d i_d, c3_d dis_d)
         tab_u->len_d++;
         return pos_d;
       }
-      key_h = kei_h;
+      key_w = kei_w;
       dis_d = kis_y;
     }
     i_d = _cs_next(tab_u, i_d);
@@ -302,23 +351,23 @@ _cs_fill(_cs_tab* tab_u, _cs_tab* old_u, c3_d lin_d)
     if ( l_d + 4 < old_u->lin_d ) {
       _cs_line* pre_u = &old_u->lin_u[l_d + 4];
       for ( c3_w j_w = 0; j_w < _CS_PER; j_w++ ) {
-        c3_h key_h = pre_u->key_h[j_w];
-        if ( key_h ) {
-          __builtin_prefetch(u3a_to_ptr(_cs_noun(old_u, key_h)));
+        c3_w key_w = _cs_read(old_u, pre_u, j_w);
+        if ( key_w ) {
+          __builtin_prefetch(u3a_to_ptr(_cs_noun(old_u, key_w)));
         }
       }
     }
 
     for ( c3_w j_w = 0; j_w < _CS_PER; j_w++ ) {
-      c3_h key_h = lin_u->key_h[j_w];
+      c3_w key_w = _cs_read(old_u, lin_u, j_w);
 
-      if ( key_h ) {
-        c3_d i_d = _cs_home(tab_u, u3r_mug(_cs_noun(old_u, key_h)));
+      if ( key_w ) {
+        c3_d i_d = _cs_home(tab_u, u3r_mug(_cs_noun(old_u, key_w)));
 
         if ( !_cs_fits(tab_u, i_d, 0) ) {
           return 0;
         }
-        _cs_place_from(tab_u, key_h, i_d, 0);
+        _cs_place_from(tab_u, key_w, i_d, 0);
       }
     }
   }
@@ -398,11 +447,15 @@ _cs_seek(_cs_tab* tab_u,
 
     //  the same home bucket and mug tag: compare
     //
-    if ( (dis_y == d_d) && !((key_h ^ (mug_h << 24)) & tab_u->tag_h) ) {
-      _cs_met.der_d++;
-      if ( pre_f(_cs_noun(tab_u, key_h), ptr_v) ) {
-        fon_t = 1;
-        break;
+    if ( dis_y == d_d ) {
+      c3_w key_w = _cs_entry(tab_u, i_d);
+
+      if ( !((key_h ^ (mug_h << 24)) & _cs_tag(tab_u, key_w)) ) {
+        _cs_met.der_d++;
+        if ( pre_f(_cs_noun(tab_u, key_w), ptr_v) ) {
+          fon_t = 1;
+          break;
+        }
       }
     }
 
@@ -423,7 +476,7 @@ _cs_get(_cs_tab* tab_u, c3_h mug_h, c3_t (*pre_f)(u3_noun, void*), void* ptr_v)
   c3_d i_d, dis_d;
 
   return _cs_seek(tab_u, mug_h, pre_f, ptr_v, &i_d, &dis_d)
-         ? _cs_noun(tab_u, _cs_key(tab_u, i_d))
+         ? _cs_noun(tab_u, _cs_entry(tab_u, i_d))
          : u3_none;
 }
 
@@ -476,7 +529,7 @@ _cs_put(_cs_tab* tab_u, u3_noun som, c3_h mug_h,
 
   if ( _cs_seek(tab_u, mug_h, pre_f, &som, &i_d, &dis_d) ) {
     *pos_d = ~0ULL;
-    return _cs_noun(tab_u, _cs_key(tab_u, i_d));
+    return _cs_noun(tab_u, _cs_entry(tab_u, i_d));
   }
   if ( !_cs_fits(tab_u, i_d, dis_d) ) {
     *pos_d = ~0ULL;
@@ -498,11 +551,11 @@ _cs_erase(_cs_tab* tab_u, u3_noun som)
   c3_d pos_d;
 
   while ( 1 ) {
-    c3_h kei_h = _cs_key(tab_u, i_d);
+    c3_w kei_w = _cs_entry(tab_u, i_d);
     c3_y dis_y = *_cs_dis(tab_u, i_d);
 
-    if ( !kei_h || (dis_y < dis_d) ) return ~0ULL;
-    if ( (kei_h & ~tab_u->tag_h) == key_h ) break;
+    if ( !kei_w || (dis_y < dis_d) ) return ~0ULL;
+    if ( _cs_unkey(tab_u, kei_w) == key_h ) break;
     i_d = _cs_next(tab_u, i_d);
     dis_d++;
   }
@@ -520,7 +573,7 @@ _cs_erase(_cs_tab* tab_u, u3_noun som)
       *_cs_dis(tab_u, i_d) = 0;
       break;
     }
-    _cs_key_put(tab_u, i_d, _cs_key(tab_u, j_d));
+    _cs_key_put(tab_u, i_d, _cs_entry(tab_u, j_d));
     *_cs_dis(tab_u, i_d) = dij_y - 1;
     i_d = j_d;
   }
@@ -568,13 +621,14 @@ _cs_clear(_cs_tab* tab_u, void (*fun_f)(u3_noun))
     _cs_line* lin_u = &tab_u->lin_u[l_d];
 
     for ( c3_w j_w = 0; j_w < _CS_PER; j_w++ ) {
-      c3_h key_h = lin_u->key_h[j_w];
-      if ( key_h ) {
-        fun_f(_cs_noun(tab_u, key_h));
+      c3_w key_w = _cs_read(tab_u, lin_u, j_w);
+      if ( key_w ) {
+        fun_f(_cs_noun(tab_u, key_w));
       }
     }
   }
   memset(tab_u->lin_u, 0, tab_u->lin_d * sizeof(_cs_line));
+  tab_u->far_t = 0;
   tab_u->len_d = 0;
   tab_u->dmx_y = 0;
   tab_u->flo_d = 0;
