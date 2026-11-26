@@ -110,6 +110,38 @@ _test_melt_cells(void)
   u3h_del(u3R->cax.per_p, c3__melt);
 }
 
+#ifndef U3_MEMORY_DEBUG
+/* A rock write can fail after evacuation. The rebuilt core still owns
+** one shared copy of a multi-page atom with all its bytes intact.
+*/
+static void
+_test_cram_write_failure(void)
+{
+  c3_y buf_y[3 * 16384 + 17];
+  for ( size_t i = 0; i < sizeof(buf_y); i++ ) {
+    buf_y[i] = 1 + i % 251;
+  }
+  u3_atom a = u3i_bytes(sizeof(buf_y), buf_y);
+  u3_atom b = u3i_bytes(sizeof(buf_y), buf_y);
+  u3_assert(a != b);
+  u3A->roc = u3nt(a, b, u3A->roc);
+
+  // An empty directory has no .urb parent for the rock.
+  uv_fs_t req_u;
+  u3_assert(0 == uv_fs_mkdtemp(NULL, &req_u, "cram-test-XXXXXX", NULL));
+  c3_o ret_o = u3u_cram((c3_c*)req_u.path, u3A->eve_d);
+  u3_assert(0 == c3_rmdir(req_u.path));
+  uv_fs_req_cleanup(&req_u);
+
+  u3_assert(c3n == ret_o);
+  a = u3h(u3A->roc);
+  b = u3h(u3t(u3A->roc));
+  u3_atom exp = u3i_bytes(sizeof(buf_y), buf_y);
+  u3_assert(a == b && c3y == u3r_sing(a, exp));
+  u3z(exp);
+}
+#endif
+
 /* main(): run all test cases.
 */
 int
@@ -119,6 +151,9 @@ main(int argc, char* argv[])
 
   _test_lily();
   _test_melt_cells();
+#ifndef U3_MEMORY_DEBUG
+  _test_cram_write_failure();
+#endif
 
   fprintf(stderr, "test boot: ok\n");
   return 0;
