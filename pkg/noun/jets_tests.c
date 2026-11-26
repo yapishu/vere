@@ -1345,6 +1345,62 @@ _test_tree_intersection(void)
 }
 
 static void
+_test_arm_axes(void)
+{
+  u3_noun gen = u3nc(c3__dtls, 0);
+  u3_noun hit = u3nt(u3nc('x', u3k(gen)), 0, 0);
+  u3_noun miss = u3nt(u3nc('z', u3k(gen)), 0, 0);
+  u3_atom axe = 1;
+  u3_noun dab = u3k(hit);
+
+  //  Single-child and two-child steps span several axis chunks.
+  //
+  for ( c3_w i = 0; i < 100; ++i ) {
+    c3_w key = i + 256;
+    c3_t left_t = (c3y == u3qc_gor('x', key));
+    u3_noun other = (i % 3) ? u3k(miss) : 0;
+    u3_noun step = other ? (left_t ? 6 : 7) : 3;
+    dab = u3nt(u3nc(key, u3k(gen)), left_t ? dab : other, left_t ? other : dab);
+    u3_atom next = u3qc_peg(step, axe);
+    u3z(axe); axe = next;
+  }
+  u3_post cap = u3R->cap_p;
+  u3_noun want = u3nt(0, u3k(axe), u3k(gen));
+  u3_noun got = u3qf_look('x', dab);
+  u3_assert(c3y == u3r_sing(want, got) && cap == u3R->cap_p);
+  u3z(want); u3z(got);
+
+  for ( c3_t note_t = 0; note_t < 2; ++note_t ) {
+    u3_noun empty = note_t ? u3nc(0, 0) : 0;
+    u3_noun arm = note_t ? u3nc(0, u3k(dab)) : u3k(dab);
+    u3_noun dom = u3nt(u3nc('a', arm), 0, 0);
+    u3_noun absent = u3nt(u3nc('b', u3k(empty)), 0, 0);
+    u3_atom path = u3k(axe);
+    for ( c3_w i = 0; i < 83; ++i ) {
+      u3_noun entry = u3nc(i, u3k(empty));
+      dom = (i & 1) ? u3nt(entry, dom, u3k(absent))
+                    : u3nt(entry, u3k(absent), dom);
+      u3_atom next = u3qc_peg((i & 1) ? 6 : 7, path);
+      u3z(path); path = next;
+    }
+    want = u3nt(0, path, u3k(gen));
+    got = note_t ? u3qf_loot_136('x', dom) : u3qf_loot('x', dom);
+    u3_assert(c3y == u3r_sing(want, got) && cap == u3R->cap_p);
+    u3_assert(0 == (note_t ? u3qf_loot_136('q', dom) : u3qf_loot('q', dom)));
+    u3_assert(cap == u3R->cap_p);
+    u3z(got); u3z(want); u3z(dom); u3z(absent); u3z(empty);
+  }
+
+  //  A chapter's own match precedes matches in its children.
+  //
+  u3_noun root = u3nt(u3nc('a', u3k(hit)), u3nt(u3nc('b', u3k(hit)), 0, 0), 0);
+  got = u3qf_loot('x', root);
+  want = u3nt(0, 2, u3k(gen));
+  u3_assert(c3y == u3r_sing(want, got));
+  u3z(want); u3z(got); u3z(root); u3z(axe); u3z(dab); u3z(hit); u3z(miss); u3z(gen);
+}
+
+static void
 _check_fond_van(c3_y kel_y, u3_noun van, u3_noun wing, u3_weak want)
 {
   u3_noun cor = u3nt(0, u3nc(c3__read, wing), van);
@@ -1537,6 +1593,7 @@ _test_jets(void)
 {
   c3_i ret_i = 1;
 
+  _test_arm_axes();
   _test_fond();
   _test_nest();
   _test_redo();
