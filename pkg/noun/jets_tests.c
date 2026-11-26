@@ -962,6 +962,25 @@ _test_json_de_array(void)
 }
 
 static c3_i
+_test_json_de_object(void)
+{
+  // The first two keys share a mug. The last two share only a heap rank.
+  const c3_c* keys[] = {"field-41314", "field-104476",
+                        "field-116410", "field-149074"};
+  u3_noun map = u3_nul;
+  for ( c3_w i = 0; i < c3_array_len(keys); i++ ) {
+    map = u3kdb_put(map, u3i_string(keys[i]), u3nc(c3__n, '1' + i));
+  }
+  u3_noun want = u3nc(u3_nul, u3nc(c3__o, map));
+  u3_noun got = u3ke_json_de(u3i_string(
+    "{\"field-149074\":4,\"field-104476\":[{\"x\":1}],"
+    "\"field-41314\":1,\"field-116410\":3,\"field-104476\":2}"));
+  c3_i ret_i = c3y == u3r_sing(want, got);
+  u3z(want); u3z(got);
+  return ret_i;
+}
+
+static c3_i
 _cut_check(c3_g a_g, u3_atom b, u3_atom c, u3_atom d,
            u3_atom exp, const c3_c* cas_c)
 {
@@ -1927,6 +1946,10 @@ _test_jets(void)
 
   if ( !_test_json_de_array() ) {
     fprintf(stderr, "test jets: json_de_array: failed\r\n");
+    ret_i = 0;
+  }
+  if ( !_test_json_de_object() ) {
+    fprintf(stderr, "test jets: json_de_object: failed\r\n");
     ret_i = 0;
   }
   if ( !_test_hike() ) {

@@ -77,6 +77,65 @@ _json_get_string_as_atom(json_stream *sam_u) {
           u3i_bytes(len_i - 1, (const c3_y *)str_c);
 }
 
+static inline c3_t
+_key_before(u3_atom a, c3_w x, u3_atom b, c3_w y)
+{
+  return x < y || (x == y && c3y == u3qc_dor(a, b));
+}
+
+/* Each open object owns its map nodes until the parser closes the object.
+** Split the first subtree whose root has lower heap priority. Its keys
+** on either side of the new key become the new node's children. Equal
+** keys replace the previous value.
+** Seidel and Aragon, https://doi.org/10.1007/s004539900061
+*/
+static void
+_object_put(u3_noun* slot, u3_atom key, u3_noun val)
+{
+  if ( !*slot ) {
+    *slot = u3nt(u3nc(key, val), 0, 0);
+    return;
+  }
+
+  c3_w mug = u3r_mug(key);
+  c3_w rank = u3r_mug_word(mug);
+  while ( *slot ) {
+    u3a_cell* kv = u3a_to_ptr(u3h(*slot));
+    u3_noun pivot = kv->hed;
+    c3_w pivot_mug = u3r_mug(pivot);
+    if ( pivot_mug == mug && c3y == u3r_sing(key, pivot) ) {
+      u3z(kv->tel);
+      kv->tel = val;
+      u3z(key);
+      return;
+    }
+    if ( _key_before(key, rank, pivot, u3r_mug_word(pivot_mug)) ) break;
+    u3a_cell* children = u3a_to_ptr(u3t(*slot));
+    slot = _key_before(key, mug, pivot, pivot_mug) ? &children->hed : &children->tel;
+  }
+
+  u3_noun rest = *slot;
+  *slot = u3nt(u3nc(key, val), 0, 0);
+  u3a_cell* branches = u3a_to_ptr(u3t(*slot));
+  u3_noun* left = &branches->hed;
+  u3_noun* right = &branches->tel;
+  while ( rest ) {
+    u3_noun pivot = u3h(u3h(rest));
+    u3a_cell* links = u3a_to_ptr(u3t(rest));
+    if ( _key_before(key, mug, pivot, u3r_mug(pivot)) ) {
+      *right = rest;
+      right = &links->hed;
+      rest = *right;
+    }
+    else {
+      *left = rest;
+      left = &links->tel;
+      rest = *left;
+    }
+  }
+  *left = *right = 0;
+}
+
 static u3_noun
 _parse(u3_atom txt)
 {
@@ -211,7 +270,7 @@ _parse(u3_atom txt)
         // cnt_z == 0 weeded out by continue command on array/object open
         u3_assert(cnt_z);
 
-        tak_u->col = u3kdb_put(tak_u->col, tak_u->key, val);
+        _object_put(&tak_u->col, tak_u->key, val);
         tak_u->key = u3_none;
       } break;
     }
