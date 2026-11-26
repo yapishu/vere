@@ -477,6 +477,8 @@ _cr_sing_cape(u3a_pile* pil_u, u3p(u3h_root) har_p)
 static c3_o
 _cr_sing(u3_noun a, u3_noun b)
 {
+  u3a_child_road* child = NULL;
+  u3_noun lhs = a, rhs = b;
   c3_s     ovr_s = 0;
   u3a_cell*  a_u;
   u3a_cell*  b_u;
@@ -571,21 +573,41 @@ _cr_sing(u3_noun a, u3_noun b)
       } break;
     }
 
-    //  [ovr_s] counts comparisons, if it overflows, we've likely hit
-    //  a pathological case (highly duplicated tree), so we de-duplicate
-    //  subsequent comparisons by maintaining a set of equal pairs.
-    //
-    if ( 0 == ++ovr_s ) {
+    // Give small comparisons a head start before checking for a previous
+    // traversal. Both root addresses stay live and immutable on this road.
+    if ( ++ovr_s == 64 && u3R->par_p &&
+         c3y == u3a_is_senior(u3R, lhs) && c3y == u3a_is_senior(u3R, rhs) ) {
+      if ( lhs > rhs ) {
+        u3_noun tmp = lhs;
+        lhs = rhs;
+        rhs = tmp;
+      }
+      child = (u3a_child_road*)u3R;
+      for ( c3_w i = 0; i < c3_array_len(child->pairs); i++ ) {
+        if ( child->pairs[i].a == lhs && child->pairs[i].b == rhs ) {
+          u3R->cap_p = pil_u.top_p;
+          return c3y;
+        }
+      }
+    }
+    // On overflow, remember equal subtrees within this comparison as well.
+    else if ( 0 == ovr_s ) {
       u3p(u3h_root) har_p = u3h_new();
       c3_o ret_o = _cr_sing_cape(&pil_u, har_p);
       u3h_free(har_p);
       u3R->cap_p = pil_u.top_p;
-      return ret_o;
+      if ( c3n == ret_o ) return c3n;
+      break;
     }
 
     fam_u = u3a_pop(&pil_u);
   }
 
+  // Reserve the eight entries for roots that took substantial work to prove.
+  if ( child && (!ovr_s || ovr_s >= 1024) ) {
+    c3_w slot = child->next_y++ % c3_array_len(child->pairs);
+    child->pairs[slot] = (u3a_equal_pair){lhs, rhs};
+  }
   return c3y;
 }
 

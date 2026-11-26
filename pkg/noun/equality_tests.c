@@ -349,10 +349,36 @@ _test_shared_comparisons(void)
   u3m_hate(0);
   u3_post cap = u3R->cap_p;
   u3_assert(c3y == u3r_sing(a, b));
+  u3_assert(c3y == u3r_sing(b, a));
   u3_assert(c3n == u3r_sing(x, y));
   u3_assert(cap == u3R->cap_p);
   u3z(u3m_love(0));
   u3z(x); u3z(y); u3z(a); u3z(b);
+}
+
+// A unique cell can change at the same address between two child roads.
+static void
+_test_equal_road_lifetime(void)
+{
+  u3_noun a = 0, b = 0;
+  for ( c3_w i = 0; i < 2048; ++i ) {
+    a = u3nc(i, a);
+    b = u3nc(i, b);
+  }
+  u3m_hate(0);
+  u3_noun left = u3nc(a, 0), right = u3nc(b, 0);
+  u3m_hate(0);
+  u3_assert(c3y == u3r_sing(left, right));
+  u3_assert(c3y == u3r_sing(right, left));
+  u3z(u3m_love(0));
+
+  u3_assert(right == u3i_edit(right, 3, 1));
+  u3m_hate(0);
+  u3_assert(c3n == u3r_sing(left, right));
+  u3z(u3m_love(0));
+  u3z(left); u3z(right);
+  u3z(u3m_love(0));
+  u3z(a); u3z(b);
 }
 
 static c3_i
@@ -361,6 +387,7 @@ _test_equality(void)
   c3_i ret_i = 1;
 
   _test_shared_comparisons();
+  _test_equal_road_lifetime();
 
   if ( !_test_hcons() ) {
     fprintf(stderr, "test: equality: hcons: failed\r\n");

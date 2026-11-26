@@ -336,6 +336,19 @@ STATIC_ASSERT( u3a_vits <= u3a_min_log,
       U3_DEFINE_PAIR(u3a_road, U3A_ROAD_BODY);
       typedef u3a_road u3_road;
 
+    /* Child roads remember expensive comparisons between ancestor nouns.
+    ** These references expire when the child stack is unwound.
+    */
+      typedef struct {
+        u3_noun a, b;
+      } u3a_equal_pair;
+
+      typedef struct {
+        u3a_road       road;
+        u3a_equal_pair pairs[8];
+        c3_y           next_y;
+      } u3a_child_road;
+
       STATIC_ASSERT( _Alignof(c3_d) == _Alignof(u3a_road_d),
                      "64-bit road alignment" );
       STATIC_ASSERT( _Alignof(c3_d) == _Alignof(u3a_road_h),

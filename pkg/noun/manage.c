@@ -1106,12 +1106,10 @@ u3m_leap(c3_w pad_w)
   //
   {
     u3a_pile pil_u;
-    c3_p     ptr_p;
-    u3a_pile_prep(&pil_u, sizeof(u3a_road), 16);
-    ptr_p = (c3_p)u3a_push(&pil_u);
-
-    rod_u = (void*)ptr_p;
-    memset(rod_u, 0, sizeof(u3a_road));
+    u3a_pile_prep(&pil_u, sizeof(u3a_child_road), 16);
+    u3a_child_road* child = u3a_push(&pil_u);
+    memset(child, 0, sizeof(*child));
+    rod_u = &child->road;
   }
 
   /* Allocate a region on the cap.
