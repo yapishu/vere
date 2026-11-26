@@ -214,6 +214,19 @@ _test_shared_jam(ur_root_t* arena)
   }
   _check_canonical(arena, ref, root);
   u3z(root);
+
+  // Rebuild the same ordered pairs after the nonadjacent pairs fill the index.
+  root = 0;
+  ref = 0;
+  for ( unsigned pass = 0; pass < 2; ++pass ) {
+    for ( unsigned i = 0; i < 1024; ++i ) {
+      c3_w left = i & 31, right = i >> 5;
+      root = u3nc(u3nc(left, right), root);
+      ref = ur_cons(arena, ur_cons(arena, left, right), ref);
+    }
+  }
+  _check_canonical(arena, ref, root);
+  u3z(root);
 }
 
 /* Check both cue entry points against a noun built independently of the

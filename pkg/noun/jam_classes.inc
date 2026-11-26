@@ -6,18 +6,19 @@ typedef struct {
 } _jam_class;
 
 typedef struct { u3_noun noun; c3_w id; } _jam_physical;
+typedef struct { c3_w id; c3_h hash; } _jam_shape;
 
 typedef struct {
   _jam_class* nodes;
   _jam_physical* physical;
-  c3_w* shapes;
-  c3_w count, capacity, used, slots, shape_slots;
+  _jam_shape* shapes;
+  c3_w count, capacity, used, slots, indexed, shape_slots;
   c3_d bits;
   c3_t deferred;
   c3_w small[256];
   _jam_class local_nodes[32];
   _jam_physical local_physical[64];
-  c3_w local_shapes[64];
+  _jam_shape local_shapes[32];
 } _jam_classes;
 
 static inline c3_h
@@ -87,24 +88,49 @@ _jam_same(const _jam_class* n, c3_w left, c3_w right)
          !memcmp(a->buf_w, b->buf_w, a->len_w * sizeof(c3_w));
 }
 
+static void
+_jam_grow_shapes(_jam_classes* c)
+{
+  c3_w size = _jam_double(c->shape_slots, sizeof(*c->shapes));
+  _jam_shape* slots = u3a_calloc(size, sizeof(*slots));
+  for ( c3_w i = 0; i < c->shape_slots; ++i ) {
+    _jam_shape entry = c->shapes[i];
+    if ( !entry.id ) continue;
+    c3_w j = entry.hash & (size - 1);
+    while ( slots[j].id ) j = (j + 1) & (size - 1);
+    slots[j] = entry;
+  }
+  _jam_dispose(c->shapes, c->local_shapes);
+  c->shapes = slots;
+  c->shape_slots = size;
+}
+
 static c3_w
 _jam_intern(_jam_classes* c, c3_w left, c3_w right)
 {
   c3_t small = !right && left < 256;
-  c3_w hash = 0, slot = 0;
+  c3_w child = right ? c3_max(left, right) : 0;
+  // A cell consuming the newest class gets the very next ID.
+  c3_t indexed = !small && (!right || child < c->count);
+  c3_h hash = 0;
+  c3_w slot = 0;
   if ( small ) {
     if ( c->small[left] ) return c->small[left];
   }
-  else {
+  else if ( indexed ) {
+    // In postorder a parent can immediately follow its newer child. Its ID
+    // is then child + 1, so the class record itself serves as its index.
+    if ( right ) {
+      const _jam_class* n = &c->nodes[child];
+      if ( n->left == left && n->right == right ) return child + 1;
+    }
     c3_w mask = c->shape_slots - 1;
     hash = _jam_hash(left, right);
     slot = hash & mask;
-    while ( c->shapes[slot] ) {
-      c3_w entry = c->shapes[slot];
-      if ( !((entry ^ hash) & ~mask) ) {
-        c3_w id = entry & mask;
-        if ( _jam_same(&c->nodes[id - 1], left, right) ) return id;
-      }
+    while ( c->shapes[slot].id ) {
+      _jam_shape entry = c->shapes[slot];
+      if ( entry.hash == hash && _jam_same(&c->nodes[entry.id - 1], left, right) )
+        return entry.id;
       slot = (slot + 1) & mask;
     }
   }
@@ -119,24 +145,9 @@ _jam_intern(_jam_classes* c, c3_w left, c3_w right)
   c3_w id = ++c->count;
   c->nodes[id - 1] = (_jam_class){left, right, UINT64_MAX};
   if ( small ) c->small[left] = id;
-  // IDs fit below the table size. Spare high bits reject another hash
-  // before following its class ID into the node array.
-  // https://abseil.io/about/design/swisstables
-  else c->shapes[slot] = (hash & ~(c->shape_slots - 1)) | id;
-  if ( id == c->shape_slots - c->shape_slots / 4 ) {
-    c3_w size = _jam_double(c->shape_slots, sizeof(c3_w));
-    c3_w* slots = u3a_calloc(size, sizeof(*slots));
-    for ( c3_w i = 0; i < id; ++i ) {
-      const _jam_class* n = &c->nodes[i];
-      if ( !n->right && n->left < 256 ) continue;
-      c3_w h = _jam_hash(n->left, n->right);
-      c3_w j = h & (size - 1);
-      while ( slots[j] ) j = (j + 1) & (size - 1);
-      slots[j] = (h & ~(size - 1)) | (i + 1);
-    }
-    _jam_dispose(c->shapes, c->local_shapes);
-    c->shapes = slots;
-    c->shape_slots = size;
+  else if ( indexed ) {
+    c->shapes[slot] = (_jam_shape){id, hash};
+    if ( ++c->indexed == c->shape_slots - c->shape_slots / 4 ) _jam_grow_shapes(c);
   }
   return id;
 }
