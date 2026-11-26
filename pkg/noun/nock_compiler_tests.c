@@ -1107,6 +1107,34 @@ _registered_gate(u3_noun gate)
 }
 
 static void
+_late_registration(void)
+{
+  u3m_hate(0);
+  u3_noun gate = u3nt(_lit(4723), 0, 0);
+  u3_assert(c3n == _registered_gate(gate));
+
+  u3m_hate(0);
+  u3j_site site = {.axe = 2, .bat = u3_none, .bas = u3_none, .loc = u3_none};
+  u3_assert(u3_none == u3j_site_kick(gate, &site));
+  u3_assert(site.pog_p && site.bat == u3h(gate));
+  u3_assert(u3_none == u3j_site_kick(gate, &site));
+  u3_assert(site.loc == u3_none);
+
+  // The same compiled call site must observe the new registration.
+  u3j_mine(u3nt(u3i_string("late"), _lit(0), 0), u3k(gate));
+  u3_noun other = u3nt(u3k(u3h(gate)), 42, 0);
+  u3_assert(u3_none == u3j_site_kick(other, &site));
+  u3_assert(site.loc == u3_none);
+  u3z(other);
+  u3_assert(u3_none == u3j_site_kick(gate, &site));
+  u3_assert(site.loc != u3_none);
+  u3j_site_lose(&site);
+  u3z(u3m_love(0));
+  u3z(gate);
+  u3z(u3m_love(0));
+}
+
+static void
 _parent_registration(void)
 {
   u3m_hate(0);
@@ -1464,6 +1492,7 @@ main(void)
 {
   u3m_boot_lite(1 << 27);
   _parent_registration();
+  _late_registration();
   _arm_result_cases();
   _list_masks();
   _test_list_weld();

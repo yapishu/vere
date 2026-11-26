@@ -521,6 +521,20 @@ _cj_reg_change(void)
   atomic_fetch_add_explicit(&_cj_registry_d, 1, memory_order_relaxed);
 }
 
+static c3_d
+_cj_reg_check(u3a_child_road* kid_u)
+{
+  c3_d gen_d = atomic_load_explicit(&_cj_registry_d, memory_order_relaxed);
+  c3_o haz_o = __(u3C.wag_h & u3o_hashless);
+  if ( kid_u->registry_d != gen_d || kid_u->hashless_o != haz_o ) {
+    memset(kid_u->parents, 0, sizeof(kid_u->parents));
+    memset(kid_u->absent, 0, sizeof(kid_u->absent));
+    kid_u->registry_d = gen_d;
+    kid_u->hashless_o = haz_o;
+  }
+  return gen_d;
+}
+
 /* _cj_parent(): locate an enclosing core shared by successive calls.
 **   The child road borrows both nouns from its ancestors. A lookup can
 **   itself register a hot jet, changing the search order for this parent.
@@ -535,14 +549,7 @@ _cj_parent(u3_noun par)
   u3a_child_road* kid_u = (u3a_child_road*)u3R;
   size_t i = ((par >> 3) ^ (par >> 11)) % c3_array_len(kid_u->parents);
   u3a_jet_parent* ent_u = &kid_u->parents[i];
-  c3_o haz_o = __(u3C.wag_h & u3o_hashless);
-
-  c3_d gen_d = atomic_load_explicit(&_cj_registry_d, memory_order_relaxed);
-  if ( kid_u->registry_d != gen_d || kid_u->hashless_o != haz_o ) {
-    memset(kid_u->parents, 0, sizeof(kid_u->parents));
-    kid_u->registry_d = gen_d;
-    kid_u->hashless_o = haz_o;
-  }
+  c3_d gen_d = _cj_reg_check(kid_u);
   if ( ent_u->parent == par ) {
     return u3k(ent_u->location);
   }
@@ -1727,12 +1734,44 @@ _cj_site_kick_hot(u3_noun loc, u3_noun cor, u3j_site* sit_u, c3_o lok_o)
   return pro;
 }
 
+/* A locked program applies to this exact battery. When both registries
+** lack the battery, its sample and context cannot select a jet.
+*/
+static c3_o
+_cj_site_absent(u3_noun cor, const u3j_site* sit_u)
+{
+  u3_noun bat = sit_u->bat, bas = sit_u->bas;
+  if ( sit_u->loc != u3_none || bas == u3_none || !sit_u->pog_p ||
+       !u3R->par_p || (u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ||
+       c3n == u3du(cor) || u3h(cor) != bat || c3n == u3du(bat) ) {
+    return c3n;
+  }
+
+  u3a_child_road* kid_u = (u3a_child_road*)u3R;
+  size_t i = ((bat >> 3) ^ (bat >> 11)) % c3_array_len(kid_u->absent);
+  u3a_jet_absence* ent_u = &kid_u->absent[i];
+  c3_d gen_d = _cj_reg_check(kid_u);
+  if ( ent_u->battery == bat && ent_u->bash == bas ) return c3y;
+
+  // Borrow indirect handles only from ancestor roads.
+  if ( c3n == u3a_is_senior(u3R, bat) || c3n == u3a_is_senior(u3R, bas) ||
+       c3n == u3j_site_unregistered(sit_u) ||
+       gen_d != atomic_load_explicit(&_cj_registry_d, memory_order_relaxed) ) {
+    return c3n;
+  }
+  u3m_hold();
+  *ent_u = (u3a_jet_absence){bat, bas};
+  u3m_hold_done();
+  return c3y;
+}
+
 /* _cj_site_kick(): execute site's kick on core.
  */
 static u3_weak
 _cj_site_kick(u3_noun cor, u3j_site* sit_u)
 {
   u3n_arm_watch(sit_u);
+  if ( c3y == _cj_site_absent(cor, sit_u) ) return u3_none;
   u3_weak loc, pro;
 
   loc = pro = u3_none;

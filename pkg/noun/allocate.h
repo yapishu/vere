@@ -349,13 +349,18 @@ STATIC_ASSERT( u3a_vits <= u3a_min_log,
       } u3a_jet_parent;
 
       typedef struct {
-        u3a_road       road;
-        u3a_jet_parent parents[8];
-        c3_d           registry_d;
-        c3_o           hashless_o;
-        u3a_equal_pair pairs[8];
-        u3a_equal_pair nested;    // inner matches preserve the eight root entries
-        c3_y           next_y;
+        u3_noun battery, bash;
+      } u3a_jet_absence;
+
+      typedef struct {
+        u3a_road        road;
+        u3a_jet_parent  parents[8];
+        u3a_jet_absence absent[32];
+        c3_d            registry_d;
+        c3_o            hashless_o;
+        u3a_equal_pair  pairs[8];
+        u3a_equal_pair  nested;    // inner matches preserve the eight root entries
+        c3_y            next_y;
       } u3a_child_road;
 
       STATIC_ASSERT( _Alignof(c3_d) == _Alignof(u3a_road_d),
