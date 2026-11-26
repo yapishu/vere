@@ -962,6 +962,32 @@ _test_json_de_array(void)
 }
 
 static c3_i
+_test_json_de_string(void)
+{
+  const c3_w lengths[] = {7, 8, 1023, 1024, 1025};
+  const c3_c suffix[] = "\\\"\\n\xc3\xa9\"";
+  const c3_c decoded[] = "\"\n\xc3\xa9";
+  c3_y text[1040], value[1040];
+  c3_i ret_i = 1;
+
+  for ( c3_w i = 0; i < c3_array_len(lengths); i++ ) {
+    c3_w len = lengths[i];
+    text[0] = '"';
+    memset(text + 1, 'a', len);
+    memcpy(text + 1 + len, suffix, sizeof(suffix) - 1);
+    memset(value, 'a', len);
+    memcpy(value + len, decoded, sizeof(decoded) - 1);
+
+    u3_noun got = u3ke_json_de(u3i_bytes(len + sizeof(suffix), text));
+    u3_noun want = u3nt(u3_nul, c3__s,
+                        u3i_bytes(len + sizeof(decoded) - 1, value));
+    ret_i &= c3y == u3r_sing(want, got);
+    u3z(want); u3z(got);
+  }
+  return ret_i;
+}
+
+static c3_i
 _test_json_de_object(void)
 {
   // The first two keys share a mug. The last two share only a heap rank.
@@ -1950,6 +1976,10 @@ _test_jets(void)
   }
   if ( !_test_json_de_object() ) {
     fprintf(stderr, "test jets: json_de_object: failed\r\n");
+    ret_i = 0;
+  }
+  if ( !_test_json_de_string() ) {
+    fprintf(stderr, "test jets: json_de_string: failed\r\n");
     ret_i = 0;
   }
   if ( !_test_hike() ) {
