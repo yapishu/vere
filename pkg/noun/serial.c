@@ -330,12 +330,18 @@ typedef struct _cue_frame_s {
 
 #include "cue_rank.inc"
 
+struct _u3_cue_xeno {
+  _cue_refs dic_u;
+  ur_cue_targets_t targets;
+};
+
 /* _cs_cue_xeno_next(): read next value from bitstream, dictionary off-loom.
 */
 static inline ur_cue_res_e
 _cs_cue_xeno_next(u3a_pile* pil_u, ur_bsr_t* red_u,
-                  _cue_refs* dic_u, u3_noun* out)
+                  u3_cue_xeno* sil_u, u3_noun* out)
 {
+  _cue_refs* dic_u = &sil_u->dic_u;
   while ( 1 ) {
     c3_d bit_d = red_u->bits;
     ur_cue_token_t token;
@@ -345,7 +351,9 @@ _cs_cue_xeno_next(u3a_pile* pil_u, ur_bsr_t* red_u,
     for ( unsigned i = 0; i < token.cells; i++, bit_d += 2 ) {
       _cue_frame_t* fam_u = u3a_push(pil_u);
       fam_u->ref = u3_none;
-      fam_u->key_d = _cue_refs_open(dic_u, bit_d);
+      // Page zero anchors the sparse directory, even when the root is unshared.
+      fam_u->key_d = (!bit_d || ur_cue_may_reference(&sil_u->targets, bit_d))
+                   ? _cue_refs_open(dic_u, bit_d) : SIZE_MAX;
     }
 
     switch ( token.tag ) {
@@ -378,23 +386,22 @@ _cs_cue_xeno_next(u3a_pile* pil_u, ur_bsr_t* red_u,
           }
         }
 
-        _cue_refs_finish(dic_u, _cue_refs_open(dic_u, bit_d), *out);
+        if ( ur_cue_may_reference(&sil_u->targets, bit_d) ) {
+          _cue_refs_finish(dic_u, _cue_refs_open(dic_u, bit_d), *out);
+        }
         return ur_cue_good;
       }
     }
   }
 }
 
-struct _u3_cue_xeno {
-  _cue_refs dic_u;
-};
-
 /* _cs_cue_xeno(): cue on-loom, with off-loom dictionary in handle.
 */
 static u3_weak
 _cs_cue_xeno(u3_cue_xeno* sil_u,
              c3_d         len_d,
-             const c3_y*  byt_y)
+             const c3_y*  byt_y,
+             c3_t         once)
 {
   ur_bsr_t      red_u = {0};
   _cue_refs* dic_u = &sil_u->dic_u;
@@ -421,7 +428,10 @@ _cs_cue_xeno(u3_cue_xeno* sil_u,
 
   //  advance into stream
   //
-  res_e = _cs_cue_xeno_next(&pil_u, &red_u, dic_u, &ref);
+  // A single large decode can discard most of its temporary dictionary.
+  // Reusable handles amortize the rank directory across messages.
+  if ( once && len_d >= (1U << 20) ) sil_u->targets = ur_bsr_targets(red_u);
+  res_e = _cs_cue_xeno_next(&pil_u, &red_u, sil_u, &ref);
 
   //  process cell results
   //
@@ -435,14 +445,14 @@ _cs_cue_xeno(u3_cue_xeno* sil_u,
       //
       if ( u3_none == fam_u->ref ) {
         fam_u->ref = ref;
-        res_e = _cs_cue_xeno_next(&pil_u, &red_u, dic_u, &ref);
+        res_e = _cs_cue_xeno_next(&pil_u, &red_u, sil_u, &ref);
         fam_u = u3a_peek(&pil_u);
       }
       //  f is a tail-frame; pop the stack and continue
       //
       else {
         ref   = u3nc(fam_u->ref, ref);
-        _cue_refs_finish(dic_u, fam_u->key_d, ref);
+        if ( fam_u->key_d != SIZE_MAX ) _cue_refs_finish(dic_u, fam_u->key_d, ref);
         fam_u = u3a_pop(&pil_u);
       }
     }
@@ -496,7 +506,7 @@ u3s_cue_xeno_with(u3_cue_xeno* sil_u,
 
   u3_assert( &(u3H->rod_u) == u3R );
 
-  som = _cs_cue_xeno(sil_u, len_d, byt_y);
+  som = _cs_cue_xeno(sil_u, len_d, byt_y, 0);
   sil_u->dic_u.noun_count = sil_u->dic_u.page_count = 0;
   if ( sil_u->dic_u.directory ) sil_u->dic_u.directory->height = 0;
   return som;
@@ -507,6 +517,7 @@ u3s_cue_xeno_with(u3_cue_xeno* sil_u,
 void
 u3s_cue_xeno_done(u3_cue_xeno* sil_u)
 {
+  free(sil_u->targets.bits);
   _cue_refs_free(&sil_u->dic_u);
   c3_free(sil_u);
 }
@@ -523,7 +534,7 @@ u3s_cue_xeno(c3_d        len_d,
   u3_assert( &(u3H->rod_u) == u3R );
 
   sil_u = u3s_cue_xeno_init();
-  som   = _cs_cue_xeno(sil_u, len_d, byt_y);
+  som   = _cs_cue_xeno(sil_u, len_d, byt_y, 1);
   u3s_cue_xeno_done(sil_u);
   return som;
 }

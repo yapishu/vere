@@ -4,6 +4,7 @@
 #define UR_BITSTREAM_H
 
 #include <inttypes.h>
+#include <stddef.h>
 
 #include "defs.h"
 
@@ -148,6 +149,26 @@ typedef struct {
 
 ur_cue_res_e
 ur_bsr_token(ur_bsr_t *bsr, ur_cue_token_t *token);
+
+/* Filter positions that may be the target of a backreference in the first
+** noun. The decoder still checks the full position in its dictionary.
+** A zero mask admits every position. The caller frees bits after decoding.
+*/
+typedef struct {
+  uint8_t *bits;
+  size_t   mask;
+} ur_cue_targets_t;
+
+ur_cue_targets_t
+ur_bsr_targets(ur_bsr_t reader);
+
+static inline ur_bool_t
+ur_cue_may_reference(const ur_cue_targets_t *targets, uint64_t bit)
+{
+  if ( !targets->mask ) return 1;
+  return targets->bits &&
+         (targets->bits[(bit & targets->mask) >> 3] & (1U << (bit & 7)));
+}
 
 /*
 **  initialize bitstream-writer with prev/size for fibonacci growth.

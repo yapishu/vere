@@ -350,6 +350,36 @@ _test_cue_positions(void)
   test.view = u3s_cue_view_new();
   _test_cue_page_ranks();
   _test_short_cue(&test);
+  // [42 back] with an ignored suffix. Offset 2 names the head, while an
+  // offset with the same low bits and the still-open root are invalid.
+  {
+    size_t size = 1U << 20;
+    c3_y* padded = c3_calloc(size);
+    c3_d targets[] = {2, 2 + (1U << 20), 0, 2};
+    for ( unsigned i = 0; i < 4; i++ ) {
+      ur_bsw_t writer = {0};
+      ur_bsw_init(&writer, 13, 21);
+      ur_bsw_cell(&writer);
+      ur_bsw_atom64(&writer, 6, 42);
+      ur_bsw_back64(&writer, c3_bits_word(targets[i]), targets[i]);
+      c3_d len;
+      c3_y* bytes;
+      ur_bsw_done(&writer, &len, &bytes);
+      memcpy(padded, bytes, len);
+      c3_free(bytes);
+
+      ur_nref ref;
+      ur_cue_res_e res = ur_cue(test.arena, size, padded, &ref);
+      u3_weak noun = u3s_cue_xeno(size, padded);
+      if ( targets[i] == 2 ) {
+        u3_assert(res == ur_cue_good && ref == ur_cons(test.arena, 42, 42));
+        u3_assert(noun != u3_none && u3h(noun) == 42 && u3t(noun) == 42);
+        u3z(noun);
+      }
+      else u3_assert(res == ur_cue_back && noun == u3_none);
+    }
+    c3_free(padded);
+  }
   // A wide encoded payload can represent a direct atom on either loom.
   {
     c3_d values[] = {0, (UINT64_C(1) << 57) | 9, UINT64_C(1) << 62};

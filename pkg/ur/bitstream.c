@@ -792,6 +792,47 @@ payload:
   return ur_cue_good;
 }
 
+ur_cue_targets_t
+ur_bsr_targets(ur_bsr_t reader)
+{
+  ur_cue_targets_t targets = {0};
+  ur_bsr_t prefix = reader;
+  ur_cue_tag_e tag;
+  if ( ur_cue_good != ur_bsr_tag(&prefix, &tag) || tag != ur_jam_cell ) {
+    return targets;
+  }
+
+  // Fold offsets into one bit per input byte, rounded down to a power of
+  // two, with at most 8 MiB of scratch. Collisions retain extra definitions.
+  // Bloom's negative membership test: https://doi.org/10.1145/362686.362692
+  size_t bytes = (size_t)1 << ur_met0_64(ur_min(reader.left >> 4, UINT64_C(1) << 22));
+  size_t mask = 8 * bytes - 1;
+  uint64_t pending = 1;
+  while ( pending ) {
+    ur_cue_token_t token;
+    if ( ur_cue_good != ur_bsr_token(&reader, &token) ) {
+      free(targets.bits);
+      return (ur_cue_targets_t){0};
+    }
+
+    pending += token.cells;
+    if ( token.tag == ur_jam_cell ) continue;
+    if ( token.tag == ur_jam_back ) {
+      if ( !targets.bits ) {
+        targets.bits = calloc(bytes, 1);
+        if ( !targets.bits ) return targets;
+      }
+      targets.bits[(token.value & mask) >> 3] |= 1U << (token.value & 7);
+    }
+    else if ( token.width > 64 ) {
+      ur_bsr_skip_any(&reader, token.width);
+    }
+    pending--;
+  }
+  targets.mask = mask;
+  return targets;
+}
+
 /*
 **  bitstream-writer operations follow a pattern of an unsafe (inline)
 **  implementation, unsafe wrt to buffer size and reallocation,

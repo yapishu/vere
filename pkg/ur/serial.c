@@ -237,65 +237,41 @@ _cue_next(ur_root_t      *r,
           _cue_stack_t   *s,
           ur_bsr_t     *bsr,
           ur_dict64_t *dict,
+          const ur_cue_targets_t *targets,
           ur_nref      *out)
 {
   while ( 1 ) {
-    uint64_t len, bits = bsr->bits;
-    ur_cue_tag_e   tag;
-    ur_cue_res_e   res;
+    uint64_t bits = bsr->bits;
+    ur_cue_token_t token;
+    ur_cue_res_e res = ur_bsr_token(bsr, &token);
+    if ( res != ur_cue_good ) return res;
 
-    if ( ur_cue_good != (res = ur_bsr_tag(bsr, &tag)) ) {
-      return res;
+    for ( unsigned i = 0; i < token.cells; ++i, bits += 2 ) {
+      if ( s->fill == s->size ) {
+        ur_serial_size_t next = s->prev + s->size;
+        s->f = _oom("cue_next stack", realloc(s->f, next * sizeof(*s->f)));
+        s->prev = s->size;
+        s->size = next;
+      }
+      s->f[s->fill++] = (_cue_frame_t){ .ref = CUE_HEAD, .bits = bits };
     }
 
-    switch ( tag ) {
+    switch ( token.tag ) {
       default: assert(0); [[fallthrough]];
-
-      case ur_jam_cell: {
-        //  reallocate the stack if full
-        //
-        if ( s->fill == s->size ) {
-          ur_serial_size_t next = s->prev + s->size;
-          s->f = _oom("cue_next stack", realloc(s->f, next * sizeof(*s->f)));
-          s->prev = s->size;
-          s->size = next;
-        }
-
-        //  save a head-frame and read the head from the stream
-        //
-        {
-          _cue_frame_t* f = &(s->f[s->fill++]);
-          f->ref  = CUE_HEAD;
-          f->bits = bits;
-        }
-        continue;
-      }
+      case ur_jam_cell: continue;
 
       case ur_jam_back: {
-        if ( ur_cue_good != (res = ur_bsr_rub_len(bsr, &len)) ) {
-          return res;
-        }
-        else if ( 62 < len ) {
-          return ur_cue_meme;
-        }
-        else {
-          uint64_t val, bak = ur_bsr64_any(bsr, len);
-
-          if ( !ur_dict64_get(r, dict, bak, &val) ) {
-            return  ur_cue_back;
-          }
-
-          *out = (ur_nref)val;
-          return ur_cue_good;
-        }
+        if ( !ur_dict64_get(r, dict, token.value, out) ) return ur_cue_back;
+        return ur_cue_good;
       }
 
       case ur_jam_atom: {
-        if ( ur_cue_good != (res = ur_bsr_rub_len(bsr, &len)) ) {
-          return res;
+        uint64_t len = token.width;
+        if ( len <= 62 ) {
+          *out = token.value;
         }
-        else if ( 62 >= len ) {
-          *out = (ur_nref)ur_bsr64_any(bsr, len);
+        else if ( len <= 64 ) {
+          *out = ur_coin64(r, token.value);
         }
         else {
           uint64_t len_byt = (len >> 3) + !!ur_mask_3(len);
@@ -324,7 +300,9 @@ _cue_next(ur_root_t      *r,
           }
         }
 
-        ur_dict64_put(r, dict, bits, (uint64_t)*out);
+        if ( ur_cue_may_reference(targets, bits) ) {
+          ur_dict64_put(r, dict, bits, (uint64_t)*out);
+        }
         return ur_cue_good;
       }
     }
@@ -366,7 +344,9 @@ _cue(ur_cue_t        *c,
 
   //  advance into stream
   //
-  res = _cue_next(r, s, &bsr, dict, &ref);
+  ur_cue_targets_t targets = {0};
+  if ( len >= 4096 ) targets = ur_bsr_targets(bsr);
+  res = _cue_next(r, s, &bsr, dict, &targets, &ref);
 
   //  process result
   //
@@ -379,13 +359,15 @@ _cue(ur_cue_t        *c,
     //
     if ( CUE_HEAD == f->ref ) {
       f->ref = ref;
-      res    = _cue_next(r, s, &bsr, dict, &ref);
+      res    = _cue_next(r, s, &bsr, dict, &targets, &ref);
     }
     //  f is a tail-frame; pop the stack and continue
     //
     else {
       ref = ur_cons(r, f->ref, ref);
-      ur_dict64_put(r, dict, f->bits, (uint64_t)ref);
+      if ( ur_cue_may_reference(&targets, f->bits) ) {
+        ur_dict64_put(r, dict, f->bits, (uint64_t)ref);
+      }
       s->fill--;
     }
   }
@@ -393,6 +375,7 @@ _cue(ur_cue_t        *c,
   if ( ur_cue_good == res ) {
     *out = ref;
   }
+  if ( targets.bits ) free(targets.bits);
   return res;
 }
 
