@@ -44,7 +44,7 @@ _cu_atom_to_ref(ur_root_t* rot_u, u3a_atom* vat_u)
       //  XX assumes little-endian
       //
       c3_y* byt_y = (c3_y*)vat_u->buf_w;
-      c3_d  len_d = ((c3_d)vat_u->len_w) << 2;
+      c3_d  len_d = (c3_d)vat_u->len_w * sizeof(*vat_u->buf_w);
 
       u3_assert( len_d );
 
