@@ -980,6 +980,28 @@ _cut_check(c3_g a_g, u3_atom b, u3_atom c, u3_atom d,
 }
 
 static c3_i
+_test_hike(void)
+{
+  u3_noun edits = u3nl(u3nt(1, 1, 9), u3nt(4, 1, 11), u3nt(5, 1, 12),
+                       u3nt(4, 1, 13), u3nt(3, 0, 3), u3nt(7, 1, 14));
+  u3_noun merged = u3nc(u3nt(1, 11, 12), u3nc(0, 3));
+  u3_noun root = u3nt(10, u3nc(1, merged), u3nc(0, 6));
+  u3_noun want = u3nt(10, u3nt(7, 1, 14), root);
+  u3_noun got = u3qf_hike(6, edits);
+  c3_i ret_i = c3y == u3r_sing(want, got);
+  u3z(edits); u3z(want); u3z(got);
+
+  u3_atom left = u3qc_bex(71);
+  u3_atom right = u3qa_inc(left);
+  edits = u3nl(u3nt(right, 1, 36), u3nt(left, 1, 35));
+  want = u3nt(10, u3nc(u3qc_bex(70), u3nt(1, 35, 36)), u3nc(0, 6));
+  got = u3qf_hike(6, edits);
+  ret_i &= c3y == u3r_sing(want, got);
+  u3z(edits); u3z(want); u3z(got);
+  return ret_i;
+}
+
+static c3_i
 _test_noun_order(void)
 {
   u3_noun a = u3i_string("abcdefghijkl");
@@ -1905,6 +1927,10 @@ _test_jets(void)
 
   if ( !_test_json_de_array() ) {
     fprintf(stderr, "test jets: json_de_array: failed\r\n");
+    ret_i = 0;
+  }
+  if ( !_test_hike() ) {
+    fprintf(stderr, "test jets: hike: failed\r\n");
     ret_i = 0;
   }
   if ( !_test_noun_order() ) {

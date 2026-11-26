@@ -298,6 +298,7 @@ static u3j_harm _135_pen_core_a[] = {{".2", u3wf_core}, {}};
 static u3j_harm _135_pen_face_a[] = {{".2", u3wf_face}, {}};
 static u3j_harm _135_pen_fitz_a[] = {{".2", u3wf_fitz}, {}};
 static u3j_harm _135_pen_fork_a[] = {{".2", u3wf_fork}, {}};
+static u3j_harm _135_pen_hike_a[] = {{".2", u3wf_hike}, {}};
 
 static u3j_harm _135_pen_look_a[] = {{".2", u3wf_look}, {}};
 static u3j_harm _135_pen_loot_a[] = {{".2", u3wf_loot}, {}};
@@ -1056,6 +1057,7 @@ static u3j_core _135_pen_d[] =
     { "face", 7, _135_pen_face_a, 0, no_hashes },
     { "fitz", 7, _135_pen_fitz_a, 0, no_hashes },
     { "fork", 7, _135_pen_fork_a, 0, no_hashes },
+    { "hike", 7, _135_pen_hike_a, 0, no_hashes },
     { "look", 7, _135_pen_look_a, 0, no_hashes },
     { "loot", 7, _135_pen_loot_a, 0, no_hashes },
     { "ut", 15, 0, _135_pen__ut_d, no_hashes, _135_pen__ut_ho },
