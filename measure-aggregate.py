@@ -21,7 +21,7 @@ row per ship, for further analysis.
 
 Metrics follow the plan's "Tuning the merged heuristics and policies"
 and "Prioritizing follow-up work": lines from older builds that lack
-some (P, H, D, G, Y) are used when present.
+some (P, H, D, G, Y, W, X, I, Z, N) are used when present.
 """
 
 import csv
@@ -49,6 +49,13 @@ def ints(p):
         return tuple(int(x) for x in p)
     except ValueError:
         return None
+
+
+#  fields in each hash-consing line (see measure-report.py's legend)
+WIDTH = {"W": 5, "X": 11, "I": 6, "Z": 18}
+
+#  a Z line from before the pass was metered
+Z_OLD = 7
 
 
 def parse(lines):
@@ -88,14 +95,50 @@ def parse(lines):
             intervals.append(cur)
         elif cur is None:
             continue
+        elif t == "Q" and len(p) >= 8 and p[1] == "0":
+            v = ints(p[2:])
+            if v is not None:
+                cur["Q0"] = v
+        elif t == "J":
+            v = ints(p[1:])
+            if v is not None and len(v) >= 6:
+                cur["J"] = v
+        elif t == "c":
+            v = ints(p[1:])
+            if v is not None and len(v) >= 4:
+                cur["c"] = v
+        elif t == "v" and len(p) >= 5:
+            v = ints(p[2:5])
+            if v is not None:
+                cur.setdefault("v", {})[p[1]] = v
+        elif t == "x" and len(p) >= 5:
+            v = ints(p[2:5])
+            if v is not None:
+                cur.setdefault("x", {})[p[1]] = v
+        elif t == "w":
+            v = ints(p[1:])
+            if v is not None and len(v) >= 7:
+                cur["w"] = v
         elif t == "F" and len(p) == 5:
             n = ints(p[4:5])
             if n:
                 cur["F"][(p[1], p[2])] += n[0]
-        elif t in "ACDGHMPTY":
+        elif t in "ACDGHMPTVY":
             v = ints(p[1:])
             if v is not None:
                 cur[t] = v
+        elif t in WIDTH:
+            #  take only lines of this shape (other widths are from
+            #  prototype builds: see measure-piers/scripts/)
+            v = ints(p[1:])
+            if v is not None and t == "Z" and len(v) == Z_OLD:
+                v = list(v) + [0] * (WIDTH[t] - Z_OLD)
+            if v is not None and len(v) == WIDTH[t]:
+                cur[t] = tuple(v)
+        elif t == "N" and len(p) == 11:
+            v = ints(p[2:])
+            if v is not None:
+                cur.setdefault("N", {})[p[1]] = v
     for o in ops:
         for i in intervals:
             if i["time"] >= o["time"]:
@@ -162,6 +205,11 @@ def values(ivs, line, j):
     return [i[line][j] for i in ivs if line in i and len(i[line]) > j]
 
 
+def _writes(s):
+    """Unification's slot writes: outside home memory, and in it."""
+    return s["W_out"] + s["W_hom"]
+
+
 def median(v):
     v = sorted(x for x in v if x is not None)
     return v[len(v) // 2] if v else None
@@ -189,8 +237,34 @@ def sums(ivs):
                 s["F_rec"] += n
             if pha.endswith("-dup"):
                 s["F_dup"] += n
-            if pha == "take-pro":
+            if pha in ("take-pro", "take-pek"):
                 s["F_pro"] += n
+            if pha.endswith("-pek"):
+                s["F_pek"] += n
+        if "Q0" in i and "G" in i and "Y" in i:
+            k = i["Q0"]
+            s["K_ag"] += k[0]; s["K_ac"] += k[1]; s["K_ar"] += k[2]
+            s["K_fe"] += k[4]; s["K_gan"] += i["G"][1]; s["K_can"] += i["G"][4]
+            s["K_win"] += i["G"][0]; s["K_ref"] += i["Y"][0]
+        if "J" in i:
+            w = i["J"]
+            s["J_eve"] += w[0]; s["J_eus"] += w[1]; s["J_pek"] += w[4]
+            s["J_pus"] += w[5]; s["J_secs"] += i.get("secs", 0)
+            s["J_tasks"] += i["tasks"]
+        if "w" in i and "J" in i:
+            w = i["w"]
+            s["W_pek"] += w[0]; s["W_bon"] += w[1]; s["W_eve"] += w[3]
+            s["W_peks"] += i["J"][4]; s["W_eves"] += i["J"][0] + i["J"][2]
+        if "c" in i and "J" in i:
+            c = i["c"]
+            s["HL_n"] += c[0]; s["HL_us"] += c[1]; s["HL_rel"] += c[3]
+            s["HL_eus"] += i["J"][1]
+        for k, x in i.get("v", {}).items():
+            s["V_us"] += x[1]; s["V_us_" + k] += x[1]
+        for k, x in i.get("x", {}).items():
+            s["X_all"] += x[0]; s["X_us"] += x[1]
+            if k != "exit":
+                s["X_non"] += x[0]
         if "A" in i:
             a = i["A"]
             s["A_fre"] += a[0]; s["A_cln"] += a[1]; s["A_alt"] += a[2]; s["A_reu"] += a[3]
@@ -214,10 +288,41 @@ def sums(ivs):
             g = i["G"]
             s["G_win"] += g[0]; s["G_gan"] += g[1]; s["G_can"] += g[4]
             s["G_spl"] += g[5]; s["G_shr"] += g[8]
+        if "V" in i and len(i["V"]) == 6:
+            v = i["V"]
+            s["V_ask"] += v[0] + v[1] + v[2]; s["V_run"] += v[3]
+            s["V_ms"] += v[4]; s["V_tasks"] += i["tasks"]
         if "Y" in i:
             y = i["Y"]
             s["Y_all"] += y[0]; s["Y_pos"] += y[1]; s["Y_exc"] += y[2]
+        if "W" in i:
+            w = i["W"]
+            s["W_mer"] += w[0]; s["W_giv"] += w[1]
+            s["W_out"] += w[2]; s["W_hom"] += w[3]
+            s["W_tasks"] += i["tasks"]
+        if "X" in i:
+            x = i["X"]
+            s["X_hful"] += x[1]; s["X_hlx"] += x[4]
+            s["X_iful"] += x[6]; s["X_ilx"] += x[9]
+        if "I" in i:
+            e = i["I"]
+            s["I_inn"] += e[1]; s["I_cel"] += e[2]; s["I_vis"] += e[3]
+            s["I_hpro"] += e[4]; s["I_hhit"] += e[5]
+        if "Z" in i:
+            z = i["Z"]
+            s["Z_tak"] += z[0]; s["Z_fnd"] += z[1]
+            s["Z_left"] += z[2]
+            s["Z_us"] += z[3] + z[4]; s["Z_tasks"] += i["tasks"]
+            if z[6] and z[5] / z[6] > s.get("Z_head", 0):
+                s["Z_head"] = z[5] / z[6]
+        for n in i.get("N", {}).values():
+            s["N_ovf"] += n[8]
     return s
+
+
+def crib_peak(v, name):
+    """The most entries crib [name] held at once, over [v]."""
+    return max((i["N"][name][3] for i in v if name in i.get("N", {})), default=None)
 
 
 #  name, decision it informs, function of (sums, intervals). a name
@@ -231,13 +336,87 @@ METRICS = [
     ("patch pages / hour", "overall churn",
      lambda s, v: ratio(s["patch"], s["secs"] / 3600)),
     ("patch pages / task", "overall churn", lambda s, v: ratio(s["patch"], s["tasks"])),
+    ("C: bytecode cap clears", "(b)",
+     lambda s, v: (sum(i["C"][5] for i in v if "C" in i and len(i["C"]) > 6)
+                   if any("C" in i and len(i["C"]) > 6 for i in v) else None)),
+    ("G: gains on atoms / gains", "(i) scope", lambda s, v: ratio(s["K_ag"], s["K_gan"])),
+    ("G: cancelled, atoms", "(i) scope", lambda s, v: ratio(s["K_ac"], s["K_ag"])),
+    ("G: cancelled, cells", "(i) scope",
+     lambda s, v: ratio(s["K_can"] - s["K_ac"], s["K_gan"] - s["K_ag"])),
+    ("Y: references to atoms / references", "(i) adaptive bound",
+     lambda s, v: ratio(s["K_ar"], s["K_ref"])),
+    ("effects: home references / window", "(i) adaptive bound",
+     lambda s, v: ratio(s["K_fe"], s["K_win"])),
+    ("J: event compute / elapsed", "snapshot work budget",
+     lambda s, v: ratio(s["J_eus"] / 1e6, s["J_secs"])),
+    ("J: peek compute / elapsed", "snapshot work budget",
+     lambda s, v: ratio(s["J_pus"] / 1e6, s["J_secs"])),
+    ("J: peeks / tasks", "snapshot work budget", lambda s, v: ratio(s["J_pek"], s["J_tasks"])),
+    ("J: event ms (mean)", "snapshot work budget",
+     lambda s, v: ratio(s["J_eus"] / 1e3, s["J_eve"])),
+    ("J: event seconds / interval (median)", "snapshot work budget",
+     lambda s, v: (lambda m: None if m is None else m / 1e6)(median(values(v, "J", 1)))),
+    ("J: event seconds / interval (max)", "snapshot work budget",
+     lambda s, v: (lambda m: None if m is None else m / 1e6)(max(values(v, "J", 1), default=None))),
+    ("J: longest event, seconds", "snapshot work budget",
+     lambda s, v: (lambda m: None if m is None else m / 1e6)(max(values(v, "J", 6), default=None))),
+    ("J: save ms (median)", "snapshot pause",
+     lambda s, v: (lambda m: None if m is None else m / 1e3)(median(values(v, "J", 7)))),
+    ("J: save ms (max)", "snapshot pause",
+     lambda s, v: (lambda m: None if m is None else m / 1e3)(max(values(v, "J", 7), default=None))),
+    ("J: minor faults between saves / patch page", "snapshot refaults",
+     lambda s, v: ratio(sum(values(v, "J", 8)),
+                        sum(i["patch"] for i in v if "J" in i and len(i["J"]) > 11))),
+    ("J: major faults / hour", "snapshot refaults",
+     lambda s, v: ratio(sum(values(v, "J", 9)),
+                        sum(i.get("secs", 0) for i in v if "J" in i and len(i["J"]) > 11) / 3600)),
+    ("J: save ms / patch page", "snapshot pause",
+     lambda s, v: ratio(sum(values(v, "J", 7)) / 1e3,
+                        sum(i["patch"] for i in v if "J" in i and len(i["J"]) > 7))),
+    ("w: peeks that followed work at once / peeks", "parallel peek",
+     lambda s, v: ratio(s["W_pek"], s["W_peks"])),
+    ("w: bound on such a peek's wait, ms (mean)", "parallel peek",
+     lambda s, v: (lambda m: None if m is None else m / 1e3)(ratio(s["W_bon"], s["W_pek"]))),
+    ("w: bound on a peek's wait, ms (max)", "parallel peek",
+     lambda s, v: (lambda m: None if m is None else m / 1e3)(max(values(v, "w", 2), default=None))),
+    ("w: longest peek, ms", "parallel peek",
+     lambda s, v: (lambda m: None if m is None else m / 1e3)(max(values(v, "w", 5), default=None))),
+    ("w: events that followed work at once / events", "queued input",
+     lambda s, v: ratio(s["W_eve"], s["W_eves"])),
+    ("w: longest run of work, seconds", "queued input",
+     lambda s, v: (lambda m: None if m is None else m / 1e6)(max(values(v, "w", 4), default=None))),
+    ("w: processors", "host", lambda s, v: max(values(v, "w", 7), default=None)),
+    ("w: load average (median)", "host",
+     lambda s, v: (lambda m: None if m is None else m / 100)(median(values(v, "w", 6)))),
+    ("v: event time in ames (a)", "where the work is", lambda s, v: ratio(s["V_us_a"], s["V_us"])),
+    ("v: event time in behn (b)", "where the work is", lambda s, v: ratio(s["V_us_b"], s["V_us"])),
+    ("v: event time in clay (c)", "where the work is", lambda s, v: ratio(s["V_us_c"], s["V_us"])),
+    ("v: event time in eyre (e)", "where the work is", lambda s, v: ratio(s["V_us_e"], s["V_us"])),
+    ("v: event time in gall (g)", "where the work is", lambda s, v: ratio(s["V_us_g"], s["V_us"])),
+    ("v: longest event, clay, seconds", "where the work is",
+     lambda s, v: (lambda m: None if m is None else m / 1e6)(
+         max((i["v"]["c"][2] for i in v if "c" in i.get("v", {})), default=None))),
+    ("c: effects held, ms (mean)", "log before compute",
+     lambda s, v: (lambda m: None if m is None else m / 1e3)(ratio(s["HL_us"], s["HL_n"]))),
+    ("c: effects held, ms (max)", "log before compute",
+     lambda s, v: (lambda m: None if m is None else m / 1e3)(max(values(v, "c", 2), default=None))),
+    ("c: time held / time computed", "log before compute",
+     lambda s, v: ratio(s["HL_us"], s["HL_eus"])),
+    ("c: events per release", "log before compute",
+     lambda s, v: ratio(s["HL_n"], s["HL_rel"])),
+    ("x: first failures / 1000 events", "log before compute",
+     lambda s, v: ratio(1000 * s["X_all"], s["W_eves"])),
+    ("x: of those, not deterministic", "log before compute",
+     lambda s, v: ratio(s["X_non"], s["X_all"])),
     ("first writes: page records", "C1 tier 2", lambda s, v: ratio(s["F_crag"], s["F"])),
     ("first writes: refcounts (w0)", "C3", lambda s, v: ratio(s["F_w0"], s["F"])),
     ("first writes: roc-lose", "C1 tier 2 / C3", lambda s, v: ratio(s["F_roclose"], s["F"])),
     ("first writes: bytecode take/reap", "(h)", lambda s, v: ratio(s["F_byc"], s["F"])),
     ("first writes: reclaims (rec-*)", "(b)", lambda s, v: ratio(s["F_rec"], s["F"])),
     ("first writes: dedup set (*-dup)", "(b), (c)", lambda s, v: ratio(s["F_dup"], s["F"])),
-    ("first writes: product take (take-pro)", "(i)", lambda s, v: ratio(s["F_pro"], s["F"])),
+    ("first writes: product take (take-pro, take-pek)", "(i)", lambda s, v: ratio(s["F_pro"], s["F"])),
+    ("first writes: a peek's take, jam and free (*-pek)", "jam lead 2",
+     lambda s, v: ratio(s["F_pek"], s["F"])),
     ("A: alloc onto clean page, dirty had room / patch", "C1 tier 1",
      lambda s, v: ratio(s["A_alt"], s["A_patch"])),
     ("A: page-record frees / patch", "C1 tier 2",
@@ -283,15 +462,78 @@ METRICS = [
     ("G: peak pending", "(i) cap", lambda s, v: max(values(v, "G", 3), default=None)),
     ("G: shrinks / 1000 windows", "(i) hysteresis",
      lambda s, v: ratio(1000 * s["G_shr"], s["G_win"]) if s["G_win"] else None),
+    ("V: check grabs / 1M tasks", "signal safety",
+     lambda s, v: ratio(1e6 * s["V_run"], s["V_tasks"]) if s["V_tasks"] else None),
+    ("V: ms per check grab", "signal safety", lambda s, v: ratio(s["V_ms"], s["V_run"])),
+    ("V: longest check grab, ms", "signal safety",
+     lambda s, v: max((i["V"][4] for i in v if "V" in i and len(i["V"]) == 6), default=None)),
     ("Y: aligned", "(i) adaptive bound", lambda s, v: ratio(s["Y_pos"], s["Y_all"])),
     ("Y: aligned and exclusive", "(i) fused path", lambda s, v: ratio(s["Y_exc"], s["Y_all"])),
+    ("W: slot writes / 1000 tasks", "hashcons: eager unification",
+     lambda s, v: ratio(1000 * _writes(s), s["W_tasks"]) if s["W_tasks"] else None),
+    ("W: slot writes / give-ups", "hashcons: eager unification",
+     lambda s, v: ratio(_writes(s), s["W_giv"])),
+    ("W: writes in home memory", "hashcons: eager unification",
+     lambda s, v: ratio(s["W_hom"], _writes(s))),
+    ("W: senior-road merges / 1000 tasks", "hashcons: senior unification",
+     lambda s, v: ratio(1000 * s["W_mer"], s["W_tasks"]) if s["W_tasks"] else None),
+    ("X: home lose list full", "hashcons: lose list ceiling", lambda s, v: s["X_hful"]),
+    ("X: home most lost at one exit", "hashcons: lose list ceiling",
+     lambda s, v: max(values(v, "X", 3), default=None)),
+    ("X: inner lose list full", "hashcons: lose list ceiling", lambda s, v: s["X_iful"]),
+    ("X: inner most lost at one exit", "hashcons: lose list ceiling",
+     lambda s, v: max(values(v, "X", 8), default=None)),
+    ("X: left by interrupted exits, home", "hashcons: lose list", lambda s, v: s["X_hlx"]),
+    ("X: left by interrupted exits, inner", "hashcons: lose list", lambda s, v: s["X_ilx"]),
+    ("I: junior cells walked / inner call", "hashcons: eager pass",
+     lambda s, v: ratio(s["I_cel"], s["I_inn"])),
+    ("I: visited-set hits / cells walked", "hashcons: eager pass",
+     lambda s, v: ratio(s["I_vis"], s["I_cel"])),
+    ("I: home-set hits / inner probes", "hashcons: eager pass",
+     lambda s, v: ratio(s["I_hhit"], s["I_hpro"])),
+    ("Z: junior nouns found a member / looked up", "hashcons: canonicalizing take",
+     lambda s, v: ratio(s["Z_fnd"], s["Z_tak"])),
+    ("Z: taken nouns canonicalized after the takes", "hashcons: canonicalizing take",
+     lambda s, v: s["Z_left"]),
+    ("Z: most members added at one exit / set size then", "hashcons: table headroom",
+     lambda s, v: s.get("Z_head", 0)),
+    ("Z: exit-home ms / 1000 tasks", "hashcons: exit cost",
+     lambda s, v: ratio(s["Z_us"], s["Z_tasks"]) if s["Z_tasks"] else None),
+    ("N: visited set peak entries", "hashcons: crib sizes",
+     lambda s, v: crib_peak(v, "visited-set")),
+    ("N: lose list peak", "hashcons: crib sizes",
+     lambda s, v: crib_peak(v, "lose-list")),
+    ("N: notes peak (nouns canonicalized after one exit's takes)", "hashcons: crib sizes",
+     lambda s, v: crib_peak(v, "notes")),
+    ("N: home walk's deepest stack (frames)", "hashcons: crib sizes",
+     lambda s, v: crib_peak(v, "walk-frames")),
+    ("N: scratch yard peak (bytes)", "hashcons: crib sizes",
+     lambda s, v: crib_peak(v, "yard-scratch")),
+    ("N: result yard peak (bytes)", "hashcons: crib sizes",
+     lambda s, v: crib_peak(v, "yard-result")),
+    ("N: fills or drops at a ceiling", "hashcons: crib ceilings", lambda s, v: s["N_ovf"]),
 ]
 
 
 PERCENT = {name for name, _, _ in METRICS
            if name.startswith(("first writes", "A:", "D: hits", "D: table",
-                               "D: on-loom", "G: cancelled", "G: spilled", "Y:"))
+                               "D: on-loom", "G: cancelled", "G: spilled", "Y:",
+                               "W: slot writes / give", "W: writes in home",
+                               "W: writes on senior", "I: visited", "I: home-set",
+                               "Z: junior nouns found", "Z: most members added"))
            or "keys /" in name or "looked up /" in name}
+
+
+PERCENT |= {"G: gains on atoms / gains", "G: cancelled, atoms", "G: cancelled, cells",
+            "Y: references to atoms / references"}
+PERCENT |= {"J: event compute / elapsed", "J: peek compute / elapsed",
+            "J: peeks / tasks"}
+PERCENT |= {"w: peeks that followed work at once / peeks",
+            "w: events that followed work at once / events",
+            "x: of those, not deterministic",
+            "v: event time in ames (a)", "v: event time in behn (b)",
+            "v: event time in clay (c)", "v: event time in eyre (e)",
+            "v: event time in gall (g)"}
 
 
 def mb(b):

@@ -619,8 +619,9 @@ main(int argc, char* argv[])
 
   _test_cue_positions();
 
-  //  GC
+  //  GC, failing on a leak
   //
+  u3C.wag_h |= u3o_leak_crash;
   u3m_grab();
 
   fprintf(stderr, "test jam: ok\r\n");

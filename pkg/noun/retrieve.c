@@ -3,9 +3,11 @@
 #include "retrieve.h"
 
 #include "allocate.h"
+#include "events.h"
 #include "imprison.h"
 #include "murmur3.h"
 #include "trace.h"
+#include "vortex.h"
 #include "xtract.h"
 
 
@@ -245,10 +247,12 @@ _cr_sing_push(u3a_pile* pil_u, u3_noun a, u3_noun b)
 static inline c3_o
 _cr_sing_mug(u3a_noun* a_u, u3a_noun* b_u)
 {
-  //  XX add debug assertions that both mugs are 31-bit
-  //  (ie, not u3a_take() relocation references)
+  //  a noun that has left (u3a_take()) holds the address of its copy in
+  //  its mug slot, not a mug: nothing is known from it
   //
-  if ( a_u->mug_w && b_u->mug_w && (a_u->mug_w != b_u->mug_w) ) {
+  if (  a_u->mug_w && b_u->mug_w && (a_u->mug_w != b_u->mug_w)
+     && !((a_u->mug_w | b_u->mug_w) >> 31) )
+  {
     return c3n;
   }
 
@@ -312,6 +316,8 @@ _cr_sing_atom(u3_atom a, u3_noun b)
 #define FREE_FN(ptr, size) u3a_free(ptr)
 #include "verstable.h"
 
+/* _cr_sing_wed(): unify the children [*a] and [*b] of equal cells.
+*/
 static inline __attribute__((always_inline)) void
 _cr_sing_wed(u3_noun *restrict a, u3_noun *restrict b)
 {
@@ -480,6 +486,11 @@ _cr_sing_known(const u3a_child_road* child, u3a_equal_pair pair)
 }
 
 /* _cr_sing(): unifying equality.
+**
+**   Equal children converge through u3a_wed(). When a slot cannot be
+**   unified, the comparison table bounds repeated work on shared cells.
+**   Completed comparisons between ancestor cells remain valid until the
+**   evaluating road exits and their owning roads can reuse the addresses.
 */
 static c3_o
 _cr_sing(u3_noun a, u3_noun b)
@@ -647,6 +658,32 @@ u3r_sing_imp(u3_noun a, u3_noun b)
   ret_o = _cr_sing(a, b);
   u3t_off(euq_o);
   return ret_o;
+}
+
+/* u3r_sing_wed(): u3r_sing() on two slots, unifying the slots themselves
+**   when equal, as unification does for the children it compares. see
+**   retrieve.h for what a slot must be: a slot off the loom, or on u3R's
+**   stack, is u3R's, and is written as u3R's heap would be. one on an
+**   older road's stack, or off the loom but holding a count on home, is
+**   not allowed.
+*/
+c3_o
+u3r_sing_wed_imp(u3_noun* a, u3_noun* b)
+{
+  if ( *a == *b ) {
+    return c3y;
+  }
+
+  if ( c3n == u3r_sing(*a, *b) ) {
+    return c3n;
+  }
+  else if ( *a != *b ) {
+    //  cores sharing a call site converge on one battery: each check
+    //  keeps the value u3a_wed() prefers, in the cache or the core
+    //
+    u3a_wed(a, b);
+  }
+  return c3y;
 }
 
 c3_o
@@ -1940,9 +1977,14 @@ _cr_mug_next(u3a_pile* pil_u, u3_noun veb)
 
       //  veb has already been mugged, return memoized value
       //
-      //    XX add debug assertion that mug is 31-bit?
+      //    a noun that has left (u3a_take()) holds the address of its
+      //    copy there: the copy's mug is its own
       //
       if ( veb_u->mug_w ) {
+        if ( c3_unlikely(veb_u->mug_w >> 31) ) {
+          veb = (u3_noun)veb_u->mug_w;
+          continue;
+        }
         return (c3_h)veb_u->mug_w;
       }
       //  veb is an indirect atom, mug its bytes and memoize
