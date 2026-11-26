@@ -87,31 +87,23 @@ u3we_lore(u3_noun cor)
 u3_noun
 u3qe_leer(u3_atom txt)
 {
-  u3_noun  pro;
-  u3_noun* lit = &pro;
+  c3_w        wor_w;
+  const c3_y* byt_y = (const c3_y*)u3r_word_buffer(&txt, &wor_w);
+  const c3_y* end_y = byt_y + u3r_met(3, txt);
+  u3_noun     pro;
+  u3_noun*    lit = &pro;
 
-  {
-    c3_w pos_w, i_w = 0, len_w = u3r_met(3, txt);
-    u3_noun* hed;
-    u3_noun* tel;
+  STATIC_ASSERT(c3_endian == c3_endian_little, "");
+  while ( byt_y < end_y ) {
+    const c3_y* sep_y = memchr(byt_y, 10, end_y - byt_y);
+    const c3_y* nex_y = sep_y ? sep_y : end_y;
+    u3_noun*    hed;
+    u3_noun*    tel;
 
-    while ( i_w < len_w ) {
-      //  scan till end or newline
-      //
-      for ( pos_w = i_w; i_w < len_w; ++i_w ) {
-        if ( 10 == u3r_byte(i_w, txt) ) {
-          break;
-        }
-      }
-
-      //  append to list
-      //
-      *lit = u3i_defcons(&hed, &tel);
-      *hed = _leer_cut(pos_w, i_w - pos_w, txt);
-      lit  = tel;
-
-      i_w++;
-    }
+    *lit = u3i_defcons(&hed, &tel);
+    lit  = tel;
+    *hed = u3i_bytes(nex_y - byt_y, byt_y);
+    byt_y = sep_y ? sep_y + 1 : end_y;
   }
 
   *lit = u3_nul;

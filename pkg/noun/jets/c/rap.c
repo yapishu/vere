@@ -6,6 +6,34 @@
 #include "noun.h"
 
 
+  /* _rap_bytes(): concatenate the measured list directly into its atom.
+  */
+  static u3_atom
+  _rap_bytes(u3_noun cab, c3_w tot_w)
+  {
+    u3i_slab sab_u;
+    u3i_slab_bare(&sab_u, 3, tot_w);
+    sab_u.buf_w[sab_u.len_w - 1] = 0;
+
+    c3_y* out_y = sab_u.buf_y;
+    for ( ; u3_nul != cab; cab = u3t(cab) ) {
+      u3_atom dat = u3h(cab);
+
+      if ( dat <= 255 ) {
+        if ( dat ) {
+          *out_y++ = dat;
+        }
+      }
+      else {
+        c3_w len_w = u3r_met(3, dat);
+        u3r_bytes(0, len_w, out_y, dat);
+        out_y += len_w;
+      }
+    }
+
+    return u3i_slab_moot_bytes(&sab_u);
+  }
+
   u3_noun
   u3qc_rap(u3_atom a,
            u3_noun b)
@@ -36,7 +64,8 @@
           else if ( c3n == u3ud(h_cab = u3h(cab)) ) {
             return u3m_bail(c3__exit);
           }
-          else if ( (tot_w + (len_w = u3r_met(a_g, h_cab))) < tot_w ) {
+          len_w = (3 == a_g && h_cab <= 255) ? (0 != h_cab) : u3r_met(a_g, h_cab);
+          if ( len_w > ((c3_w)-1 - tot_w) ) {
             return u3m_bail(c3__fail);
           }
           tot_w += len_w;
@@ -47,6 +76,9 @@
           return 0;
         }
 
+        if ( 3 == a_g ) {
+          return _rap_bytes(b, tot_w);
+        }
         u3i_slab_init(&sab_u, a_g, tot_w);
       }
 

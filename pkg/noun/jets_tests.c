@@ -1754,6 +1754,25 @@ _test_redo(void)
   u3z(ref); u3z(xyx); u3z(yx); u3z(x); u3z(atom);
 }
 
+static void
+_test_byte_text(void)
+{
+  const c3_y raw_y[] = {10, 'a', 0, 'b', 0, 10, 10, 'c', 13};
+  u3_atom txt = u3i_bytes(sizeof(raw_y), raw_y);
+  u3_noun lis = u3qe_leer(txt);
+  u3_noun exp = u3nc(0, u3nq(0x620061, 0, 0x0d63, 0));
+  u3_assert(c3y == u3r_sing(lis, exp));
+  u3z(txt); u3z(lis); u3z(exp);
+
+  const c3_y dat_y[] = {0xff, 0x00, 0x01, 0x02, 0, 3, 0, 4, 5, 6, 7, 8};
+  u3_atom big = u3i_bytes(sizeof(dat_y) - 3, dat_y + 3);
+  lis = u3nc(0xff, u3nq(0, 0x0100, big, 0));
+  txt = u3qc_rap(3, lis);
+  exp = u3i_bytes(sizeof(dat_y), dat_y);
+  u3_assert(c3y == u3r_sing(txt, exp));
+  u3z(lis); u3z(txt); u3z(exp);
+}
+
 static c3_i
 _test_jets(void)
 {
@@ -1767,6 +1786,7 @@ _test_jets(void)
   _test_redo();
 
   _test_bulk_trees();
+  _test_byte_text();
   _test_map_union();
   _test_tree_intersection();
   _test_bif();
