@@ -338,9 +338,13 @@ u3_disk_sift(u3_disk* log_u,
          ^ (dat_y[2] << 16)
          ^ (dat_y[3] << 24);
 
-  //  XX u3m_soft?
+  //  Cue borrows the record for the duration of this call. The payload is
+  //  an atom, so its byte length excludes high zero bytes.
   //
-  *job = u3ke_cue(u3i_bytes(len_i - 4, dat_y + 4));
+  const c3_y* jam_y = dat_y + 4;
+  c3_w len_w = len_i - 4;
+  while ( len_w && !jam_y[len_w - 1] ) len_w--;
+  *job = u3s_cue_bytes(len_w, jam_y);
 
 #ifdef DISK_TRACE_CUE
   u3t_event_trace("disk sift", 'E');
