@@ -198,15 +198,59 @@ _fond_anon(u3_noun sut, u3_noun skip, u3_noun vein)
   return u3_none;
 }
 
+/* Project an axis through a type. Each fork member sees the same unconsumed
+** axis. +fork combines their projections, dropping void and duplicates.
+** https://github.com/urbit/urbit/blob/bd3973dc97c0f4ac8eae5fddfa15c39d522eb8d0/pkg/arvo/sys/hoon.hoon#L10489-L10532
+*/
 static u3_weak
-_fond_axis(u3_noun sut, u3_noun way, c3_w axe_w)
+_peek_axis(u3_noun sut, u3_noun way, c3_w axe_w, c3_w bit_w,
+           c3_w dep_w, c3_w* fuel_w);
+
+static c3_o
+_peek_fork(u3_noun set, u3_noun way, c3_w axe_w, c3_w bit_w,
+           c3_w dep_w, c3_w* fuel_w, u3_noun* types)
 {
-  if ( !axe_w ) return u3_none;
-  c3_w bit_w = ((c3_w)1 << (c3_bits_word(axe_w) - 1)) >> 1;
-  for ( c3_w dep_w = 0; bit_w && dep_w < 80; dep_w++ ) {
+  if ( set == u3_nul ) return c3y;
+  u3_noun typ, lef, rit;
+  if ( !dep_w || !*fuel_w || c3n == u3r_trel(set, &typ, &lef, &rit) ) {
+    return c3n;
+  }
+  --*fuel_w;
+  //  Nested projections can unify nouns as they build a fork.
+  //
+  u3k(lef); u3k(rit);
+  c3_o ret_o = c3n;
+  u3_weak pro = _peek_axis(typ, way, axe_w, bit_w, dep_w-1, fuel_w);
+  if ( pro != u3_none ) {
+    *types = u3nc(pro, *types);
+    if ( c3y == _peek_fork(lef, way, axe_w, bit_w, dep_w-1, fuel_w, types) ) {
+      ret_o = _peek_fork(rit, way, axe_w, bit_w, dep_w-1, fuel_w, types);
+    }
+  }
+  u3z(rit); u3z(lef);
+  return ret_o;
+}
+
+static u3_weak
+_peek_axis(u3_noun sut, u3_noun way, c3_w axe_w, c3_w bit_w,
+           c3_w dep_w, c3_w* fuel_w)
+{
+  while ( bit_w ) {
+    if ( !dep_w || !*fuel_w ) return u3_none;
+    dep_w--;
+    --*fuel_w;
     if ( sut == c3__noun || sut == c3__void ) return sut;
-    u3_noun tag, p, q;
-    if ( c3n == u3r_trel(sut, &tag, &p, &q) ) return u3_none;
+    if ( c3n == u3du(sut) ) return u3_none;
+    u3_noun tag = u3h(sut), p, q;
+    if ( tag == c3__fork ) {
+      u3_noun types = u3_nul;
+      if ( c3n == _peek_fork(u3t(sut), way, axe_w, bit_w, dep_w, fuel_w, &types) ) {
+        u3z(types);
+        return u3_none;
+      }
+      return u3kf_fork(types);
+    }
+    if ( c3n == u3r_cell(u3t(sut), &p, &q) ) return u3_none;
     switch ( tag ) {
       case c3__hint: case c3__face: sut = q; continue;
       case c3__atom: return c3__void;
@@ -220,7 +264,16 @@ _fond_axis(u3_noun sut, u3_noun way, c3_w axe_w)
     }
     bit_w >>= 1;
   }
-  return bit_w ? u3_none : u3k(sut);
+  return u3k(sut);
+}
+
+static u3_weak
+_peek(u3_noun sut, u3_noun way, u3_atom axe)
+{
+  if ( !axe || c3n == u3a_is_cat(axe) ) return u3_none;
+  c3_w bit_w = ((c3_w)1 << (c3_bits_word(axe) - 1)) >> 1;
+  c3_w fuel_w = 512;
+  return _peek_axis(sut, way, axe, bit_w, 80, &fuel_w);
 }
 
 u3_weak
@@ -257,7 +310,7 @@ u3qfu_fond(u3_noun van, u3_noun sut, u3_noun way, u3_noun hyp, c3_y kel_y)
     }
     else if ( u3h(limb) == c3y && c3y == u3a_is_cat(u3t(limb)) ) {
       c3_w axe_w = u3t(limb);
-      u3_weak typ = _fond_axis(sut, way, axe_w);
+      u3_weak typ = _peek(sut, way, axe_w);
       if ( typ != u3_none ) {
         next = u3nq(c3y, u3nc(u3nc(u3_nul, axe_w), u3k(vein)), c3y, typ);
       }
@@ -282,13 +335,31 @@ u3qfu_fond(u3_noun van, u3_noun sut, u3_noun way, u3_noun hyp, c3_y kel_y)
   return port;
 }
 
+static c3_o
+_fond_way(u3_noun way)
+{
+  return __(way == c3__read || way == c3__rite ||
+            way == c3__free || way == c3__both);
+}
+
+u3_weak
+u3wfu_peek(u3_noun cor)
+{
+  u3_noun way, axe, sut;
+  if ( c3n == u3r_mean(cor, {u3x_sam_2, &way}, {u3x_sam_3, &axe},
+                            {u3x_con_sam, &sut}) || c3n == _fond_way(way) ) {
+    return u3_none;
+  }
+  return _peek(sut, way, axe);
+}
+
 static u3_weak
 _fond_gate(u3_noun cor, c3_y kel_y)
 {
   u3_noun way, hyp, sut;
   if ( c3n == u3r_mean(cor, {u3x_sam_2, &way}, {u3x_sam_3, &hyp},
                             {u3x_con_sam, &sut}) ||
-       (way != c3__read && way != c3__rite && way != c3__free && way != c3__both) ) {
+       c3n == _fond_way(way) ) {
     return u3_none;
   }
 
@@ -305,4 +376,29 @@ u3_weak
 u3wfu_fond_137(u3_noun cor)
 {
   return _fond_gate(cor, 137);
+}
+
+/* +find returns a natural +fond match directly. Let Hoon handle synthetic
+** ports and produce the trace for a failed lookup.
+*/
+static u3_weak
+_find_gate(u3_noun cor, c3_y kel_y)
+{
+  u3_weak port = _fond_gate(cor, kel_y);
+  if ( port == u3_none ) return u3_none;
+  if ( c3y == u3du(port) && c3y == u3h(port) ) return port;
+  u3z(port);
+  return u3_none;
+}
+
+u3_weak
+u3wfu_find_135(u3_noun cor)
+{
+  return _find_gate(cor, 135);
+}
+
+u3_weak
+u3wfu_find_137(u3_noun cor)
+{
+  return _find_gate(cor, 137);
 }

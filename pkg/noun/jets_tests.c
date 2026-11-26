@@ -1405,6 +1405,12 @@ _check_fond_van(c3_y kel_y, u3_noun van, u3_noun wing, u3_weak want)
 {
   u3_noun cor = u3nt(0, u3nc(c3__read, wing), van);
   u3_weak got = (135 == kel_y) ? u3wfu_fond_135(cor) : u3wfu_fond_137(cor);
+  u3_weak hit = (135 == kel_y) ? u3wfu_find_135(cor) : u3wfu_find_137(cor);
+  if ( want != u3_none && c3y == u3du(want) && c3y == u3h(want) ) {
+    u3_assert(hit != u3_none && c3y == u3r_sing(hit, want));
+    u3z(hit);
+  }
+  else u3_assert(hit == u3_none);
   if ( want == u3_none ) u3_assert(got == u3_none);
   else {
     u3_assert(got != u3_none && c3y == u3r_sing(got, want));
@@ -1418,6 +1424,44 @@ static void
 _check_fond(u3_noun sut, u3_noun wing, u3_weak want)
 {
   _check_fond_van(137, u3nt(0, sut, 0), wing, want);
+}
+
+static void
+_check_peek(u3_noun sut, u3_noun way, u3_atom axe, u3_weak want)
+{
+  u3_noun cor = u3nt(0, u3nc(way, axe), u3nt(0, sut, 0));
+  u3_weak got = u3wfu_peek(cor);
+  if ( want == u3_none ) u3_assert(got == u3_none);
+  else {
+    u3_assert(got != u3_none && c3y == u3r_sing(want, got));
+    u3z(got); u3z(want);
+  }
+  u3z(cor);
+}
+
+static void
+_test_peek(void)
+{
+  u3_noun atom = u3nt(c3__atom, c3__ud, 0);
+  u3_noun pair = u3nt(c3__cell, u3k(atom), c3__noun);
+  u3_noun face = u3nt(c3__face, 'x', u3k(pair));
+  u3_noun alts = u3qf_forq(face, pair);
+  _check_peek(u3k(alts), c3__read, 1, u3k(alts));
+  _check_peek(u3k(alts), c3__read, 2, u3k(atom));
+  _check_peek(u3qf_forq(alts, atom), c3__rite, 3, c3__noun);
+  u3_noun other = u3nt(c3__cell, c3__noun, u3k(atom));
+  _check_peek(u3qf_forq(other, alts), c3__read, 2, u3qf_forq(c3__noun, atom));
+  u3z(other);
+  u3_noun hold = u3nt(c3__hold, c3__noun, u3nc(c3__tune, 'x'));
+  _check_peek(u3qf_forq(hold, alts), c3__both, 2, u3_none);
+
+  u3_noun coil = u3nq(u3nt(0, c3__dry, c3__lead), c3__noun, 0, 0);
+  u3_noun core = u3nt(c3__core, u3k(pair), coil);
+  _check_peek(u3k(core), c3__read, 2, c3__noun);
+  _check_peek(u3k(core), c3__rite, 6, u3_none);
+  _check_peek(core, c3__free, 6, u3k(atom));
+  _check_peek(alts, c3__read, 0, u3_none);
+  u3z(hold); u3z(face); u3z(pair); u3z(atom);
 }
 
 static void
@@ -1717,6 +1761,7 @@ _test_jets(void)
 
   _test_arm_axes();
   _test_fond();
+  _test_peek();
   _test_toss();
   _test_nest();
   _test_redo();

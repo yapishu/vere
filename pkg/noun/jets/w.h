@@ -383,7 +383,8 @@
 
     u3_noun u3wfu_busk(u3_noun);
     u3_noun u3wfu_crop(u3_noun);
-    u3_noun u3wfu_find(u3_noun);
+    u3_weak u3wfu_find_135(u3_noun);
+    u3_weak u3wfu_find_137(u3_noun);
     u3_noun u3wfu_fond(u3_noun);
     u3_noun u3wfu_fish(u3_noun);
     u3_noun u3wfu_fuse(u3_noun);
@@ -397,7 +398,7 @@
     u3_noun u3wfu_mull(u3_noun);
     u3_noun u3wfu_nest_dext1(u3_noun);
     u3_noun u3wfu_nest_dext2(u3_noun);
-    u3_noun u3wfu_peek(u3_noun);
+    u3_weak u3wfu_peek(u3_noun);
     u3_noun u3wfu_play(u3_noun);
     u3_noun u3wfu_repo(u3_noun);
     u3_noun u3wfu_rest(u3_noun);
