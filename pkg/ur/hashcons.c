@@ -712,44 +712,76 @@ ur_coin64(ur_root_t *r, uint64_t n)
   }
 }
 
+/* Children are canonical within an arena, so the ordered handles identify
+** the cell (Filliâtre and Conchon, "Type-Safe Modular Hash-Consing",
+** https://usr.lmf.cnrs.fr/~jcf/publis/hash-consing2.pdf).
+*/
+static inline uint64_t
+_cell_hash(ur_nref hed, ur_nref tal)
+{
+  uint64_t x = hed * UINT64_C(0x9e3779b97f4a7c15) + tal;
+  x ^= x >> 33;
+  x *= UINT64_C(0xff51afd7ed558ccd);
+  return x ^ (x >> 33);
+}
+
+/* A slot holds the cell index plus one in its low bits and a hash
+** fingerprint in the unused high bits. Zero marks an empty slot.
+*/
+static void
+_cell_index_grow(ur_cells_t *cells)
+{
+  uint64_t size = cells->index_size ? 2 * cells->index_size : 256;
+  uint64_t mask = size - 1;
+  uint64_t *slots = _oom("cell_index_grow", calloc(size, sizeof(*slots)));
+
+  for ( uint64_t i = 0; i < cells->fill; i++ ) {
+    uint64_t hash = _cell_hash(cells->heads[i], cells->tails[i]);
+    uint64_t pos = hash & mask;
+    while ( slots[pos] ) {
+      pos = (pos + 1) & mask;
+    }
+    slots[pos] = (hash & ~mask) | (i + 1);
+  }
+  free(cells->slots);
+  cells->slots = slots;
+  cells->index_size = size;
+}
+
 ur_nref
 ur_cons(ur_root_t *r, ur_nref hed, ur_nref tal)
 {
-  ur_cells_t *cells = &(r->cells);
-  ur_dict_t   *dict = &(cells->dict);
-  ur_mug mug        = ur_mug_both(ur_nref_mug(r, hed),
-                                  ur_nref_mug(r, tal));
+  ur_cells_t *cells = &r->cells;
+  uint64_t hash = _cell_hash(hed, tal);
 
   while ( 1 ) {
-    uint64_t      idx = ( mug % dict->size );
-    ur_pail_t *bucket = &(dict->buckets[idx]);
-    uint8_t i, b_fill = dict->fills[idx];
-    ur_nref cel;
-
-    for ( i = 0; i < b_fill; i++ ) {
-      cel = bucket->refs[i];
-
-      if (  (hed == ur_head(r, cel))
-         && (tal == ur_tail(r, cel)) )
+    uint64_t mask = cells->index_size - 1;
+    uint64_t fingerprint = hash & ~mask;
+    uint64_t pos = hash & mask;
+    uint64_t slot;
+    while ( (slot = cells->slots[pos]) ) {
+      uint64_t i = (slot & mask) - 1;
+      if (  (slot & ~mask) == fingerprint
+         && cells->heads[i] == hed
+         && cells->tails[i] == tal )
       {
-        return cel;
+        return ((uint64_t)ur_icell << 62) | i;
       }
+      pos = (pos + 1) & mask;
     }
 
-    if ( ur_pail_max == b_fill ) {
-      ur_dict_grow(r, dict, dict->prev, dict->size);
+    //  Keep one quarter of the slots empty for linear probing.
+    //
+    if ( cells->fill == cells->index_size - cells->index_size / 4 ) {
+      _cell_index_grow(cells);
       continue;
     }
-
     if ( cells->fill == cells->size ) {
       ur_cells_grow(cells);
     }
-
-    cel = _cons_unsafe(cells, mug, hed, tal);
-
-    bucket->refs[b_fill] = cel;
-    dict->fills[idx] = 1 + b_fill;
-
+    ur_mug mug = ur_mug_both(ur_nref_mug(r, hed), ur_nref_mug(r, tal));
+    ur_nref cel = _cons_unsafe(cells, mug, hed, tal);
+    cells->slots[pos] = fingerprint | (ur_nref_idx(cel) + 1);
     return cel;
   }
 }
@@ -831,7 +863,9 @@ _cells_info(FILE *f, ur_cells_t *cells)
   _print_memory(f, "    refs", refs);
   total += refs;
 
-  total += _dict_info(f, &(cells->dict));
+  uint64_t dict = cells->index_size * sizeof(*cells->slots);
+  _print_memory(f, "    dict", dict);
+  total += dict;
   _print_memory(f, "  total", total);
   return total;
 }
@@ -872,7 +906,7 @@ _atoms_free(ur_atoms_t *atoms)
 static void
 _cells_free(ur_cells_t *cells)
 {
-  ur_dict_free(&(cells->dict));
+  free(cells->slots);
   free(cells->heads);
 }
 
@@ -911,8 +945,7 @@ ur_root_init(void)
 
     //  allocate cell hashtable
     //
-    dict = &(r->cells.dict);
-    ur_dict_grow(r, dict, ur_fib11, ur_fib12);
+    _cell_index_grow(&r->cells);
   }
 
   return r;

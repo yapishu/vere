@@ -1803,6 +1803,33 @@ _test_bsr(void)
        & _test_bsr_token();
 }
 
+/* Distinct ordered pairs retain their handles and noun mugs across growth. */
+static int
+_test_cons(void)
+{
+  ur_root_t *r = ur_root_init();
+  ur_nref leaf = ur_cons(r, 7, 9);
+  ur_nref left = ur_cons(r, leaf, 0);
+  ur_nref right = ur_cons(r, 0, leaf);
+  ur_nref refs[1024];
+  int ret = (left != right);
+
+  for ( unsigned i = 0; i < 1024; i++ ) {
+    refs[i] = ur_cons(r, i, leaf);
+  }
+  uint64_t count = r->cells.fill;
+  for ( unsigned i = 0; i < 1024; i++ ) {
+    ret &= (refs[i] == ur_cons(r, i, leaf));
+  }
+  ret &= (leaf == ur_cons(r, 7, 9));
+  ret &= (left == ur_cons(r, leaf, 0) && right == ur_cons(r, 0, leaf));
+  ret &= (count == r->cells.fill);
+  ret &= (0x3aa84d76 == ur_nref_mug(r, left));
+  ret &= (0x0d9c05a4 == ur_nref_mug(r, right));
+  ur_root_free(r);
+  return ret;
+}
+
 static int
 _test_jam_spec(const char    *cap,
                ur_root_t       *r,
@@ -2022,6 +2049,11 @@ _test_ur(void)
 
   if ( !_test_bsr() ) {
     fprintf(stderr, "ur test bsr failed\r\n");
+    ret = 0;
+  }
+
+  if ( !_test_cons() ) {
+    fprintf(stderr, "ur test cons failed\r\n");
     ret = 0;
   }
 

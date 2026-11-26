@@ -87,7 +87,8 @@ typedef struct ur_dict_s {
 **  mug hashes are stored, and noun references are unique within a root.
 */
 typedef struct ur_cells_s {
-  ur_dict_t dict;
+  uint64_t *slots;
+  uint64_t  index_size;
   uint64_t  prev;
   uint64_t  size;
   uint64_t  fill;
