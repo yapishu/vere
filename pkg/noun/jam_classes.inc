@@ -201,8 +201,93 @@ _jam_number(_jam_classes* c, u3_noun noun)
   }
 }
 
+// Pack low bits first, keeping a partial word until a full word can be stored.
+// See the Zstandard bit accumulator.
+// https://github.com/facebook/zstd/blob/dev/lib/common/bitstream.h
+typedef struct {
+  c3_y* next;
+  c3_y* end;
+  c3_d word;
+  unsigned used;
+} _jam_output;
+
+static inline void
+_jam_put(_jam_output* out, unsigned count, c3_d value)
+{
+  unsigned used = out->used;
+  out->word |= value << used;
+  unsigned total = used + count;
+  if ( total >= 64 ) {
+    u3_assert(out->end - out->next >= 8);
+    memcpy(out->next, &out->word, 8);
+    out->next += 8;
+    out->word = used ? value >> (64 - used) : 0;
+  }
+  out->used = total & 63;
+}
+
 static void
-_jam_emit_classes(u3_noun root, ur_bsw_t* writer, struct _cs_jam_slab* slab)
+_jam_put_atom(_jam_output* out, u3_atom a, c3_w width)
+{
+  if ( c3y == u3a_is_cat(a) ) {
+    _jam_put(out, width, a);
+    return;
+  }
+  u3a_atom* atom = u3a_to_ptr(a);
+  const c3_y* src = (const c3_y*)atom->buf_w;
+  size_t words = width >> 6;
+  if ( words ) {
+    u3_assert(words <= (size_t)(out->end - out->next) / 8);
+    if ( !out->used ) {
+      memcpy(out->next, src, words * 8);
+    }
+    else {
+      unsigned lo = out->used, hi = 64 - lo;
+      c3_d carry = out->word;
+      for ( size_t i = 0; i < words; i++ ) {
+        c3_d x;
+        memcpy(&x, src + 8 * i, 8);
+        c3_d part = carry | (x << lo);
+        memcpy(out->next + 8 * i, &part, 8);
+        carry = x >> hi;
+      }
+      out->word = carry;
+    }
+    out->next += words * 8;
+    src += words * 8;
+  }
+  unsigned rest = width & 63;
+  if ( rest ) {
+    c3_d tail = 0;
+    memcpy(&tail, src, (rest + 7) >> 3);
+    _jam_put(out, rest, tail);
+  }
+}
+
+// A mat of nonzero width has k zero bits, then a one, then the low k-1
+// bits of the width. Short headers and their tags fit in one word.
+static inline void
+_jam_put_header(_jam_output* out, c3_d width, unsigned tagbits)
+{
+  c3_d tag = tagbits == 2 ? 3 : 0;
+  if ( !width ) {
+    _jam_put(out, tagbits + 1, tag | (UINT64_C(1) << tagbits));
+    return;
+  }
+  unsigned k = c3_bits_chub(width);
+  c3_d suffix = ((width ^ (UINT64_C(1) << (k - 1))) << 1) | 1;
+  if ( 2 * k + tagbits <= 64 ) {
+    _jam_put(out, 2 * k + tagbits, tag | (suffix << (k + tagbits)));
+  }
+  else {
+    _jam_put(out, tagbits, tag);
+    _jam_put(out, k, 0);
+    _jam_put(out, k, suffix);
+  }
+}
+
+static c3_d
+_jam_emit_classes(u3_noun root, u3i_slab* slab, c3_y prefix, c3_y** bytes)
 {
   _jam_classes c = {0};
   c.deferred = u3a_defer_active();
@@ -216,48 +301,50 @@ _jam_emit_classes(u3_noun root, ur_bsw_t* writer, struct _cs_jam_slab* slab)
   _jam_dispose(c.physical, c.local_physical);
   _jam_dispose(c.shapes, c.local_shapes);
 
-  if ( writer ) {
-    c3_d bytes = (c.bits >> 3) + !!(c.bits & 7);
-    if ( bytes >= SIZE_MAX ) u3m_bail(c3__meme);
-    ur_bsw_init(writer, ur_fib11, bytes + 1);
+  c3_d payload = (c.bits >> 3) + !!(c.bits & 7);
+  if ( payload > SIZE_MAX - prefix ) u3m_bail(c3__meme);
+  c3_y* start;
+  if ( slab ) {
+    if ( c.bits > c3_w_max || c.bits > UINT64_MAX - (u3a_word_bits - 1) ) u3m_bail(c3__fail);
+    u3i_slab_bare(slab, 0, c.bits);
+    // The emitter initializes each payload byte. Clear the final word for padding.
+    slab->buf_w[slab->len_w - 1] = 0;
+    start = slab->buf_y;
   }
   else {
-    if ( c.bits > c3_w_max ) u3m_bail(c3__fail);
-    slab->len_w = c.bits;
-    u3i_slab_init(slab->sab_u, 0, c.bits);
+    *bytes = c3_malloc(prefix + payload);
+    start = *bytes + prefix;
   }
+  STATIC_ASSERT(c3_endian == c3_endian_little, "");
+  _jam_output out = { .next = start, .end = start + payload };
   u3a_pile stack;
   u3a_pile_prep(&stack, sizeof(c3_w), alignof(c3_w));
   for (;;) {
     _jam_class* n = &c.nodes[id - 1];
-    c3_d pos = writer ? writer->bits : slab->bit_w;
+    c3_d pos = ((c3_d)(out.next - start) << 3) + out.used;
     c3_d first = n->first;
     c3_w width = n->right ? 0 : u3r_met(0, n->left);
     if ( pos == first && n->right ) {
-      if ( writer ) ur_bsw_cell(writer);
-      else _cs_jam_slab_chop(slab, 2, 1);
+      _jam_put(&out, 2, 1);
       *(c3_w*)u3a_push(&stack) = n->right;
       id = n->left;
       continue;
     }
     if ( first != pos && (n->right || width > c3_bits_chub(first)) ) {
-      if ( writer ) ur_bsw_back64(writer, c3_bits_chub(first), first);
-      else {
-        u3_atom at = _cs_coin_chub(first);
-        _cs_jam_slab_chop(slab, 2, 3);
-        _cs_jam_slab_mat(slab, at);
-        u3z(at);
-      }
+      unsigned k = c3_bits_chub(first);
+      _jam_put_header(&out, k, 2);
+      _jam_put(&out, k, first);
     }
-    else if ( writer ) _cs_jam_bsw_atom(writer, width, n->left);
     else {
-      _cs_jam_slab_chop(slab, 1, 0);
-      _cs_jam_slab_mat(slab, n->left);
+      _jam_put_header(&out, width, 1);
+      _jam_put_atom(&out, n->left, width);
     }
     if ( c3y == u3a_pile_done(&stack) ) break;
     id = *(c3_w*)u3a_peek(&stack);
     u3a_pop(&stack);
   }
-  u3_assert(c.bits == (writer ? writer->bits : slab->bit_w));
+  u3_assert(c.bits == ((c3_d)(out.next - start) << 3) + out.used);
+  memcpy(out.next, &out.word, (out.used + 7) >> 3);
   _jam_dispose(c.nodes, c.local_nodes);
+  return c.bits;
 }

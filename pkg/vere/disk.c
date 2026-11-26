@@ -127,37 +127,24 @@ u3_disk_etch(u3_disk* log_u,
              c3_h     mug_h,
              c3_y**   out_y)
 {
-  size_t len_i;
-  c3_y*  dat_y;
+  c3_d len_d;
+  c3_y* dat_y;
 #ifdef DISK_TRACE_JAM
   u3t_event_trace("disk etch", 'B');
 #endif
 
-  //  XX check version number in log_u
-  //  XX needs api redesign to limit allocations
-  //
-  {
-    u3_atom mat = u3qe_jam(eve);
-    c3_w  len_w = u3r_met(3, mat);
-
-    len_i = 4 + len_w;
-    dat_y = c3_malloc(len_i);
-
-    dat_y[0] = mug_h & 0xff;
-    dat_y[1] = (mug_h >> 8) & 0xff;
-    dat_y[2] = (mug_h >> 16) & 0xff;
-    dat_y[3] = (mug_h >> 24) & 0xff;
-    u3r_bytes(0, len_w, dat_y + 4, mat);
-
-    u3z(mat);
-  }
+  u3s_jam_xeno_prefix(eve, 4, &len_d, &dat_y);
+  dat_y[0] = mug_h & 0xff;
+  dat_y[1] = (mug_h >> 8) & 0xff;
+  dat_y[2] = (mug_h >> 16) & 0xff;
+  dat_y[3] = mug_h >> 24;
 
 #ifdef DISK_TRACE_JAM
   u3t_event_trace("disk etch", 'E');
 #endif
 
   *out_y = dat_y;
-  return len_i;
+  return len_d;
 }
 
 /* _disk_batch(): create a write batch

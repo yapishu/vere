@@ -38,6 +38,10 @@
         c3_d
         u3s_jam_xeno(u3_noun a, c3_d* len_d, c3_y** byt_y);
 
+      /* Jam after pre_y header bytes. Return jam bits and total buffer bytes. */
+        c3_d
+        u3s_jam_xeno_prefix(u3_noun a, c3_y pre_y, c3_d* len_d, c3_y** byt_y);
+
       /* u3s_cue(): cue [a]
       */
         u3_noun

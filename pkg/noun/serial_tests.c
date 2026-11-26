@@ -133,11 +133,45 @@ _check_canonical(ur_root_t* arena, ur_nref ref, u3_noun noun)
   u3_assert(bits == u3s_jam_xeno(noun, &size, &bytes));
   u3_assert(size == len && !memcmp(gold, bytes, len));
   c3_free(bytes);
+  c3_y prefix = 1 + (bits & 7);
+  u3_assert(bits == u3s_jam_xeno_prefix(noun, prefix, &size, &bytes));
+  memset(bytes, 0xa5, prefix);
+  u3_assert(size == prefix + len && !memcmp(gold, bytes + prefix, len));
+  c3_free(bytes);
   u3i_slab slab;
   u3_assert(bits == u3s_jam_fib(&slab, noun));
   u3_assert(!memcmp(gold, slab.buf_y, len));
+  for ( size_t i = len; i < slab.len_w * sizeof(c3_w); i++ )
+    u3_assert(!slab.buf_y[i]);
   u3i_slab_free(&slab);
   c3_free(gold);
+}
+
+// Exercise partial words and unaligned destinations with an independent encoder.
+static void
+_test_jam_words(ur_root_t* arena)
+{
+  for ( unsigned width = 1; width <= 192; width++ ) {
+    c3_y data[24];
+    unsigned len = (width + 7) / 8;
+    for ( unsigned i = 0; i < len; i++ ) data[i] = 0xa5 ^ (i * 19);
+    unsigned top = (width - 1) & 7;
+    data[len - 1] = (data[len - 1] & ((1U << top) - 1)) | (1U << top);
+    u3_noun a = u3i_bytes(len, data);
+    ur_nref b;
+    if ( width <= 64 ) {
+      c3_d value = 0;
+      for ( unsigned i = len; i; i-- ) value = (value << 8) | data[i - 1];
+      b = ur_coin64(arena, value);
+    }
+    else b = ur_coin_bytes(arena, len, data);
+    for ( unsigned depth = 0; depth < 8; depth++ ) {
+      a = u3nc(a, depth);
+      b = ur_cons(arena, b, depth);
+      _check_canonical(arena, b, a);
+    }
+    u3z(a);
+  }
 }
 
 static void
@@ -347,6 +381,7 @@ _test_cue_positions(void)
 {
   _cue_test test = { .decoder = u3s_cue_xeno_init_with(1, 2), .arena = ur_root_init() };
   _test_shared_jam(test.arena);
+  _test_jam_words(test.arena);
   test.view = u3s_cue_view_new();
   _test_cue_page_ranks();
   _test_short_cue(&test);

@@ -24,146 +24,28 @@ const c3_y u3s_dit_y[64] = {
   '-', '~'
 };
 
-/* Cursor in the pre-sized jam slab. */
-struct _cs_jam_slab {
-  u3i_slab* sab_u;
-  c3_w      len_w;
-  c3_w      bit_w;
-};
-
-static inline void
-_cs_jam_slab_advance(struct _cs_jam_slab* slab, c3_w bits)
-{
-  if ( bits > slab->len_w - slab->bit_w ) u3m_bail(c3__fail);
-  slab->bit_w += bits;
-}
-
-/* _cs_jam_slab_chop(): chop [met_w] bits of [a] into [slab_u]
-*/
-static inline void
-_cs_jam_slab_chop(struct _cs_jam_slab* slab_u, c3_w met_w, u3_noun a)
-{
-  c3_w bit_w = slab_u->bit_w;
-  _cs_jam_slab_advance(slab_u, met_w);
-
-  {
-    c3_w* buf_w = slab_u->sab_u->buf_w;
-    u3r_chop(0, 0, met_w, bit_w, buf_w, a);
-  }
-}
-
-/* _cs_jam_slab_mat(): length-prefixed encode (mat) [a] into [slab_u]
-*/
-static void
-_cs_jam_slab_mat(struct _cs_jam_slab* slab_u, u3_noun a)
-{
-  if ( 0 == a ) {
-    _cs_jam_slab_chop(slab_u, 1, 1);
-  }
-  else {
-    c3_w   a_w = u3r_met(0, a);
-    c3_w   b_w = c3_bits_word(a_w);
-    c3_w bit_w = slab_u->bit_w;
-
-    //  reserve the prefix and payload together
-    //
-    {
-      c3_w met_w = a_w + (2 * b_w);
-
-      if ( a_w > (c3_w_max - 64) ) {
-        u3m_bail(c3__fail);
-        return;
-      }
-
-      _cs_jam_slab_advance(slab_u, met_w);
-    }
-
-    {
-#ifndef VERE64
-      c3_w  src_w[2];
-#else
-      c3_w  src_w[1];
-#endif
-
-      c3_w* buf_w = slab_u->sab_u->buf_w;
-
-      //  _cs_jam_slab_chop(slab_u, b_w+1, 1 << b_w);
-      //
-      {
-#ifndef VERE64
-        c3_d dat_d = (c3_d)1 << b_w;
-        src_w[0]   = (c3_w)dat_d;
-        src_w[1]   = dat_d >> 32;
-        u3r_chop_words(0, 0, b_w + 1, bit_w, buf_w, 2, src_w);
-#else
-        src_w[0] = (c3_d)1 << b_w;
-        u3r_chop_words(0, 0, b_w + 1, bit_w, buf_w, 1, src_w);
-#endif
-
-        bit_w += b_w + 1;
-      }
-
-      //  _cs_jam_slab_chop(slab_u, b_w-1, a_w);
-      //
-      {
-        src_w[0] = a_w;
-        u3r_chop_words(0, 0, b_w - 1, bit_w, buf_w, 1, src_w);
-        bit_w += b_w - 1;
-      }
-
-      //  _cs_jam_slab_chop(slab_u, a_w, a);
-      //
-      u3r_chop(0, 0, a_w, bit_w, buf_w, a);
-    }
-  }
-}
-
-/* _cs_coin_chub(): shortcircuit u3i_chubs().
-*/
-static inline u3_atom
-_cs_coin_chub(c3_d a_d)
-{
-  return ( ((c3_d)u3a_direct_max) >= a_d ) ? a_d : u3i_chubs(1, &a_d);
-}
-
-/* _cs_jam_bsw_atom(): encode in/direct atom in bitstream.
-*/
-static inline void
-_cs_jam_bsw_atom(ur_bsw_t* rit_u, c3_w met_w, u3_atom a)
-{
-  if ( c3y == u3a_is_cat(a) ) {
-    //  XX need a ur_bsw_atom32()
-    //
-    ur_bsw_atom64(rit_u, (c3_y)met_w, (c3_d)a);
-  }
-  else {
-    u3a_atom* vat_u = u3a_to_ptr(a);
-    //  XX assumes little-endian
-    //  XX need a ur_bsw_atom_words()
-    //
-    c3_y*     byt_y = (c3_y*)vat_u->buf_w;
-    ur_bsw_atom_bytes(rit_u, (c3_d)met_w, byt_y);
-  }
-}
-
 #include "jam_classes.inc"
 
 /* u3s_jam_fib(): jam into a slab and return the length in bits. */
 c3_w
 u3s_jam_fib(u3i_slab* sab_u, u3_noun a)
 {
-  struct _cs_jam_slab slab_u = { .sab_u = sab_u };
-  _jam_emit_classes(a, NULL, &slab_u);
-  return slab_u.bit_w;
+  return _jam_emit_classes(a, sab_u, 0, NULL);
 }
 
 /* u3s_jam_xeno(): jam into an off-loom byte buffer. */
 c3_d
 u3s_jam_xeno(u3_noun a, c3_d* len_d, c3_y** byt_y)
 {
-  ur_bsw_t writer = {0};
-  _jam_emit_classes(a, &writer, NULL);
-  return ur_bsw_done(&writer, len_d, byt_y);
+  return u3s_jam_xeno_prefix(a, 0, len_d, byt_y);
+}
+
+c3_d
+u3s_jam_xeno_prefix(u3_noun a, c3_y pre_y, c3_d* len_d, c3_y** byt_y)
+{
+  c3_d bits = _jam_emit_classes(a, NULL, pre_y, byt_y);
+  *len_d = pre_y + (bits >> 3) + !!(bits & 7);
+  return bits;
 }
 
 /* _cs_cue: stack frame for tracking intermediate cell results
