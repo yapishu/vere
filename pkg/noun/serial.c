@@ -439,7 +439,7 @@ _cs_cue_need(ur_cue_res_e res_e)
 
 /* _cs_cue_bytes_next(): read next value from bitstream.
 */
-static inline u3_noun
+static inline __attribute__((always_inline)) u3_noun
 _cs_cue_bytes_next(u3a_pile*     pil_u,
                    _cue_refs*    refs,
                    ur_bsr_t*     red_u,
@@ -494,7 +494,7 @@ _cs_cue_bytes_next(u3a_pile*     pil_u,
   }
 }
 
-static inline u3_noun
+static inline __attribute__((always_inline)) u3_noun
 _cs_cue_bytes(c3_d len_d, const c3_y* byt_y, u3_cue_plan* plan)
 {
   ur_bsr_t      red_u = {0};
@@ -519,42 +519,26 @@ _cs_cue_bytes(c3_d len_d, const c3_y* byt_y, u3_cue_plan* plan)
     return u3m_bail(c3__meme);
   }
 
-  //  advance into stream
-  //
-  ref = _cs_cue_bytes_next(&pil_u, &refs, &red_u, plan);
+  for (;;) {
+    ref = _cs_cue_bytes_next(&pil_u, &refs, &red_u, plan);
+    if ( plan && ref == u3_none ) break;
 
-  if ( plan && ref == u3_none ) goto punt;
-
-  //  process cell results
-  //
-  if ( c3n == u3a_pile_done(&pil_u) ) {
-    fam_u = u3a_peek(&pil_u);
-
-    do {
-      //  f is a head-frame; stash result and read the tail from the stream
-      //
-      if ( u3_none == fam_u->ref ) {
+    for (;;) {
+      if ( c3y == u3a_pile_done(&pil_u) ) {
+        _cue_refs_free(&refs);
+        return ref;
+      }
+      fam_u = u3a_peek(&pil_u);
+      if ( fam_u->ref == u3_none ) {
         fam_u->ref = ref;
-        ref        = _cs_cue_bytes_next(&pil_u, &refs, &red_u, plan);
-        if ( plan && ref == u3_none ) goto punt;
-        fam_u      = u3a_peek(&pil_u);
+        break;
       }
-      //  f is a tail-frame; pop the stack and continue
-      //
-      else {
-        ref = plan ? _cue_plan_cell(plan, fam_u->ref, ref) : u3nc(fam_u->ref, ref);
-        _cue_refs_finish(&refs, fam_u->key_d, ref);
-        fam_u = u3a_pop(&pil_u);
-      }
+      ref = plan ? _cue_plan_cell(plan, fam_u->ref, ref) : u3nc(fam_u->ref, ref);
+      _cue_refs_finish(&refs, fam_u->key_d, ref);
+      u3a_pop(&pil_u);
     }
-    while ( c3n == u3a_pile_done(&pil_u) );
   }
 
-  _cue_refs_free(&refs);
-
-  return ref;
-
-punt:
   // Plan frames hold indices. No intermediate frame owns a noun.
   u3R->cap_p = pil_u.beg_p;
   _cue_refs_free(&refs);
