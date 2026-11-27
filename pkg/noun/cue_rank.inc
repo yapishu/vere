@@ -91,11 +91,17 @@ _cue_refs_finish(_cue_refs* refs, c3_d slot, u3_noun value)
 }
 
 static inline u3_weak
-_cue_refs_get(_cue_refs* refs, c3_d bit)
+_cue_refs_at(_cue_refs* refs, c3_d bit)
 {
   size_t slot = _cue_page_find(refs->pages, refs->page_count, refs->directory, bit);
   if ( slot == SIZE_MAX ) return u3_none;
-  u3_weak value = refs->nouns[slot];
+  return refs->nouns[slot];
+}
+
+static inline u3_weak
+_cue_refs_get(_cue_refs* refs, c3_d bit)
+{
+  u3_weak value = _cue_refs_at(refs, bit);
   return value == u3_none ? u3_none : u3k(value);
 }
 

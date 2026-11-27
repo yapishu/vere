@@ -127,6 +127,18 @@
         u3_noun
         u3s_cue_atom(u3_atom a);
 
+      /* u3s_cue_plan_read(): read a senior atom on a child road. Returns NULL
+      ** outside the supported sizes. The child road owns all scratch.
+      */
+        u3_cue_plan*
+        u3s_cue_plan_read(u3_atom a);
+
+      /* u3s_cue_plan_take(): construct the checked product on the parent.
+      ** The atom and the child heap must remain live until this returns.
+      */
+        u3_noun
+        u3s_cue_plan_take(u3_cue_plan* plan, u3_atom a);
+
       /* u3s_etch_ud_smol(): c3_d to @ud
       **
       **   =(26 (met 3 (scot %ud (dec (bex 64)))))

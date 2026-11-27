@@ -31,6 +31,7 @@
 #include "nock.h"
 #include "options.h"
 #include "retrieve.h"
+#include "serial.h"
 #include "trace.h"
 #include "urcrypt.h"
 #include "vortex.h"
@@ -1567,7 +1568,7 @@ _cm_love_time(c3_d* us_d, c3_w i_w)
 **             back on the parent road, before anything is taken.
 */
 static u3_noun
-_cm_love(u3_noun pro, void (*hom_f)(void))
+_cm_love(u3_noun pro, void (*hom_f)(void), u3_cue_plan* plan)
 {
   //  save cache pointers from current road
   //
@@ -1654,7 +1655,7 @@ _cm_love(u3_noun pro, void (*hom_f)(void))
   //
   if ( !hom_t ) {
     u3e_Phase = pro_y;
-    pro   = u3a_take(pro);
+    pro = plan ? u3s_cue_plan_take(plan, pro) : u3a_take(pro);
   }
   else {
     if ( c3_unlikely(0 != u3m_Love_f) ) u3m_Love_f();
@@ -1780,7 +1781,7 @@ _cm_love(u3_noun pro, void (*hom_f)(void))
 u3_noun
 u3m_love(u3_noun pro)
 {
-  return _cm_love(pro, 0);
+  return _cm_love(pro, 0, NULL);
 }
 
 /* u3m_golf(): record cap_p length for u3m_flog().
@@ -1928,7 +1929,7 @@ u3m_soft_top(c3_w    mil_w,                     //  timer ms
 
     /* Produce success, on the old road.
     */
-    pro = u3nc(0, _cm_love(pro, hom_f));
+    pro = u3nc(0, _cm_love(pro, hom_f, NULL));
   }
   else {
     /* Revert to external signal regime.
@@ -2125,7 +2126,16 @@ u3m_soft_run(u3_noun gul,
   */
   if ( u3m_trap(why) ) {
     u3t_off(coy_o);
-    pro = fun_f(aga, agb);
+    u3_cue_plan* plan = NULL;
+#if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+    if ( fun_f == u3n_nock_on && u3to(u3_road, u3R->par_p) != &u3H->rod_u ) {
+      pro = u3n_nock_return(aga, agb, &plan);
+    }
+    else
+#endif
+    {
+      pro = fun_f(aga, agb);
+    }
 
 #ifdef U3_CPU_DEBUG
     if ( u3R->all.max_w > 1000000 ) {
@@ -2144,7 +2154,7 @@ u3m_soft_run(u3_noun gul,
 
     /* Produce success, on the old road.
     */
-    pro = u3nc(0, u3m_love(pro));
+    pro = u3nc(0, _cm_love(pro, NULL, plan));
   }
   else {
     u3t_init();

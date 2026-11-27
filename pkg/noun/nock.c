@@ -2395,11 +2395,12 @@ _n_check_arm(const u3n_prog* prog)
 /* _n_kick(): stop tracing noc and kick a u3j_site.
  */
 static u3_weak
-_n_kick(u3_noun cor, u3j_site* sit_u)
+_n_kick(u3_noun cor, u3j_site* sit_u, u3_cue_plan** plan)
 {
   u3_weak pro;
   u3t_off(noc_o);
-  pro = u3j_site_kick(cor, sit_u);
+  pro = plan ? u3j_site_cue_return(cor, sit_u, plan) : u3_none;
+  if ( pro == u3_none ) pro = u3j_site_kick(cor, sit_u);
 #ifdef NOCK_FOLD
   if ( pro == u3_none && sit_u->axe == 2 ) {
     const u3n_prog* arm = u3to(u3n_prog, sit_u->pog_p);
@@ -2489,7 +2490,8 @@ _n_arm_candidate(const u3j_site* site)
 }
 
 static u3_noun
-_n_burn(u3n_prog* prog, u3_noun subject, c3_ys mov, c3_ys off, c3_t in_arm);
+_n_burn(u3n_prog* prog, u3_noun subject, c3_ys mov, c3_ys off, c3_t in_arm,
+        u3_cue_plan** plan);
 
 /* _n_arm_result(): reuse or evaluate this gate builder. TRANSFER cor.
 */
@@ -2523,7 +2525,7 @@ _n_arm_result(u3_noun cor, u3j_site* sit_u, c3_ys mov, c3_ys off)
   _arm.state = _arm_recording;
   u3n_arm_watch(sit_u);
   _n_check_arm(prog);
-  u3_noun result = _n_burn(prog, u3k(cor), mov, off, 1);
+  u3_noun result = _n_burn(prog, u3k(cor), mov, off, 1, NULL);
   if ( _arm.state == _arm_recording && _arm.generation == generation ) {
     u3_noun pair = u3nc(u3k(cor), u3k(result));
     u3z_save(u3z_memo_toss, key, pair);
@@ -2540,7 +2542,8 @@ _n_arm_result(u3_noun cor, u3j_site* sit_u, c3_ys mov, c3_ys off)
  *            off: 0 north, -1 south
  */
 static u3_noun
-_n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
+_n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm,
+        u3_cue_plan** plan)
 {
 
   // Opcode jump table. Define X to select the opcode computed goto from
@@ -2565,6 +2568,11 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
 #ifdef U3_CPU_DEBUG
   u3R->pro.nox_d += 1;
 #endif
+  // HALT returns directly to this C invocation when the product is the
+  // only stack entry. A caller, hint or opcode still awaiting the value
+  // must receive an ordinary noun.
+#define FINAL_KICK() \
+  ((plan && pog[ip_w] == HALT && (u3_post)(u3R->cap_p - mov) == empty) ? plan : NULL)
 #ifdef VERBOSE_BYTECODE
   #define BURN() fprintf(stderr, "%s ", opcode_names[pog[ip_w]]); goto *lab[pog[ip_w++]]
 #else
@@ -3107,7 +3115,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
       sit_u = &(pog_u->cal_u.sit_u[x]);
       top   = _n_peek(off);
       o     = *top;
-      *top = _n_kick(o, sit_u);
+      *top = _n_kick(o, sit_u, FINAL_KICK());
       if ( u3_none == *top ) {
         if ( !in_arm && _n_arm_candidate(sit_u) ) {
           *top = _n_arm_result(o, sit_u, mov, off);
@@ -3145,7 +3153,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
         sit_u = &pog_u->cal_u.sit_u[0];
         top = _n_peek(off);
         o = *top;
-        *top = _n_kick(o, sit_u);
+        *top = _n_kick(o, sit_u, FINAL_KICK());
         if ( *top != u3_none ) { BURN(); }
         if ( u3to(u3n_prog, sit_u->pog_p) == pog_u ) {
           u3n_arm_effect();
@@ -3161,7 +3169,7 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
       sit_u = &(pog_u->cal_u.sit_u[x]);
       top   = _n_peek(off);
       o     = *top;
-      *top = _n_kick(o, sit_u);
+      *top = _n_kick(o, sit_u, FINAL_KICK());
       if ( u3_none == *top ) {
       tick_resume:
         *top  = o;
@@ -3505,10 +3513,12 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm)
   }
 }
 
+#undef FINAL_KICK
+
 /* _n_burn_out(): execute u3n_prog with bus as subject.
  */
 static u3_noun
-_n_burn_out(u3_noun bus, u3n_prog* pog_u)
+_n_burn_out(u3_noun bus, u3n_prog* pog_u, u3_cue_plan** plan)
 {
   c3_ys mov, off;
   if ( c3y == u3a_is_north(u3R) ) {
@@ -3519,7 +3529,7 @@ _n_burn_out(u3_noun bus, u3n_prog* pog_u)
     mov = 1;
     off = -1;
   }
-  return _n_burn(pog_u, bus, mov, off, 0);
+  return _n_burn(pog_u, bus, mov, off, 0, plan);
 }
 
 /* u3n_burn(): execute u3n_prog with bus as subject.
@@ -3529,38 +3539,26 @@ u3n_burn(u3p(u3n_prog) pog_p, u3_noun bus)
 {
   u3_noun pro;
   u3t_on(noc_o);
-  pro = _n_burn_out(bus, u3to(u3n_prog, pog_p));
+  pro = _n_burn_out(bus, u3to(u3n_prog, pog_p), NULL);
   u3t_off(noc_o);
   return pro;
 }
 
-/* _n_burn_on(): produce .*(bus fol) with bytecode interpreter
- */
-static u3_noun
-_n_burn_on(u3_noun bus, u3_noun fol)
+u3_noun
+u3n_nock_return(u3_noun bus, u3_noun fol, u3_cue_plan** plan)
 {
+  u3t_on(noc_o);
   u3n_prog* pog_u = _n_find(u3_nul, fol);
-
   u3z(fol);
-  return _n_burn_out(bus, pog_u);
+  u3_noun pro = _n_burn_out(bus, pog_u, plan);
+  u3t_off(noc_o);
+  return pro;
 }
 
-/* u3n_nock_on(): produce .*(bus fol).  Do not virtualize.
-*/
 u3_noun
 u3n_nock_on(u3_noun bus, u3_noun fol)
 {
-  u3_noun pro;
-
-  u3t_on(noc_o);
-#if 0
-  pro = _n_nock_on(bus, fol);
-#else
-  pro = _n_burn_on(bus, fol);
-#endif
-  u3t_off(noc_o);
-
-  return pro;
+  return u3n_nock_return(bus, fol, NULL);
 }
 
 /* _cn_take_prog_dat(): take references from junior u3n_prog.

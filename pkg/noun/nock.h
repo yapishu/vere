@@ -62,6 +62,12 @@
       u3_noun
       u3n_nock_on(u3_noun bus, u3_noun fol);
 
+    /* u3n_nock_return(): run a protected call with a parent to receive its
+    ** final product. A terminal cue may leave its constructors in [plan].
+    */
+      u3_noun
+      u3n_nock_return(u3_noun bus, u3_noun fol, u3_cue_plan** plan);
+
     /* u3n_find(): return prog for given formula,
      *             split by key (u3_nul for none). RETAIN.
      */

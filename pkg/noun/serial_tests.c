@@ -683,6 +683,57 @@ _test_jam_roundtrip(void)
   return ret_i;
 }
 
+// Read on a child road and consume its plan after returning to the parent,
+// before the child's heap is released. The callback has the same lifetime
+// as the take that promotes a protected Nock call.
+static u3_cue_plan* _test_plan;
+static u3_noun _test_source, _test_product;
+
+static u3_noun
+_test_plan_read(u3_atom a)
+{
+  _test_plan = u3s_cue_plan_read(a);
+  return 0;
+}
+
+static void
+_test_plan_take(void)
+{
+  u3_assert(_test_plan);
+  _test_product = u3s_cue_plan_take(_test_plan, _test_source);
+  _test_plan = NULL;
+}
+
+static void
+_test_cue_return(void)
+{
+  c3_y bytes[2048];
+  for ( size_t i = 0; i < sizeof(bytes); i++ ) bytes[i] = 1 + i % 251;
+  u3_noun list = 0;
+  for ( unsigned i = 0; i < 4096; i++ ) list = u3nc(i, list);
+  u3_noun shared = u3nt(list, u3i_chub(UINT64_MAX), u3i_bytes(sizeof(bytes), bytes));
+  u3_noun root = u3nc(u3k(shared), shared);
+  _test_source = u3qe_jam(root);
+  u3_noun status = u3m_soft_with(0, _test_plan_read, u3k(_test_source), _test_plan_take);
+  u3_assert(u3h(status) == 0 && u3h(_test_product) == u3t(_test_product));
+  u3_assert(c3y == u3r_sing(root, _test_product));
+  u3z(status); u3z(_test_source); u3z(_test_product); u3z(root);
+
+  // The input has a complete header and a zero-extended final payload.
+  ur_bsw_t writer = {0};
+  ur_bsw_init(&writer, 13, 21);
+  ur_bsw_atom_bytes(&writer, sizeof(bytes) * 8, bytes);
+  c3_d len;
+  c3_y* jam;
+  ur_bsw_done(&writer, &len, &jam);
+  u3_atom short_atom = u3i_bytes(len - 1, jam);
+  c3_free(jam);
+  u3_post cap = u3R->cap_p;
+  u3_assert(!u3s_cue_plan_read(short_atom) && cap == u3R->cap_p);
+  u3_noun value = u3s_cue_atom(short_atom);
+  u3z(value); u3z(short_atom);
+}
+
 /* main(): run all test cases.
 */
 int
@@ -696,6 +747,7 @@ main(int argc, char* argv[])
   }
 
   _test_cue_positions();
+  _test_cue_return();
 
   //  GC, failing on a leak
   //

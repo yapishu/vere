@@ -435,12 +435,15 @@ _cs_cue_need(ur_cue_res_e res_e)
   }
 }
 
+#include "cue_plan.inc"
+
 /* _cs_cue_bytes_next(): read next value from bitstream.
 */
 static inline u3_noun
 _cs_cue_bytes_next(u3a_pile*     pil_u,
                    _cue_refs*    refs,
-                   ur_bsr_t*     red_u)
+                   ur_bsr_t*     red_u,
+                   u3_cue_plan*  plan)
 {
   while ( 1 ) {
     c3_d bit_d = red_u->bits;
@@ -458,13 +461,22 @@ _cs_cue_bytes_next(u3a_pile*     pil_u,
       case ur_jam_cell: continue;
 
       case ur_jam_back: {
-        return u3x_good(_cue_refs_get(refs, token.value));
+        u3_noun val = u3x_good(_cue_refs_at(refs, token.value));
+        return plan ? _cue_plan_back(val) : u3k(val);
       }
 
       case ur_jam_atom: {
         c3_d len_d = token.width;
         u3_atom vat;
-        if ( len_d <= 64 ) {
+        if ( plan ) {
+          // A truncated wide payload can request an arbitrarily large slab.
+          // Let the child decoder handle its zero extension and allocation.
+          if ( len_d > 64 && (!red_u->left || len_d > red_u->left * 8 - red_u->off) ) {
+            return u3_none;
+          }
+          vat = _cue_plan_atom(plan, red_u, &token);
+        }
+        else if ( len_d <= 64 ) {
           vat = len_d < u3a_word_bits ? (u3_noun)token.value : u3i_chub(token.value);
         }
         else {
@@ -482,10 +494,8 @@ _cs_cue_bytes_next(u3a_pile*     pil_u,
   }
 }
 
-/* u3s_cue_bytes(): cue bytes onto the loom.
-*/
-u3_noun
-u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
+static inline u3_noun
+_cs_cue_bytes(c3_d len_d, const c3_y* byt_y, u3_cue_plan* plan)
 {
   ur_bsr_t      red_u = {0};
   u3a_pile      pil_u;
@@ -511,7 +521,9 @@ u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
 
   //  advance into stream
   //
-  ref = _cs_cue_bytes_next(&pil_u, &refs, &red_u);
+  ref = _cs_cue_bytes_next(&pil_u, &refs, &red_u, plan);
+
+  if ( plan && ref == u3_none ) goto punt;
 
   //  process cell results
   //
@@ -523,13 +535,14 @@ u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
       //
       if ( u3_none == fam_u->ref ) {
         fam_u->ref = ref;
-        ref        = _cs_cue_bytes_next(&pil_u, &refs, &red_u);
+        ref        = _cs_cue_bytes_next(&pil_u, &refs, &red_u, plan);
+        if ( plan && ref == u3_none ) goto punt;
         fam_u      = u3a_peek(&pil_u);
       }
       //  f is a tail-frame; pop the stack and continue
       //
       else {
-        ref   = u3nc(fam_u->ref, ref);
+        ref = plan ? _cue_plan_cell(plan, fam_u->ref, ref) : u3nc(fam_u->ref, ref);
         _cue_refs_finish(&refs, fam_u->key_d, ref);
         fam_u = u3a_pop(&pil_u);
       }
@@ -540,6 +553,39 @@ u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
   _cue_refs_free(&refs);
 
   return ref;
+
+punt:
+  // Plan frames hold indices. No intermediate frame owns a noun.
+  u3R->cap_p = pil_u.beg_p;
+  _cue_refs_free(&refs);
+  return u3_none;
+}
+
+u3_noun
+u3s_cue_bytes(c3_d len_d, const c3_y* byt_y)
+{
+  return _cs_cue_bytes(len_d, byt_y, NULL);
+}
+
+u3_cue_plan*
+u3s_cue_plan_read(u3_atom a)
+{
+  c3_w len_w = u3r_met(3, a);
+  // Each cell uses at least four stream bits including its additional leaf.
+  // This bound keeps constructor indices below the two tag bits.
+  size_t limit = c3_min((size_t)1 << 28, (SIZE_MAX - 256) / (4 * sizeof(_cue_node)));
+  if ( len_w < 1024 || len_w > limit ) return NULL;
+  u3a_atom* vat_u = u3a_to_ptr(a);
+  u3_cue_plan* plan = u3a_calloc(1, sizeof(*plan));
+  u3_weak root = _cs_cue_bytes(len_w, (const c3_y*)vat_u->buf_w, plan);
+  if ( u3_none == root ) {
+    u3a_free(plan->nodes);
+    u3a_free(plan->atoms);
+    u3a_free(plan);
+    return NULL;
+  }
+  plan->root = root;
+  return plan;
 }
 
 /* u3s_cue_atom(): cue atom.

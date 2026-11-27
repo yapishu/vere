@@ -9,6 +9,7 @@
 #include "imprison.h"
 #include "jets/k.h"
 #include "jets/q.h"
+#include "jets/w.h"
 #include "log.h"
 #include "manage.h"
 #include "nock.h"
@@ -1861,6 +1862,25 @@ u3j_site_unregistered(const u3j_site* site)
   if ( reg == u3_none ) return c3y;
   u3z(reg);
   return c3n;
+}
+
+u3_weak
+u3j_site_cue_return(u3_noun cor, u3j_site* site, u3_cue_plan** plan)
+{
+  if ( site->loc == u3_none || site->axe != 2 || site->jet_o != c3y ||
+       site->ham_u->fun_f != u3we_cue || site->ham_u->liv != c3y ||
+       site->ham_u->ice != c3y || (u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ||
+       c3n == _cj_fine(cor, site->fin_p) ) return u3_none;
+
+  u3_weak a = u3r_at(u3x_sam, cor);
+  if ( a == u3_none || c3n == u3ud(a) || c3n == u3a_is_senior(u3R, a) )
+    return u3_none;
+  u3n_arm_watch(site);
+  u3n_arm_effect();
+  *plan = u3s_cue_plan_read(a);
+  if ( !*plan ) return u3_none;
+  u3z(cor);
+  return a;
 }
 
 /* u3j_site_kick(): kick a core with a u3j_site cache.

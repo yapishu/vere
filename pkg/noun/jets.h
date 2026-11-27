@@ -283,6 +283,12 @@
       c3_o
       u3j_site_unregistered(const u3j_site* site);
 
+      /* u3j_site_cue_return(): try a registered, trusted cue at a hot site.
+      ** Returns the senior source atom on success, retaining cor on a miss.
+      */
+        u3_weak
+        u3j_site_cue_return(u3_noun cor, u3j_site* site, u3_cue_plan** plan);
+
       /* u3j_site_kick(): kick a core with a u3j_site cache.
        */
         u3_weak

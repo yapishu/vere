@@ -7,6 +7,8 @@
 
 #include "c3/c3.h"
 
+typedef struct u3_cue_plan u3_cue_plan;
+
 /// Sentinel value for u3_noun types that aren't actually nouns.
 #define u3_none (u3_noun)c3_w_max
 
