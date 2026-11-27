@@ -298,6 +298,31 @@ u3h_put(u3p(u3h_root) har_p, u3_noun key, u3_noun val)
   }
 }
 
+/* Leave room for the next 15 inserts in a full cache of at least 4,096.
+** All discarded pairs lose their references before returning to Nock.
+*/
+void
+u3h_put_batched(u3p(u3h_root) har_p, u3_noun key, u3_noun val)
+{
+  u3_weak del = u3h_put_get(har_p, key, val);
+  if ( u3_none != del ) {
+    u3h_root* har_u = u3to(u3h_root, har_p);
+    u3_noun   kev[16];
+    if ( har_u->max_w < 256 * c3_array_len(kev) ) {
+      u3z(del);
+      return;
+    }
+    kev[0] = del;
+    for ( c3_w i_w = 1; i_w < c3_array_len(kev); i_w++ ) {
+      do {
+        kev[i_w] = _ch_trim_root(har_u);
+      } while ( u3_none == kev[i_w] );
+      har_u->use_w--;
+    }
+    u3a_lose_many(c3_array_len(kev), kev);
+  }
+}
+
 /* _ch_buck_del(): delete from bucket
 */
 static c3_o

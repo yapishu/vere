@@ -967,6 +967,11 @@ u3a_post_info(u3_post);
             ( c3y == u3a_is_cat(__som) ) ? (void)0 : u3a_lose(__som);           \
           })
 
+        /* u3a_lose_many(): lose each reference in an array.
+        */
+          void
+          u3a_lose_many(c3_w len_w, const u3_noun* som);
+
         /* u3a_wash(): wash all lazy mugs in subtree.  RETAIN.
         */
           void

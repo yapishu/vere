@@ -11,8 +11,7 @@ c3_h _ch_skip_slot(c3_h mug_h, c3_h lef_h);
 static void
 _setup(void)
 {
-  u3m_init(1 << 28);
-  u3m_pave(c3y);
+  u3m_boot_lite(1 << 28);
 }
 
 /* _test_put_del(): 
@@ -258,6 +257,58 @@ _test_clock_order(void)
   u3h_free(har_p);
 }
 
+/* Check both the clock and ownership when a discarded value shares a
+** child with its key and with values that stay in the table.
+*/
+static void
+_test_batched_put(void)
+{
+  const c3_w max_w = 4096;
+  u3p(u3h_root) ref_p = u3h_new_cache(max_w);
+  u3p(u3h_root) har_p = u3h_new_cache(max_w);
+  u3_noun       lit = u3nc(42, 17);
+
+  for ( c3_w i_w = 0; i_w < max_w + 103; i_w++ ) {
+    u3_noun key = u3nc(i_w, u3k(lit));
+    u3_noun val = u3nc(u3k(key), u3k(lit));
+    u3_weak del = u3h_put_get(ref_p, key, u3k(val));
+    if ( u3_none != del ) {
+      u3z(del);
+      u3h_trim_to(ref_p, max_w - 15);
+    }
+    u3h_put_batched(har_p, key, val);
+    u3z(key);
+  }
+  u3_assert(u3h_wyt(ref_p) == u3h_wyt(har_p));
+  for ( c3_w i_w = 0; i_w < max_w + 103; i_w++ ) {
+    u3_noun key = u3nc(i_w, u3k(lit));
+    u3_assert(u3h_git(ref_p, key) == u3h_git(har_p, key));
+    u3z(key);
+  }
+  u3h_free(ref_p);
+  u3h_free(har_p);
+  u3_assert(1 == u3a_use(lit));
+  u3z(lit);
+}
+
+/* A full release queue hands the decrement and allocator trace to u3z().
+*/
+static void
+_test_release_spill(void)
+{
+  u3_noun lit = u3nc(42, 17), som[256];
+  c3_h    wag_h = u3C.wag_h;
+
+  for ( c3_w i_w = 0; i_w < c3_array_len(som); i_w++ ) {
+    som[i_w] = u3k(lit);
+  }
+  u3C.wag_h |= u3o_debug_cpu;
+  u3a_lose_many(c3_array_len(som), som);
+  u3C.wag_h = wag_h;
+  u3_assert(1 == u3a_use(lit));
+  u3z(lit);
+}
+
 /* _test_cache_replace_value():
 */
 static c3_i
@@ -303,6 +354,13 @@ _test_hashtable(void)
   ret_i &= _test_skip_slot();
   ret_i &= _test_cache_trimming();
   _test_clock_order();
+  u3m_hate(0);
+  _test_batched_put();
+  _test_release_spill();
+  u3m_hate(0);
+  _test_batched_put();
+  u3z(u3m_love(0));
+  u3z(u3m_love(0));
   ret_i &= _test_cache_replace_value();
   ret_i &= _test_put_del();
 

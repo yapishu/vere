@@ -1581,6 +1581,75 @@ _me_free_south(u3_noun dog)
   _me_free_in(dog, 0);
 }
 
+/* A pending slot owns one decrement. Aliases can enter several slots;
+** the last decrement frees the noun. Interleaving the child loads lets
+** independent pointer chains progress together (Kocberber et al.,
+** https://www.vldb.org/pvldb/vol9/p252-kocberber.pdf).
+*/
+typedef struct {
+  u3_post low_p;
+  c3_w    len_w, red_w, rit_w;
+  u3_noun som[128];
+} _me_drops;
+
+static inline void
+_me_drop_add(_me_drops* dro_u, u3_noun som)
+{
+  if ( c3y == u3a_is_cat(som) ||
+       (c3_w)(u3a_to_off(som) - dro_u->low_p) >= dro_u->len_w ) {
+    return;
+  }
+  if ( dro_u->rit_w - dro_u->red_w == c3_array_len(dro_u->som) ) {
+    u3t_off(mal_o);
+    u3z(som);
+    u3t_on(mal_o);
+    return;
+  }
+  dro_u->som[dro_u->rit_w++ % c3_array_len(dro_u->som)] = som;
+  __builtin_prefetch(u3a_to_ptr(som), 1, 2);
+}
+
+void
+u3a_lose_many(c3_w len_w, const u3_noun* som)
+{
+  if ( !u3R->par_p ) {
+    for ( c3_w i_w = 0; i_w < len_w; i_w++ ) u3z(som[i_w]);
+    return;
+  }
+
+  u3a_road* rod_u = u3R;
+  _me_drops dro_u;
+  dro_u.low_p = c3_min(rod_u->rut_p, rod_u->cap_p);
+  dro_u.len_w = c3_max(rod_u->rut_p, rod_u->cap_p) - dro_u.low_p;
+  dro_u.red_w = dro_u.rit_w = 0;
+
+  u3t_on(mal_o);
+  for ( c3_w i_w = 0; i_w < len_w; i_w++ ) {
+    _me_drop_add(&dro_u, som[i_w]);
+  }
+  while ( dro_u.red_w != dro_u.rit_w ) {
+    u3_noun    dog = dro_u.som[dro_u.red_w++ % c3_array_len(dro_u.som)];
+    u3a_noun*  box_u = u3a_to_ptr(dog);
+    if ( box_u->use_w > 1 ) {
+      box_u->use_w--;
+    }
+    else if ( c3_unlikely(!box_u->use_w) ) {
+      u3m_bail(c3__foul);
+    }
+    else if ( c3y == u3a_is_pom(dog) ) {
+      u3a_cell* cel_u = (u3a_cell*)box_u;
+      u3_noun hed = cel_u->hed, tel = cel_u->tel;
+      _ca_cfree(rod_u, cel_u);
+      _me_drop_add(&dro_u, hed);
+      _me_drop_add(&dro_u, tel);
+    }
+    else {
+      u3a_wfree(box_u);
+    }
+  }
+  u3t_off(mal_o);
+}
+
 /* _ca_tail: a call that must be a jump, where the compiler can promise it.
 */
 #if defined(__has_attribute) && __has_attribute(musttail)

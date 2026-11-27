@@ -135,7 +135,13 @@ u3z_find_m(u3z_cid cid, c3_m fun, u3_noun one)
 u3_noun
 u3z_save(u3z_cid cid, u3_noun key, u3_noun val)
 {
-  u3h_put(_har(u3R, cid), key, u3k(val));
+  u3p(u3h_root) har_p = _har(u3R, cid);
+  if ( u3z_memo_toss == cid && u3R->par_p ) {
+    u3h_put_batched(har_p, key, u3k(val));
+  }
+  else {
+    u3h_put(har_p, key, u3k(val));
+  }
   u3z(key);
   return val;
 }
@@ -145,10 +151,7 @@ u3z_save(u3z_cid cid, u3_noun key, u3_noun val)
 u3_noun
 u3z_save_m(u3z_cid cid, c3_m fun, u3_noun one, u3_noun val)
 {
-  u3_noun key = u3nc(fun, u3k(one));
-  u3h_put(_har(u3R, cid), key, u3k(val));
-  u3z(key);
-  return val;
+  return u3z_save(cid, u3nc(fun, u3k(one)), val);
 }
 
 /* u3z_save_sole(): save the canonicalized key and return the canonicalized value.

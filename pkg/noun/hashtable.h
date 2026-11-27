@@ -170,6 +170,12 @@
         void
         u3h_put(u3p(u3h_root) har_p, u3_noun key, u3_noun val);
 
+      /* u3h_put_batched(): insert, trimming large bounded caches in groups.
+      ** RETAIN key, TRANSFER val.
+      */
+        void
+        u3h_put_batched(u3p(u3h_root) har_p, u3_noun key, u3_noun val);
+
       /* u3h_put_get(): insert in caching hashtable, returning deleted entry
       **
       ** `key` is RETAINED; `val` is transferred.
