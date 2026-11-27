@@ -288,6 +288,10 @@
         u3_weak
         u3j_site_kick(u3_noun cor, u3j_site* sit_u);
 
+      /* Does this gate currently select the given driver at axis 2? */
+        c3_o
+        u3j_gate_is(u3_noun cor, u3_noun (*fun_f)(u3_noun));
+
       /* u3j_gate_prep(): prepare a locally cached gate to call repeatedly.
        */
         void

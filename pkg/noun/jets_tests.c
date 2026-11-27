@@ -1831,6 +1831,45 @@ _test_redo_recursion(void)
   u3z(want); u3z(pro); u3z(cor); u3z(a); u3z(b);
 }
 
+// A recursive reference labels both fields. Independent runs of head types
+// get their own products, and a disjoint tail leaves the decision to Hoon.
+//
+static void
+_test_redo_list(void)
+{
+  u3_noun hold = u3nt(c3__hold, c3__noun, 'l');
+  u3_noun nil = u3nt(c3__atom, 'u', u3nc(0, 0));
+  u3_noun any = u3nt(c3__atom, 'u', 0);
+  u3_noun cons = u3nt(c3__cell, u3nt(c3__face, 'i', u3k(any)),
+                       u3nt(c3__face, 't', u3k(hold)));
+  u3_noun exp = u3qf_forq(nil, cons);
+  u3_noun arm = u3nc(1, 97);
+  for ( c3_w bad = 0; bad <= 1; ++bad ) {
+    u3_noun sut = bad ? u3nt(c3__atom, 'u', u3nc(0, 7)) : u3k(nil);
+    u3_noun want = u3nt(c3__face, 't', u3k(sut));
+    for ( c3_w j = 0; j < 160; ++j ) {
+      u3_noun item = u3nt(c3__atom, 'u', u3nc(0, j / 16));
+      sut = u3nt(c3__cell, u3k(item), sut);
+      want = u3nt(c3__face, j == 159 ? 'l' : 't',
+                  u3nt(c3__cell, u3nt(c3__face, 'i', item), want));
+    }
+    u3_noun van = u3nt(u3k(arm), sut, u3nc(u3nt(0, 0, c3y), 0));
+    _save_redo_leg(van, hold, exp, 135);
+    u3_noun cor = u3nt(u3k(arm), u3nt(c3__face, 'l', u3k(hold)), van);
+    u3_noun pro = u3wfu_redo_135(cor);
+    u3_assert(c3y == u3r_sing(pro, bad ? 97 : want));
+    // Even an exact entry subject from an unrelated gate must punt.
+    u3_noun fol = u3nt(11, u3nt(c3__mean, 1, 0), u3nt(9, 22, u3nc(0, 1)));
+    for ( c3_w i = 4; i; --i ) fol = u3nt(8, u3nc(1, i), fol);
+    u3_noun worker = u3nc(fol, u3k(u3t(cor)));
+    for ( c3_w i = 1; i <= 4; ++i ) worker = u3nc(i, worker);
+    u3_assert(u3_none == u3wfu_redo_list_135(worker));
+    u3z(worker);
+    u3z(pro); u3z(cor); u3z(want);
+  }
+  u3z(arm); u3z(exp); u3z(cons); u3z(any); u3z(nil); u3z(hold);
+}
+
 static void
 _test_redo(void)
 {
@@ -1862,6 +1901,7 @@ _test_redo(void)
   u3z(named); u3z(other); u3z(one);
 
   _test_redo_recursion();
+  _test_redo_list();
   for ( c3_y kel = 135; kel <= 137; kel += 2 ) {
     _test_redo_hold(kel, 1, 0, 0);
     _test_redo_hold(kel, 1, 0, 1);

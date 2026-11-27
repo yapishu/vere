@@ -833,6 +833,19 @@ _cj_nail(u3_noun loc, u3_noun axe,
   return ret_o;
 }
 
+c3_o
+u3j_gate_is(u3_noun cor, u3_noun (*fun_f)(u3_noun))
+{
+  u3_weak loc = _cj_spot(cor, NULL);
+  if ( loc == u3_none ) return c3n;
+  u3_noun lab;
+  u3j_core* core;
+  u3j_harm* arm;
+  c3_o jet = _cj_nail(loc, 2, &lab, &core, &arm);
+  u3z(lab); u3z(loc);
+  return __(jet == c3y && arm->liv == c3y && arm->fun_f == fun_f);
+}
+
 /* _cj_hot_mean(): in parent, declare a core.  RETAINS.
 */
 static c3_l

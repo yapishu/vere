@@ -390,6 +390,7 @@
     u3_noun u3wfu_fuse(u3_noun);
     u3_noun u3wfu_redo(u3_noun);
     u3_noun u3wfu_redo_135(u3_noun);
+    u3_weak u3wfu_redo_list_135(u3_noun);
     u3_noun u3wfu_mint(u3_noun);
     u3_weak u3wfu_fond_135(u3_noun);
     u3_weak u3wfu_toss_135(u3_noun);
