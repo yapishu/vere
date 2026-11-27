@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+On two live Kelvin 135 boots, deterministic draws using inputs from successful Eyre logins take **23.7–24.2% less time** than the preceding review. Generating an 8 MiB atom reduces peak process RSS from **37.2 to 8.9 MiB** on a 32-bit loom and **49.2 to 8.8 MiB** on a 64-bit loom.
 
 Tagging 12,251 prebuilt singleton lists takes **22.3–24.9% less time** and tagging singleton sets takes **19.5–21.3% less time** than on the preceding review across two live Dojo boots. Inside the Hoon compiler, 52,152 calls to the captured set gate take **28.7% less time**, saving a few milliseconds per compile.
 
@@ -14,7 +16,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -211,6 +213,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17) | pass treap partitions directly through difference | [Incremental](#change-0aebc87353) |
 | [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974) | prepare one-hole constructors for repeated gate calls | [Incremental](#change-78c2194073) |
 | [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67) | prepare short-lived gates without building their fallback | [Incremental](#change-0c171e9479) |
+| [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff) | write og digest blocks directly into the result atom | [Incremental](#change-7f16135a2d) |
 
 ## Measurements by change
 
@@ -2869,3 +2872,34 @@ Four paired cold replays rebuild the ship through event 143 and exchange cores b
 **Correctness.** Eight native suites pass on each loom width. Both ways of preparing a gate match develop byte for byte across 4,735 successful products and 3,765 exits, including source traces, on both widths. The bootstrap core, 138 cold replay products and 17 checkpoint products match develop’s canonical jam lengths and SHA-256 on each width (33,279,069,693 bytes per width). All six events in the three compiler windows also match develop on the 32-bit loom (1,439,791,403 bytes). Develop opens the checkpoint review writes at event 294 and replays event 295.
 
 **Wet-gate profile.** Two separately timed compiler replays on the preceding review record 42,363 wet entries to the `+fire:ut` callback during self-hosted Hoon compilation. Of its 7,432 direct calls to `+mull`, 1,253 hit the memo table and 6,179 miss. The miss bodies account for 1.090 / 1.091 s in the instrumented runs, with time in nested prepared gates charged separately. This measures where compilation spends time. An optimization would still need to show how much of that work it can avoid.
+
+<a id="change-7f16135a2d"></a>
+
+### Generate deterministic bits in the output atom
+
+`+raw:og` writes each 256-bit block into its position in the output atom and keeps the previous digest in a fixed buffer. After mixing the seed, remaining width and previous digest, the SHA input ends at its highest nonzero byte.
+
+Twenty successful local logins to a Kelvin 135 fake ~zod each invoke `+raw:og` three times for 128 bits with a 32-byte seed. The first row replays the 60 inputs in order 64 times. Each build also reproduces all 60 recorded draws individually. The remaining rows use `(turn (gulf 1 2.048) shax)` for seeds or, for the single large draw, `(~(raw og 0x3141.5926.5358.9793) 8.388.608)`. Dojo times exclude seed construction and result hashing. Each boot warms once and rotates three builds on one physical core for eight measured trials. Columns show the first boot’s medians.
+
+| Workload | Develop | Previous review | Review | Less time vs previous review, two boots |
+|---|---:|---:|---:|---:|
+| 3,840 draws from recorded Eyre login inputs | 3.754 ms | 3.676 ms | 2.805 ms | 23.7–24.2% |
+| 2,048 Eyre session-key expressions | 2.957 ms | 2.761 ms | 2.375 ms | 12.2–14.0% |
+| 2,048 Eyre eauth-token expressions | 3.314 ms | 2.787 ms | 2.430 ms | 12.8–14.5% |
+| 2,048 Ames jitter expressions | 4.489 ms | 3.895 ms | 3.292 ms | 15.0–15.5% |
+| 2,048 draws of 128 bits | 2.002 ms | 1.890 ms | 1.508 ms | 17.1–20.2% |
+| 2,048 draws of 513 bits | 3.732 ms | 3.607 ms | 2.784 ms | 19.4–22.8% |
+| One 1 MiB draw | 15.380 ms | 14.989 ms | 9.793 ms | 33.3–34.7% |
+
+Median loopback HTTP login time over 80 requests per build goes from 2.04 to 2.07 ms in one boot pair and 1.96 to 1.96 ms in the other. The log-only cold replay through event 143 makes zero calls to this generator.
+
+In two series run on their own, the Ames packet round-trip tests take 8.6–8.7% less time for `+data` and 7.6–7.8% less for `+all`. Each test uses 96 cases and 12 measured trials per build. With other ship workloads running, the complete test ranges from 7.7% faster to 39.2% slower.
+
+Generating an 8 MiB atom from seed `0x53.4f21` in a fresh process gives the following medians over six alternating runs per build. RSS covers the process. The timer covers the generator call. All results match the same independent SHA-256 digest.
+
+| Loom | Previous review, ms | Review, ms | Previous peak RSS | Review peak RSS |
+|---|---:|---:|---:|---:|
+| 32-bit | 131.6 | 79.9 | 37.2 MiB | 8.9 MiB |
+| 64-bit | 133.1 | 80.4 | 49.2 MiB | 8.8 MiB |
+
+**Correctness.** Both loom widths match an independent SHA-256 implementation of the Hoon recurrence byte for byte on 5,039 seed and width combinations. Cases include seed and width cancellation, partial bytes and blocks, and seeds wider than the digest. Both widths pass eight native suites and match develop’s canonical lengths and SHA-256 hashes for the bootstrap core and 155 replay products. All 34 further event products in a recorded session containing two HTTP logins also match develop on both widths.
