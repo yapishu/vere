@@ -1,6 +1,8 @@
 /// @file
 
 #include "gas.h"
+#include "tree_merge.h"
+#include "jets/k.h"
 #include "jets/q.h"
 
 typedef struct {
@@ -151,5 +153,40 @@ u3qdi_gas_list(u3_noun list, c3_t map)
   else _gas_radix(rows, tmp, n, map);
   u3_noun tree = _gas_tree(rows, n, map);
   if ( rows != local ) u3a_free(rows);
+  return tree;
+}
+
+u3_noun
+u3q_tree_gas(u3_noun tree, u3_noun list, c3_t map)
+{
+  if ( !list ) return u3k(tree);
+  if ( !tree ) return u3qdi_gas_list(list, map);
+
+  size_t count = 0;
+  for ( u3_noun t = list; t; t = u3t(t) ) ++count;
+  if ( count >= 64 ) {
+    u3_weak bulk = u3q_tree_gas_merge(tree, list, count, map);
+    if ( bulk != u3_none ) return bulk;
+  }
+
+  // Each put consumes the intermediate root. Own the next list cell across
+  // comparisons, which can unify equal subtrees of either input.
+  tree = u3k(tree);
+  list = u3k(list);
+  while ( list ) {
+    u3_noun head, tail;
+    u3x_cell(list, &head, &tail);
+    u3k(tail);
+    if ( map ) {
+      u3_noun key, value;
+      u3x_cell(head, &key, &value);
+      tree = u3kdb_put(tree, u3k(key), u3k(value));
+    }
+    else {
+      tree = u3kdi_put(tree, u3k(head));
+    }
+    u3z(list);
+    list = tail;
+  }
   return tree;
 }

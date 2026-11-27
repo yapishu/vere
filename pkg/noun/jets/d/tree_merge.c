@@ -2,6 +2,7 @@
 
 #include "jets/q.h"
 #include "tree_merge.h"
+#include "gas.h"
 
 void
 u3q_tree_check(u3_noun tree, c3_t map_t)
@@ -243,7 +244,8 @@ _merge_close(u3a_pile* pile, u3_noun right)
 }
 
 static u3_weak
-_merge_walk(u3_noun a, u3_noun b, c3_t map_t, c3_t intersect_t)
+_merge_walk(u3_noun a, u3_noun b, c3_t map_t, c3_t intersect_t,
+            size_t limit)
 {
   _merge_iter x, y;
   x.len = y.len = 0;
@@ -257,6 +259,12 @@ _merge_walk(u3_noun a, u3_noun b, c3_t map_t, c3_t intersect_t)
     _merge_node r = y.len ? y.path[y.len - 1] : (_merge_node){0};
     c3_i cmp = !x.len ? 1 : !y.len ? -1 : _merge_cmp(l, l.mug, r, r.mug);
     _merge_node node = cmp < 0 ? l : r;  // right value wins on equal keys
+    if ( limit != SIZE_MAX && cmp <= 0 ) {
+      if ( !limit ) goto punt;
+      --limit;
+      // A point insert retains the original node when its value is unchanged.
+      if ( !cmp && (!map_t || u3t(u3h(l.tree)) == u3t(u3h(r.tree))) ) node = l;
+    }
     if ( cmp == _merge_unknown || (cmp <= 0 && !_merge_advance(&x, map_t)) ||
                                (cmp >= 0 && !_merge_advance(&y, map_t)) ) goto punt;
     if ( intersect_t && cmp ) continue;
@@ -306,7 +314,26 @@ u3q_tree_merge(u3_noun a, u3_noun b, u3_tree_op op)
   c3_h p = _merge_rank(x, map_t), q = _merge_rank(y, map_t);
   c3_h small = c3_min(p, q), large = c3_max(p, q);
   if ( small && large <= cutoff && large <= 16ULL * small ) {
-    return _merge_walk(a, b, map_t, intersect_t);
+    return _merge_walk(a, b, map_t, intersect_t, SIZE_MAX);
   }
   return u3_none;
+}
+
+// An in-order merge checks the source tree's key and heap order as it goes.
+// The sampled priority only selects the algorithm. Bound the scan even on a
+// tree whose priorities give a poor size estimate.
+u3_weak
+u3q_tree_gas_merge(u3_noun tree, u3_noun list, size_t count, c3_t map_t)
+{
+  _merge_node root;
+  if ( !_merge_read(tree, &root, map_t) ) return u3_none;
+  size_t limit = count > (SIZE_MAX - 1) / 4 ? SIZE_MAX - 1 : 4 * count;
+  c3_h rank = _merge_rank(root, map_t);
+  if ( rank && limit < (UINT64_C(0x7fffffff) * _merge_sample) / rank ) {
+    return u3_none;
+  }
+  u3_noun batch = u3qdi_gas_list(list, map_t);
+  u3_weak result = _merge_walk(tree, batch, map_t, 0, limit);
+  u3z(batch);
+  return result;
 }

@@ -1193,7 +1193,7 @@ _test_lug(void)
 static void
 _test_bulk_trees(void)
 {
-  const unsigned sizes[] = {0, 1, 2, 31, 32, 33, 255, 1024};
+  const unsigned sizes[] = {0, 1, 2, 31, 32, 33, 63, 64, 65, 255, 1024};
   for ( size_t i = 0; i < sizeof(sizes) / sizeof(*sizes); i++ ) {
     u3_noun keys = u3_nul, pairs = u3_nul, set = u3_nul, map = u3_nul;
     for ( unsigned j = sizes[i]; j > 0; --j ) {
@@ -1221,6 +1221,24 @@ _test_bulk_trees(void)
     u3_assert(c3y == u3qdb_apt(built_map));
     u3_assert(c3y == u3r_sing(set, built_set));
     u3_assert(c3y == u3r_sing(map, built_map));
+    // Retain a key absent from the batch and replace the value at key zero.
+    u3_noun seed_set = u3qdi_put(0, 8192);
+    u3_noun seed_map = u3kdb_put(u3qdb_put(0, 8192, 5), 0, 7);
+    u3_noun want_set = u3qdi_put(set, 8192);
+    u3_noun want_map = u3k(seed_map);
+    for ( u3_noun rest = pairs; rest; rest = u3t(rest) ) {
+      u3_noun pair = u3h(rest);
+      u3_noun next = u3qdb_put(want_map, u3h(pair), u3t(pair));
+      u3z(want_map);
+      want_map = next;
+    }
+    u3_noun updated = u3qdb_gas(seed_map, pairs);
+    u3_assert(c3y == u3r_sing(want_map, updated));
+    u3_assert(7 == u3qdb_git(seed_map, 0));
+    u3z(updated);
+    updated = u3qdi_gas(seed_set, keys);
+    u3_assert(c3y == u3r_sing(want_set, updated));
+    u3z(updated); u3z(want_set); u3z(want_map); u3z(seed_set); u3z(seed_map);
     u3_noun edited = u3qdb_put(map, map ? u3h(u3h(map)) : 0, 99);
     u3_noun merged = u3qdb_uni(map, edited);
     u3_assert(merged == edited);
@@ -1231,6 +1249,27 @@ _test_bulk_trees(void)
     u3z(built_set); u3z(built_map);
     u3z(set); u3z(map); u3z(keys); u3z(pairs);
   }
+  // Set put can find the root without inspecting its malformed branches.
+  u3_noun malformed = u3nc(42, 99);
+  u3_noun batch = u3qb_reap(100, 42);
+  u3_noun found = u3qdi_gas(malformed, batch);
+  u3_assert(found == malformed);
+  u3z(found); u3z(batch); u3z(malformed);
+
+  // The ordered cursor can reject an out-of-order node after producing a
+  // prefix. Replay the original puts on the supplied tree in that case.
+  u3_noun unordered = u3nt(42, u3nt(7, 0, 0), u3nt(7, 0, 0));
+  u3_noun updates = 0, sequential = u3k(unordered);
+  for ( c3_w i = 128; i; --i ) {
+    updates = u3nc(i, updates);
+  }
+  for ( u3_noun rest = updates; rest; rest = u3t(rest) ) {
+    sequential = u3kdi_put(sequential, u3k(u3h(rest)));
+  }
+  found = u3qdi_gas(unordered, updates);
+  u3_assert(c3y == u3r_sing(sequential, found));
+  u3z(found); u3z(sequential); u3z(updates); u3z(unordered);
+
   // Equal heap priorities for different mugs. gor places 136618 first,
   // while the mor tie is decided by dor in favor of 114115.
   u3_noun x = 114115, y = 136618;

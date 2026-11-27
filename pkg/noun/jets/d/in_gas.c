@@ -10,21 +10,7 @@ u3_noun
 u3qdi_gas(u3_noun a,
           u3_noun b)
 {
-  if ( u3_nul == b ) {
-    return u3k(a);
-  }
-  else {
-    if ( u3_nul == a ) {
-      return u3qdi_gas_list(b, 0);
-    }
-    u3_noun i_b, t_b;
-    u3x_cell(b, &i_b, &t_b);
-
-    u3_noun c = u3qdi_put(a, i_b);
-    u3_noun d = u3qdi_gas(c, t_b);
-    u3z(c);
-    return d;
-  }
+  return u3q_tree_gas(a, b, 0);
 }
 
 u3_noun
