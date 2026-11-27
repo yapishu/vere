@@ -883,6 +883,48 @@ _list_expressions(void)
   u3z(list);
 }
 
+// Return two products from one prepared site, retaining the first over reuse.
+static u3_noun
+_construct_pair(u3_noun gate, u3_noun samples)
+{
+  u3j_site site;
+  u3j_gate_prep(&site, u3k(gate));
+  u3_noun a = u3j_gate_slam(&site, u3k(u3h(samples)));
+  u3_noun b = u3j_gate_slam(&site, u3k(u3t(samples)));
+  u3j_gate_lose(&site);
+  return u3nc(a, b);
+}
+
+static void
+_constructor_cases(void)
+{
+  u3_noun field = u3nt(11, u3nc(c3__spot, _lit(71)), _slot(13));
+  u3_noun body = u3nc(u3nc(_slot(14), field), _lit(42));
+  u3_noun arm = u3nt(11, u3nc(c3__spot, _lit(72)), body);
+  for ( c3_w i = 0; i < 4; ++i ) {
+    u3_noun env = u3nc(_numbered(2, i), 0);
+    u3_noun sam = i & 1 ? 19 : u3nc(0, u3k(u3h(env)));
+    u3_noun want;
+    if ( i & 1 ) {
+      u3_noun core = u3nt(u3k(arm), u3k(sam), u3k(env));
+      want = u3m_soft_run(0, u3n_nock_on, core, u3k(arm));
+      u3_assert(u3h(want) == 2 && u3t(want));
+    }
+    else {
+      u3_noun sibling = u3h(env);
+      u3_noun a = u3nc(u3nc(u3k(sibling), 17), 42);
+      u3_noun b = u3nc(u3nc(u3k(sibling), u3k(u3t(sam))), 42);
+      want = u3nt(0, a, b);
+    }
+    u3_noun gate = u3nt(u3k(arm), 0, env);
+    u3_noun samples = u3nc(u3nc(0, 17), sam);
+    u3_noun got = u3m_soft_run(0, _construct_pair, gate, samples);
+    u3_assert(c3y == u3r_sing(want, got));
+    u3z(want); u3z(got);
+  }
+  u3z(arm);
+}
+
 static void
 _prepared_cases(void)
 {
@@ -1698,6 +1740,7 @@ main(void)
   u3z(u3m_love(0));
   _effects();
   _prepared_cases();
+  _constructor_cases();
   _prepared_native();
 #if defined(U3_CPU_DEBUG)
   _prepared_profile();

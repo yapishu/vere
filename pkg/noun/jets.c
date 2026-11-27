@@ -1941,7 +1941,7 @@ u3j_kink(u3_noun cor, u3_noun axe)
 }
 
 enum { gate_full, gate_slot, gate_literal, gate_program, gate_borrow_program,
-       gate_native };
+       gate_native, gate_context };
 
 typedef struct {
   c3_w nodes;
@@ -1956,6 +1956,104 @@ _cj_sample_axis(u3_noun axis)
   c3_w depth = u3x_dep(axis) - 2;
   c3_w root = (c3_w)1 << depth;
   return (axis >> depth) == 6 ? root | (axis & (root - 1)) : 0;
+}
+
+// A source position with a literal clue contributes only to a failure trace.
+static u3_noun
+_cj_unspot(u3_noun fol, c3_w* budget)
+{
+  u3_noun op, arg, hint, next, tag, clue;
+  while ( *budget && c3y == u3r_cell(fol, &op, &arg) && op == 11 &&
+          c3y == u3r_cell(arg, &hint, &next) &&
+          c3y == u3r_cell(hint, &tag, &clue) && tag == c3__spot &&
+          c3y == u3du(clue) && u3h(clue) == 1 ) {
+    --*budget;
+    fol = next;
+  }
+  return fol;
+}
+
+static inline c3_t
+_cj_gain_fits(u3_noun a, c3_w count)
+{
+  return c3y == u3a_is_cat(a) ||
+         ((u3a_noun*)u3a_to_ptr(a))->use_w < u3a_direct_max - count;
+}
+
+// The battery and lexical context are shared by every call at this site.
+static u3_weak
+_cj_fixed(u3_noun fol, u3_noun gate)
+{
+  u3_noun op, arg;
+  if ( c3n == u3r_cell(fol, &op, &arg) ) return u3_none;
+  if ( op == 1 ) return arg;
+  if ( op != 0 || c3n == u3a_is_cat(arg) || arg < 2 || arg == 3 ||
+       _cj_sample_axis(arg) ) return u3_none;
+  return u3r_at(arg, gate);
+}
+
+// Record the path from the root to the one sample field. Its fixed siblings
+// run in reverse order so a slam can construct the product from the field up.
+// https://doi.org/10.1017/S0956796897002864
+static u3_noun
+_cj_context(u3_noun fol, u3_noun gate)
+{
+  u3_noun siblings[16], left, right;
+  c3_w depth = 0, path = 1, budget = 32;
+  fol = _cj_unspot(fol, &budget);
+  while ( c3y == u3r_cell(fol, &left, &right) && c3y == u3du(left) ) {
+    if ( depth == 16 ) return u3_nul;
+    left = _cj_unspot(left, &budget);
+    right = _cj_unspot(right, &budget);
+    u3_weak fixed = _cj_fixed(left, gate);
+    if ( fixed != u3_none ) {
+      siblings[depth++] = fixed;
+      path = 2 * path + 1;
+      fol = right;
+    }
+    else if ( u3_none != (fixed = _cj_fixed(right, gate)) ) {
+      siblings[depth++] = fixed;
+      path *= 2;
+      fol = left;
+    }
+    else return u3_nul;
+  }
+  if ( !depth || c3n == u3du(fol) || u3h(fol) != 0 ||
+       u3R->cel.hav_w < depth + 2 ) return u3_nul;
+  c3_w axis = _cj_sample_axis(u3t(fol));
+  if ( !axis ) return u3_nul;
+
+  u3_noun fixed = u3_nul;
+  for ( c3_w i = 0; i < depth; ++i ) {
+    if ( !_cj_gain_fits(siblings[i], 1) ) {
+      u3z(fixed);
+      return u3_nul;
+    }
+    fixed = u3nc(u3k(siblings[i]), fixed);
+  }
+  return u3nt(axis, path, fixed);
+}
+
+static u3_weak
+_cj_fill(u3_noun context, u3_noun sam)
+{
+  u3_noun axis, path, fixed;
+  u3x_trel(context, &axis, &path, &fixed);
+  c3_w depth = u3x_dep(path);
+  // The ordinary program owns the trace if a slot or allocation can fail.
+  if ( u3R->cel.hav_w < depth || (u3C.wag_h & u3o_debug_ram) ) return u3_none;
+  u3_weak pro = axis == 1 ? sam : u3r_at(axis, sam);
+  if ( pro == u3_none || !_cj_gain_fits(pro, depth + 1) ) return u3_none;
+  for ( u3_noun at = fixed; at; at = u3t(at) ) {
+    if ( !_cj_gain_fits(u3h(at), depth + 1) ) return u3_none;
+  }
+  if ( axis != 1 ) u3k(pro);
+  for ( ; fixed; fixed = u3t(fixed), path >>= 1 ) {
+    u3_noun sibling = u3k(u3h(fixed));
+    pro = (path & 1) ? u3nc(sibling, pro) : u3nc(pro, sibling);
+  }
+  if ( axis != 1 ) u3z(sam);
+  return pro;
 }
 
 /* Rebase a bounded, pure expression whose every slot reads the sample.
@@ -2027,6 +2125,17 @@ _cj_sample_prep(u3j_site* site)
 
   u3_noun fol = u3h(site->bat), op, arg;
   if ( c3n == u3r_cell(fol, &op, &arg) ) return;
+#if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+  if ( (op == 11 || c3y == u3du(op)) &&
+       !(u3C.wag_h & (u3o_trace | u3o_debug_cpu | u3o_debug_ram)) ) {
+    u3_noun context = _cj_context(fol, site->bat);
+    if ( context ) {
+      site->sample_y = gate_context;
+      site->sample_context = context;
+      return;
+    }
+  }
+#endif
   if ( op == 1 ) site->sample_y = gate_literal;
   else if ( op == 0 ) {
     c3_w axis = _cj_sample_axis(arg);
@@ -2053,6 +2162,7 @@ u3j_gate_read_only(const u3j_site* site)
   if ( u3C.wag_h & (u3o_trace | u3o_debug_cpu) ) return c3n;
   switch ( site->sample_y ) {
     case gate_slot:
+    case gate_context:
     case gate_literal:
     case gate_borrow_program: return c3y;
     default: return c3n;
@@ -2142,6 +2252,11 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   u3t_on(glu_o);
   if ( sit_u->sample_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
     switch ( sit_u->sample_y ) {
+      case gate_context:
+        pro = _cj_fill(sit_u->sample_context, sam);
+        if ( pro == u3_none ) goto full;
+        u3t_off(glu_o);
+        return pro;
       case gate_native:
         // A caller on a daughter road borrows the prepared site.
         if ( sit_u->ham_u->liv != c3y || sit_u->ham_u->ice != c3y ||
@@ -2194,6 +2309,7 @@ void
 u3j_gate_lose(u3j_site* sit_u)
 {
   if ( sit_u->sample_y == gate_native ) u3z(sit_u->sample_core);
+  if ( sit_u->sample_y == gate_context ) u3z(sit_u->sample_context);
   u3z(sit_u->bat);
   u3z(sit_u->bas);
   if ( u3_none != sit_u->loc ) {
