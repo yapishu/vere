@@ -83,6 +83,25 @@ _test_mug(void)
     }
   }
 
+  // The tail spans zero through four bytes. The last two pairs retry
+  // after the first seed folds to zero.
+  {
+    const c3_h cases[][3] = {
+      { 0x715c2a60, 0x00000000, 0x3f07a1fe },
+      { 0x715c2a60, 0x000000ff, 0x782d08ce },
+      { 0x715c2a60, 0x00000100, 0x6773ca4f },
+      { 0x715c2a60, 0x0000ffff, 0x298147b8 },
+      { 0x715c2a60, 0x00010000, 0x679c467f },
+      { 0x715c2a60, 0x00ffffff, 0x2d98e4bc },
+      { 0x715c2a60, 0x01000000, 0x2058a52f },
+      { 0x2c359ed2, 0x00000002, 0x5973b2af },
+      { 0x70987790, 0x7fffffff, 0x68111612 },
+    };
+    for ( size_t i = 0; i < sizeof(cases) / sizeof(*cases); i++ ) {
+      u3_assert(cases[i][2] == u3r_mug_both(cases[i][0], cases[i][1]));
+    }
+  }
+
   if ( 0x3a811aec != u3r_mug_both(0x715c2a60, u3r_mug_cell(2, 3)) ) {
     fprintf(stderr, "_test_mug(): fail (d)\r\n");
     fal_o = c3y;

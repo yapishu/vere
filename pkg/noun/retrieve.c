@@ -7,6 +7,7 @@
 #include "imprison.h"
 #include "murmur3.h"
 #include "trace.h"
+#include "ur/hashcons.h"
 #include "vortex.h"
 #include "xtract.h"
 
@@ -1783,36 +1784,7 @@ u3r_tape(u3_noun a)
 c3_m
 u3r_mug_both(c3_m lef_l, c3_m rit_l)
 {
-  c3_y len_y = 4 + ((c3_bits_half(rit_l) + 0x7) >> 3);
-  c3_h syd_h = 0xdeadbeef;
-  c3_h   i_h = 0;
-  c3_y buf_y[8];
-
-  buf_y[0] = lef_l         & 0xff;
-  buf_y[1] = (lef_l >>  8) & 0xff;
-  buf_y[2] = (lef_l >> 16) & 0xff;
-  buf_y[3] = (lef_l >> 24) & 0xff;
-  buf_y[4] = rit_l         & 0xff;
-  buf_y[5] = (rit_l >>  8) & 0xff;
-  buf_y[6] = (rit_l >> 16) & 0xff;
-  buf_y[7] = (rit_l >> 24) & 0xff;
-
-  while ( i_h < 8 ) {
-    c3_h haz_h;
-    c3_m ham_m;
-
-    MurmurHash3_x86_32(buf_y, len_y, syd_h, &haz_h);
-    ham_m = (haz_h >> 31) ^ (haz_h & 0x7fffffff);
-
-    if ( 0 == ham_m ) {
-      syd_h++; i_h++;
-    }
-    else {
-      return ham_m;
-    }
-  }
-
-  return 0xfffe;
+  return ur_mug_both(lef_l, rit_l);
 }
 
 /* u3r_mug_bytes(): Compute the mug of `buf`, `len`, LSW first.

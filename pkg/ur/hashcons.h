@@ -215,6 +215,11 @@ ur_coin64(ur_root_t *r, uint64_t n);
 ur_nref
 ur_cons(ur_root_t *r, ur_nref hed, ur_nref tal);
 
+/* Combine the mugs of a cell's head and tail.
+*/
+ur_mug
+ur_mug_both(ur_mug hed, ur_mug tal);
+
 /*
 **  calculate the mug of [ref], or produce the stored value in [r].
 */

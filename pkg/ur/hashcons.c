@@ -398,38 +398,43 @@ ur_mug64(uint64_t x)
   return ur_mug_bytes(byt, ur_met3_64(x));
 }
 
+// MurmurHash3_x86_32 mixes each little-endian input word independently.
+// https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
+static inline uint32_t
+_mug_word(uint32_t word)
+{
+  word *= 0xcc9e2d51U;
+  return ((word << 15) | (word >> 17)) * 0x1b873593U;
+}
+
+static inline uint32_t
+_mug_block(uint32_t hash, uint32_t word)
+{
+  hash ^= word;
+  return ((hash << 13) | (hash >> 19)) * 5 + 0xe6546b64U;
+}
+
 ur_mug
 ur_mug_both(ur_mug hed, ur_mug tal)
 {
-  uint32_t  seed = 0xdeadbeef;
-  uint8_t    len = 4 + ur_bloq_up3(ur_met0_32(tal));
-  uint8_t      i = 0;
-  uint8_t byt[8] = {
-    ur_mask_8(hed >>  0),
-    ur_mask_8(hed >>  8),
-    ur_mask_8(hed >> 16),
-    ur_mask_8(hed >> 24),
-    ur_mask_8(tal >>  0),
-    ur_mask_8(tal >>  8),
-    ur_mask_8(tal >> 16),
-    ur_mask_8(tal >> 24)
-  };
+  uint32_t left = _mug_word(hed);
+  uint32_t right = _mug_word(tal);
+  uint8_t len = 4 + ur_met3_32(tal);
 
-  while ( i < 8 ) {
-    ur_mug   mug;
-    uint32_t raw;
-    MurmurHash3_x86_32(byt, len, seed, &raw);
-    mug = (raw >> 31) ^ ( ur_mask_31(raw) );
-
-    if ( 0 == mug ) {
-      seed++; i++;
-    }
-    else {
-      return mug;
-    }
+  for ( uint32_t i = 0; i < 8; i++ ) {
+    uint32_t hash = _mug_block(0xdeadbeefU + i, left);
+    // The head fills a block. The tail occupies its significant bytes.
+    hash = (8 == len) ? _mug_block(hash, right) : hash ^ right;
+    hash ^= len;
+    hash ^= hash >> 16;
+    hash *= 0x85ebca6bU;
+    hash ^= hash >> 13;
+    hash *= 0xc2b2ae35U;
+    hash ^= hash >> 16;
+    ur_mug mug = (hash >> 31) ^ ur_mask_31(hash);
+    if ( mug ) return mug;
   }
-
-  return (ur_mug)0xfffe;
+  return 0xfffe;
 }
 
 ur_mug
