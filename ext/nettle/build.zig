@@ -12,9 +12,8 @@ const std = @import("std");
 //   ./.bootstrap && ./configure --disable-shared --disable-assembler \
 //       --disable-fat --disable-documentation --disable-openssl
 //
-// The result is a portable, pure-C build (no per-CPU assembly, runtime CPU
-// dispatch disabled). The vendored config.h is valid for 64-bit little-endian
-// unix targets (macos/linux, aarch64/x86_64).
+// SHA-256 selects Nettle's instruction-backed compression routine on capable
+// x86_64 and aarch64 CPUs. The portable C routine handles other CPUs.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -57,6 +56,13 @@ pub fn build(b: *std.Build) void {
     lib.addIncludePath(b.path("gen"));
     // nettle source root (nettle-types.h, sha2.h, macros.h, ...)
     lib.addIncludePath(dep_c.path(""));
+
+    const arch = target.result.cpu.arch;
+    if (arch == .x86_64 or arch == .aarch64) {
+        lib.root_module.addCMacro("HAVE_NATIVE_sha256_compress_n", "1");
+        lib.addCSourceFile(.{ .file = b.path("sha256-dispatch.c") });
+        lib.addAssemblyFile(b.path(b.fmt("gen/sha256-{s}.S", .{@tagName(arch)})));
+    }
 
     lib.addCSourceFiles(.{
         .root = dep_c.path(""),
