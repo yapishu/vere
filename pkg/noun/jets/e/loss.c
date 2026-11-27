@@ -150,16 +150,151 @@ _loss_dense(u3_noun list, c3_w rows, c3_w cols, const _loss_match* match,
   return result;
 }
 
-u3_noun
-u3qe_loss(u3_noun hel, u3_noun hev)
-{
-  u3_noun left = u3qb_lent(hel), right = u3qb_lent(hev);
-  if ( c3n == u3a_is_cat(right) ) return u3m_bail(c3__fail);
-  c3_w cap = c3_min(u3r_word(0, left), right);
-  c3_w rows = c3y == u3a_is_cat(left) ? left : 0;
-  u3z(left);
-  if ( !cap ) return u3_nul;
+typedef struct {
+  u3_noun left, right;
+  c3_w    row;
+} _loss_cursor;
 
+enum { _loss_limit = 64 };
+
+// Keep each cursor alive while structural equality unifies equal subtrees.
+static void
+_loss_hold(_loss_cursor* cur, u3_noun left, u3_noun right)
+{
+  left = u3k(left);
+  right = u3k(right);
+  u3z(cur->left);
+  u3z(cur->right);
+  cur->left = left;
+  cur->right = right;
+}
+
+static u3_noun
+_loss_trace(u3_noun hev, c3_w rows, c3_w cols, c3_w a, c3_w b,
+            c3_w* const reach[])
+{
+  // Prefix edit distance never decreases along a diagonal. Trace back
+  // through the previous frontier, dropping a right item first on a
+  // tie, as in +loss. A greedy forward path can choose a different LCS.
+  c3_w i = rows, j = cols, skip[_loss_limit], count = 0;
+  while ( a || b ) {
+    const c3_w* prev = reach[a + b - 1];
+    if ( b && j && prev[a] >= i ) {
+      skip[count++] = --j;
+      --b;
+    }
+    else if ( a && i && prev[a - 1] >= i - 1 ) {
+      --i;
+      --a;
+    }
+    else {
+      --i;
+      --j;
+    }
+  }
+
+  u3_noun result, *end = &result;
+  c3_w pos = 0;
+  while ( count ) {
+    c3_w stop = skip[--count];
+    u3_noun run = hev;
+    for ( ; pos < stop; ++pos ) hev = u3t(hev);
+    end = u3i_list_prefix(end, run, hev);
+    hev = u3t(hev);
+    ++pos;
+  }
+  *end = u3k(hev);
+  return result;
+}
+
+// Myers stores the furthest reachable row on each diagonal. Wu et al.
+// visit them in order of deletions from the shorter list.
+// https://doi.org/10.1007/BF01840446
+// https://doi.org/10.1016/0020-0190(90)90035-V
+// reach[a+b][a] is the longest left prefix reachable after skipping
+// a left items and b right items. The two outer edges supply the next band.
+static u3_weak
+_loss_frontier(u3_noun hel, u3_noun hev, c3_w rows, c3_w cols, c3_w* prefix)
+{
+  c3_w shorter = c3_min(rows, cols);
+  c3_w a_max = rows - shorter, b_max = cols - shorter;
+  if ( a_max + b_max > _loss_limit ) return u3_none;
+
+  c3_w best = 0, depth = 0;
+  c3_d work = 0;
+  c3_w* reach[_loss_limit + 1];
+  u3_post cap = u3R->cap_p;
+  _loss_cursor lanes[2 * _loss_limit + 1] = {0};
+  _loss_cursor* lane = lanes + _loss_limit;
+  u3_weak result = u3_none;
+
+  // Visit each outer edge from its axis to the corner. The neighboring
+  // diagonals still hold the two predecessors when this diagonal advances.
+  for ( ; a_max + b_max <= _loss_limit; ++a_max, ++b_max ) {
+    for ( c3_w step = 0; step <= a_max + b_max; ++step ) {
+      c3_w a = c3_min(step, a_max);
+      c3_w b = step < a_max ? b_max : step - a_max;
+      c3_w d = a + b, row = 0;
+      _loss_cursor* cur = lane + a - b;
+      u3_noun left = hel, right = hev;
+      if ( a && (!b || cur[-1].row >= cur[1].row) ) {
+        row = cur[-1].row + 1;
+        left = cur[-1].left ? u3t(cur[-1].left) : 0;
+        right = cur[-1].right;
+      }
+      else if ( b ) {
+        row = cur[1].row;
+        left = cur[1].left;
+        right = cur[1].right ? u3t(cur[1].right) : 0;
+      }
+      if ( d == depth ) {
+        u3a_pile pile;
+        u3a_pile_prep(&pile, (d + 1) * sizeof(c3_w), alignof(c3_w));
+        reach[depth++] = u3a_push(&pile);
+      }
+      c3_w start = row;
+      while ( left && right ) {
+        u3_noun x = u3h(left), y = u3h(right);
+        if ( x != y ) {
+          if ( c3y == u3a_is_cell(x) && c3y == u3a_is_cell(y) ) {
+            _loss_hold(cur, left, right);
+          }
+          if ( c3n == u3r_sing(x, y) ) break;
+        }
+        left = u3t(left);
+        right = u3t(right);
+        ++row;
+      }
+      _loss_hold(cur, left, right);
+      cur->row = row;
+      reach[d][a] = row;
+      if ( !d ) *prefix = row;
+      if ( a == a_max && b == b_max && row >= rows ) {
+        if ( !a )      result = u3k(hel);
+        else if ( !b ) result = u3k(hev);
+        else           result = _loss_trace(hev, rows, cols, a, b, reach);
+        goto done;
+      }
+      // Stop when the search spends more on competing paths than it
+      // gains in matched items. Unrelated lists use the indexed search.
+      work += 1 + row - start;
+      best = c3_max(best, row - a);
+      if ( work > 4ULL * (best + 1) + (shorter >> 6) ) goto done;
+    }
+  }
+done:
+  u3R->cap_p = cap;
+  for ( c3_w i = _loss_limit - c3_min(b_max, _loss_limit);
+        i <= _loss_limit + c3_min(a_max, _loss_limit); ++i ) {
+    u3z(lanes[i].left);
+    u3z(lanes[i].right);
+  }
+  return result;
+}
+
+static u3_noun
+_loss_index(u3_noun hel, u3_noun hev, c3_w rows, c3_w right, c3_w cap)
+{
   static_assert(u3a_cells < SIZE_MAX / sizeof(_loss_match), "match array size");
   static_assert(u3a_cells < SIZE_MAX / sizeof(_loss_best), "candidate array size");
   _loss_match* match = u3a_malloc(right * sizeof(*match));
@@ -215,6 +350,36 @@ u3qe_loss(u3_noun hel, u3_noun hev)
   u3a_free(best);
   u3a_free(match);
   return pro;
+}
+
+u3_noun
+u3qe_loss(u3_noun hel, u3_noun hev)
+{
+  u3_noun left = u3qb_lent(hel), right = u3qb_lent(hev);
+  if ( c3n == u3a_is_cat(right) ) return u3m_bail(c3__fail);
+  c3_w cap = c3_min(u3r_word(0, left), right);
+  c3_w rows = c3y == u3a_is_cat(left) ? left : 0;
+  u3z(left);
+  if ( !cap ) return u3_nul;
+  c3_w prefix = 0;
+  if ( rows && cap >= 32 ) {
+    u3_weak pro = _loss_frontier(hel, hev, rows, right, &prefix);
+    if ( pro != u3_none ) return pro;
+  }
+  if ( prefix < (cap + 3) / 4 ) return _loss_index(hel, hev, rows, right, cap);
+  if ( prefix == cap ) return u3k(rows == cap ? hel : hev);
+
+  // The first k equal heads attain the earliest possible right endpoint
+  // for each length through k. Every later candidate extends that prefix.
+  u3_noun start = hel, result;
+  for ( c3_w i = 0; i < prefix; ++i ) {
+    hel = u3t(hel);
+    hev = u3t(hev);
+  }
+  u3_noun* end = u3i_list_prefix(&result, start, hel);
+  *end = u3_nul;
+  *end = _loss_index(hel, hev, rows - prefix, right - prefix, cap - prefix);
+  return result;
 }
 
 static u3_noun

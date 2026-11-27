@@ -2162,6 +2162,22 @@ _test_jets(void)
   u3_assert(c3y == u3r_sing(common, expected));
   u3z(left); u3z(right); u3z(common); u3z(expected);
 
+  // Two optimal paths end in the same suffix. +loss retains "bab".
+  left = u3i_byte_list(6, (const c3_y*)"bbbabb", u3_nul);
+  right = u3i_byte_list(5, (const c3_y*)"acbab", u3_nul);
+  expected = u3i_byte_list(3, (const c3_y*)"bab", u3_nul);
+  for ( c3_w i = 0; i < 40; ++i ) {
+    left = u3nc(u3nc(i, i), left);
+    right = u3nc(u3nc(i, i), right);
+    expected = u3nc(u3nc(i, i), expected);
+  }
+  common = u3qe_loss(left, right);
+  u3_assert(c3y == u3r_sing(common, expected));
+  u3z(common);
+  common = u3qe_loss(left, u3t(left));
+  u3_assert(c3y == u3r_sing(common, u3t(left)));
+  u3z(left); u3z(right); u3z(common); u3z(expected);
+
   _test_json_en_string();
 
   // Escapes on either side of a word boundary, including zero and DEL.
