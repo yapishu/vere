@@ -89,7 +89,7 @@ static void _ch_slot_put(u3h_slot*, u3h_slot, c3_h, c3_h, c3_w*);
 static u3h_node*
 _ch_node_add(u3h_node* han_u, c3_h lef_h, c3_h rem_h, u3h_slot add_w, c3_w *use_w)
 {
-  c3_h bit_h, inx_h, map_h, i_h;
+  c3_h bit_h, inx_h, map_h;
 
   lef_h -= 5;
   bit_h = (rem_h >> lef_h);
@@ -102,24 +102,16 @@ _ch_node_add(u3h_node* han_u, c3_h lef_h, c3_h rem_h, u3h_slot add_w, c3_w *use_
     return han_u;
   }
   else {
-    //  nothing was at this slot.
-    //  Optimize: use u3a_wealloc.
-    //
-    c3_h      len_h = _ch_popcount(map_h);
-    u3h_node* nah_u = _ch_node_new(1 + len_h);
-    nah_u->map_h    = han_u->map_h | ((c3_h)1 << bit_h);
+    c3_h len_h = _ch_popcount(map_h);
+    c3_w old_w = c3_wiseof(u3h_node) + len_h * c3_wiseof(u3h_slot);
+    han_u = u3a_wealloc(han_u, old_w, old_w + c3_wiseof(u3h_slot));
 
-    for ( i_h = 0; i_h < inx_h; i_h++ ) {
-      nah_u->sot_w[i_h] = han_u->sot_w[i_h];
-    }
-    nah_u->sot_w[inx_h] = add_w;
-    for ( i_h = inx_h; i_h < len_h; i_h++ ) {
-      nah_u->sot_w[i_h + 1] = han_u->sot_w[i_h];
-    }
-
-    u3a_wfree(han_u);
+    memmove(han_u->sot_w + inx_h + 1, han_u->sot_w + inx_h,
+            (len_h - inx_h) * sizeof(u3h_slot));
+    han_u->sot_w[inx_h] = add_w;
+    han_u->map_h = map_h | ((c3_h)1 << bit_h);
     *use_w += 1;
-    return nah_u;
+    return han_u;
   }
 }
 
