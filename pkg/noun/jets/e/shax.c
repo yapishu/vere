@@ -130,63 +130,64 @@
     }
   }
 
-  static u3_noun
-  _og_list(u3_noun a,
-           u3_noun b,
-           u3_noun c)
+  //  shas hashes the minimal byte representation of the mixed atom. Only
+  //  its low 256 bits can change between blocks, even for a wider seed.
+  //
+  static void
+  _og_block(c3_y tag_y, c3_w rem_w, c3_w len_w, const c3_y key_y[32],
+            c3_y* msg_y, c3_y dig_y[32])
   {
-    u3_noun l = u3_nul;
-
-    if ( !_(u3a_is_cat(b)) ) {
-      return u3m_bail(c3__fail);
+    c3_y sal_y[4] = {'o', 'g', '-', tag_y};
+    for ( c3_w i_w = 0; i_w < 32; i_w++ ) {
+      msg_y[i_w] = key_y[i_w] ^ dig_y[i_w];
     }
-    while ( 0 != b ) {
-      u3_noun x = u3qc_mix(a, c);
-      u3_noun y = u3qc_mix(b, x);
-      u3_noun d = _cqe_shas(c3_s4('o','g','-','b'), y);
-      u3_noun m;
-
-      u3z(x); u3z(y);
-
-      if ( b < 256 ) {
-        u3_noun e = u3qc_end(0, b, d);
-
-        u3z(d);
-        m = u3nc(b, e);
-        b = 0;
-      } else {
-        m = u3nc(256, d);
-        c = d;
-
-        b -= 256;
-      }
-      l = u3nc(m, l);
+    for ( c3_w i_w = 0; i_w < sizeof(rem_w); i_w++ ) {
+      msg_y[i_w] ^= (c3_y)(rem_w >> (8 * i_w));
     }
-    return u3kb_flop(l);
+    if ( len_w <= 32 ) {
+      len_w = 32;
+      while ( len_w && !msg_y[len_w - 1] ) len_w--;
+    }
+    urcrypt_shas(sal_y, sizeof(sal_y), msg_y, len_w, dig_y);
   }
 
   u3_noun
-  u3qeo_raw(u3_atom a,
-            u3_atom b)
+  u3qeo_raw(u3_atom a, u3_atom b)
   {
-    u3_noun x = u3qc_mix(b, a);
-    u3_noun c = _cqe_shas(c3_s4('o','g','-','a'), x);
-    u3_noun l = _og_list(a, b, c);
-    u3_noun r = u3qc_can(0, l);
+    if ( !_(u3a_is_cat(b)) ) return u3m_bail(c3__fail);
+    if ( !b ) return 0;
 
-    u3z(l);
-    u3z(c);
-    u3z(x);
+    u3i_slab sab_u;
+    u3i_slab_bare(&sab_u, 0, b);
+    //  The last digest may fill only part of the last word.
+    //
+    sab_u.buf_w[sab_u.len_w - 1] = 0;
 
-    return r;
+    c3_w len_w = u3r_met(3, a);
+    c3_y key_y[32], buf_y[32], dig_y[32] = {0};
+    c3_y* msg_y = len_w > 32 ? u3r_bytes_alloc(0, len_w, a) : buf_y;
+    u3r_bytes(0, sizeof(key_y), key_y, a);
+    _og_block('a', b, len_w, key_y, msg_y, dig_y);
+
+    c3_y* out_y = sab_u.buf_y;
+    c3_w rem_w = b;
+    while ( rem_w ) {
+      c3_w bit_w = c3_min(rem_w, 256);
+      c3_w byt_w = (bit_w + 7) >> 3;
+      _og_block('b', rem_w, len_w, key_y, msg_y, dig_y);
+      memcpy(out_y, dig_y, byt_w);
+      out_y += byt_w;
+      rem_w -= bit_w;
+    }
+    if ( b & 7 ) out_y[-1] &= (1u << (b & 7)) - 1;
+    if ( msg_y != buf_y ) u3a_free(msg_y);
+    return u3i_slab_mint(&sab_u);
   }
 
   u3_noun
   u3weo_raw(u3_noun cor)
   {
     u3_noun a, b;
-
-    b = u3h(u3t(cor));
-    a = u3h(u3t(u3t(u3t(cor))));
-    return u3qeo_raw(a, b);
+    u3x_mean(cor, {u3x_sam, &b}, {u3x_con_sam, &a});
+    return u3qeo_raw(u3x_atom(a), u3x_atom(b));
   }

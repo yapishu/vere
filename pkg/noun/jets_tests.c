@@ -2163,6 +2163,29 @@ _test_loss_positions(void)
   u3z(want); u3z(got); u3z(cor);
 }
 
+static void
+_test_og_raw(void)
+{
+  //  Seed 303 cancels the high byte of the first mixed digest. The
+  //  one-bit final block is zero, so the result occupies 512 bits.
+  //
+  c3_d exp_d[] = {
+    0xd365cb161e2f0924ULL, 0xed6b939d53331a82ULL,
+    0x1b5a0417a48b047dULL, 0x61344a16510a0250ULL,
+    0x8ced624366973ca3ULL, 0x78279e7f02b9025fULL,
+    0xd3601fd289f760cfULL, 0x8db5428c219b521eULL
+  };
+  u3_atom exp = u3i_chubs(c3_array_len(exp_d), exp_d);
+  u3_atom got = u3qeo_raw(303, 513);
+  u3_assert(c3y == u3r_sing(exp, got));
+  u3z(got); u3z(exp);
+
+  u3_atom wide = u3qc_bex(256);
+  u3_assert(0x2ec2e07a == u3qeo_raw(wide, 31));
+  u3_assert(0 == u3qeo_raw(wide, 0));
+  u3z(wide);
+}
+
 static c3_i
 _test_jets(void)
 {
@@ -2300,6 +2323,7 @@ _test_jets(void)
   }
 
   _test_peg();
+  _test_og_raw();
 
   if ( !_test_mas() ) {
     fprintf(stderr, "test jets: mas: failed\r\n");
