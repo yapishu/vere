@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [9d47dd576c](https://github.com/yapishu/vere/commit/9d47dd576caaceb26116044fc1523f7422edb4dc) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+On an x86-64 CPU with SHA instructions, Clay page hashing takes **74.8–75.0% less time** and the complete Ames packet round-trip test takes **20.6–20.9% less time** than the preceding review, across two live fake ~zod boots.
 
 Calling `+sham` on the noun behind the largest salted hash in cold replay takes **51.1 ms** in a live Dojo, down from **55.5 ms** on the preceding review and **65.9 ms** on develop. Reading its 20.8 MiB message in place also saves **19.3 MiB** of peak RSS across the full replay.
 
@@ -18,7 +20,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -217,6 +219,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67) | prepare short-lived gates without building their fallback | [Incremental](#change-0c171e9479) |
 | [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff) | write og digest blocks directly into the result atom | [Incremental](#change-7f16135a2d) |
 | [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948) | hash shax and shas messages directly from the atom | [Incremental](#change-c7aab99a51) |
+| [9d47dd576c](https://github.com/yapishu/vere/commit/9d47dd576caaceb26116044fc1523f7422edb4dc) | use Nettle SHA-256 instructions on capable CPUs | [Incremental](#change-9d47dd576c) |
 
 ## Measurements by change
 
@@ -2925,3 +2928,26 @@ Across 24 Hoon source files sampled by size from the mounted base desk, four pas
 During the 20.77 MiB call in an instrumented cold replay, worker RSS grows by 19.24 MiB on previous review and by 0 KiB on review, measured at entry and immediately after hashing. Four paired cold replays swap cores between trials. Median wall time and peak RSS are 109.58 s and 835.3 MiB on previous review and 110.47 s and 816.0 MiB on review.
 
 Both loom widths match Python `hashlib` on all 1,482 `+shax` and `+shas` cases, including empty messages, wide salts and the same atom passed as salt and message. Eight native suites pass on each width. The bootstrap core and all 155 replay products match develop’s canonical jam lengths and SHA-256 hashes (33,279,069,693 bytes per width).
+
+<a id="change-9d47dd576c"></a>
+
+### Select hardware SHA-256 compression in Nettle
+
+The first compression call selects a routine using the host CPU features. SHA-224 and SHA-256 share this routine. Vere ships assembly generated from Nettle's pinned implementation and selects its C compressor on CPUs without the instructions. [Nettle x86-64 source](https://github.com/gnutls/nettle/blob/nettle_4.0_release_20260205/x86_64/sha_ni/sha256-compress-n.asm) · [Nettle AArch64 source](https://github.com/gnutls/nettle/blob/nettle_4.0_release_20260205/arm64/crypto/sha256-compress-n.asm)
+
+The table shows median Dojo time from the first of two independent Kelvin 135 fake ~zod boots on an i7-12700K. Each case warms once. Builds rotate on one physical core for seven to twelve measured evaluations per boot. All builds return the same checked products.
+
+| Workload | Develop | Previous review `f9be5a706c` | Review | Less time vs previous review, two boots |
+|---|---:|---:|---:|---:|
+| `+sham` on the noun with a 20.77 MiB jam from cold replay | 59.95 ms | 48.91 ms | 12.73 ms | 71.1–74.0% |
+| Clay `+page-to-lobe`, four passes over 24 base desk source files | 5.57 ms | 5.30 ms | 1.32 ms | 74.8–75.0% |
+| `+sham` on 4,096 small atoms | 3.95 ms | 2.98 ms | 2.08 ms | 30.1–30.3% |
+| Ames `+all:test`, 96 packet round-trip cases | 34.57 ms | 29.83 ms | 23.68 ms | 20.6–20.9% |
+
+The portable `x86_64-linux-musl` binaries also run on the same physical CPU. The large `+sham` call takes 63.42 ms on the previous review and 17.64 ms on review. The complete Ames test takes 27.03 and 20.75 ms. The Dojo expression for Ames is ``` ~(all test:ames `@uvJ``@`0x3141.5926 96) ```.
+
+Successful loopback Eyre logins take 2.31 versus 2.27 ms in one boot pair and 2.14 versus 2.13 ms in another (80 requests per build). In eight alternating compiler trials, Hoon takes 5.18 versus 5.28 s, Lull 3.32 versus 3.35 s and Zuse 1.79 s on both. A four-trial series gives a larger Hoon difference (7.10 versus 5.25 s) that does not repeat.
+
+Four paired cold replays through event 143 overlap other workloads. They take 120.81 s on previous review and 121.77 s on review, with peak RSS of 816.1 and 816.2 MiB. Two further pairs after the hash audits finish take 97.64 s and 97.28 s, respectively. Builds exchange cores between pairs.
+
+Both loom widths pass eight native suites and 5,352 hash-jet cases. The bootstrap core and 155 replay products match develop’s canonical lengths and SHA-256 on each width. All six compiler-window products match on the 32-bit loom. SHA-224 and SHA-256 match Python’s `hashlib` for 1,178 byte strings on the physical x86-64 host and under x86-64 and AArch64 emulation. The portable Vere jets suite passes under AArch64 emulation and with SHA masked on x86-64. The Nettle library and a program calling its public hash API cross-link for all nine supported target combinations.
