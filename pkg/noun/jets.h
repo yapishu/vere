@@ -130,6 +130,7 @@
           u3p(u3j_fink) fin_p;        //  ordinary call site
           c3_w          sample_axis;  //  prepared slot on the sample
           u3p(struct _u3n_prog) sample_p; //  prepared program on the sample
+          u3_noun        sample_core;  //  private core for a prepared jet
         };
       } u3j_site;
 

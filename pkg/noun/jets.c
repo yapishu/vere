@@ -1940,7 +1940,8 @@ u3j_kink(u3_noun cor, u3_noun axe)
   }
 }
 
-enum { gate_full, gate_slot, gate_literal, gate_program, gate_borrow_program };
+enum { gate_full, gate_slot, gate_literal, gate_program, gate_borrow_program,
+       gate_native };
 
 typedef struct {
   c3_w nodes;
@@ -2013,7 +2014,16 @@ static void
 _cj_sample_prep(u3j_site* site)
 {
   site->sample_y = gate_full;
-  if ( site->loc != u3_none && site->jet_o == c3y ) return;
+  if ( site->loc != u3_none && site->jet_o == c3y ) {
+#if !defined(U3_CPU_DEBUG) && !defined(U3_MEMORY_DEBUG)
+    if ( u3R->par_p && site->ham_u->liv == c3y && site->ham_u->ice == c3y &&
+         site->ham_u->fun_f && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu | u3o_debug_ram)) ) {
+      site->sample_core = u3nt(u3k(u3h(site->bat)), 0, u3k(u3t(u3t(site->bat))));
+      site->sample_y = gate_native;
+    }
+#endif
+    return;
+  }
 
   u3_noun fol = u3h(site->bat), op, arg;
   if ( c3n == u3r_cell(fol, &op, &arg) ) return;
@@ -2089,6 +2099,37 @@ u3j_gate_prep(u3j_site* sit_u, u3_noun cor)
   u3t_off(glu_o);
 }
 
+// A prepared jet borrows its core. Reuse the two cells while both remain
+// private. A jet can retain either cell, including inside its product.
+// https://doi.org/10.1145/3453483.3454032
+static u3_noun
+_cj_gate_native(u3j_site* site, u3_noun sam)
+{
+  u3_noun cor = site->sample_core;
+  u3a_cell* root = u3a_to_ptr(cor);
+  u3a_cell* pay = u3a_to_ptr(root->tel);
+  pay->hed = sam;
+  root->mug_w = pay->mug_w = 0;
+
+  u3n_arm_effect();
+  u3_weak pro = site->ham_u->fun_f(cor);
+  if ( pro == u3_none ) pro = u3n_burn(site->pog_p, u3k(cor));
+
+  if ( c3y == u3a_is_mutable(u3R, cor) && c3y == u3a_is_mutable(u3R, root->tel) ) {
+    // Unification may replace a field with an equal noun during the call.
+    pay = u3a_to_ptr(root->tel);
+    sam = pay->hed;
+    pay->hed = 0;
+    root->mug_w = pay->mug_w = 0;
+    u3z(sam);
+  }
+  else {
+    site->sample_y = gate_full;
+    u3z(cor);
+  }
+  return pro;
+}
+
 /* u3j_gate_slam(): slam a site prepared by u3j_gate_prep() with sample.
  *                  sam is TRANSFERRED.
  */
@@ -2101,6 +2142,13 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   u3t_on(glu_o);
   if ( sit_u->sample_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
     switch ( sit_u->sample_y ) {
+      case gate_native:
+        // A caller on a daughter road borrows the prepared site.
+        if ( sit_u->ham_u->liv != c3y || sit_u->ham_u->ice != c3y ||
+             !sit_u->ham_u->fun_f || (u3C.wag_h & u3o_debug_ram) ||
+             c3n == u3a_is_mutable(u3R, sit_u->sample_core) ) goto full;
+        u3t_off(glu_o);
+        return _cj_gate_native(sit_u, sam);
       case gate_program:
       case gate_borrow_program:
         pro = _cj_burn(sit_u->sample_p, sam);
@@ -2125,6 +2173,7 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
       return pro;
     }
   }
+full:
   pro = u3_none;
   cor = u3nt(u3k(u3h(sit_u->bat)),
              sam,
@@ -2144,6 +2193,7 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
 void
 u3j_gate_lose(u3j_site* sit_u)
 {
+  if ( sit_u->sample_y == gate_native ) u3z(sit_u->sample_core);
   u3z(sit_u->bat);
   u3z(sit_u->bas);
   if ( u3_none != sit_u->loc ) {

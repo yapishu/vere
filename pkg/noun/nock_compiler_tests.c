@@ -949,6 +949,65 @@ _prepared_ownership(void)
   u3j_gate_lose(&site);
 }
 
+static unsigned _native_calls;
+
+static u3_noun
+_native_field(u3_noun cor)
+{
+  ++_native_calls;
+  u3r_mug(cor);
+  u3_noun axis = u3h(u3x_at(6, cor));
+  return axis ? u3k(u3x_at(axis, cor)) : u3_none;
+}
+
+static void
+_prepared_native(void)
+{
+  u3m_hate(1 << 16);
+  c3_w flags = u3C.wag_h;
+  u3C.wag_h |= u3o_hashless;
+  u3_noun root = u3nc(_lit(83001), 0);
+  u3_noun one = u3nc(_lit(83002), u3k(root));
+  u3_noun gate = u3nt(_slot(6), 77, u3k(one));
+  u3j_mine(u3nt(u3i_string("k135"), _lit(0), 0), root);
+  u3j_mine(u3nt(u3i_string("one"), _slot(3), 0), one);
+  u3j_mine(u3nt(u3i_string("add"), _slot(7), 0), u3k(gate));
+
+  const c3_w axes[] = {1, 3, 6};
+  for ( unsigned i = 0; i < c3_array_len(axes); i++ ) {
+    u3j_site site;
+    u3j_gate_prep(&site, u3k(gate));
+    u3_assert(site.loc != u3_none && site.jet_o == c3y);
+    u3j_harm jet = *site.ham_u;
+    jet.fun_f = _native_field;
+    site.ham_u = &jet;
+    _native_calls = 0;
+    // A punt executes the battery once. A daughter road may use the
+    // same site. A retained core or payload must outlive later calls.
+    u3_noun first = u3j_gate_slam(&site, u3nc(0, 42));
+    u3m_hate(0);
+    u3_noun nested = u3m_love(u3j_gate_slam(&site, u3nc(0, 43)));
+    jet.liv = c3n;
+    u3_noun disabled = u3j_gate_slam(&site, u3nc(1, 99));
+    u3_assert(u3h(disabled) == 1 && u3t(disabled) == 99);
+    u3z(disabled);
+    jet.liv = c3y;
+    u3_noun sam = u3nc(axes[i], 44);
+    u3_noun whole = u3nt(u3k(u3h(gate)), u3k(sam), u3k(u3r_at(7, gate)));
+    u3_noun field = u3j_gate_slam(&site, sam);
+    u3_noun last = u3j_gate_slam(&site, u3nc(0, 45));
+    u3j_gate_lose(&site);
+    u3_assert(_native_calls == 4 && u3t(first) == 42 && u3t(nested) == 43 &&
+              u3t(last) == 45 && u3r_at(6, gate) == 77);
+    u3_noun want = u3r_at(axes[i], whole);
+    u3_assert(u3r_mug(want) == u3r_mug(field) && c3y == u3r_sing(want, field));
+    u3z(first); u3z(nested); u3z(whole); u3z(field); u3z(last);
+  }
+  u3z(gate);
+  u3C.wag_h = flags;
+  u3z(u3m_love(0));
+}
+
 #if defined(U3_CPU_DEBUG)
 static void
 _prepared_profile(void)
@@ -1639,6 +1698,7 @@ main(void)
   u3z(u3m_love(0));
   _effects();
   _prepared_cases();
+  _prepared_native();
 #if defined(U3_CPU_DEBUG)
   _prepared_profile();
 #endif
