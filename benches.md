@@ -1,12 +1,14 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [56b5327a55](https://github.com/yapishu/vere/commit/56b5327a5511c2087cdc8783dc5ae9b242686f6b) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+In two live Kelvin 135 Dojos, batches of map deletions captured from cold replay take **27.5–29.2% less time** when the key exists and **43.7–44.1% less time** when it is absent, against the preceding review. Across 806 repeated file removals, the map and set jets each return the original root every time. Ship PSS after the file workloads is within **0.8 MiB** of the preceding review.
 
 Reusing a private core for prepared native calls cuts the time to sort 8,192 atoms by **22.5–23.6%** and to fold over the Lull source by **27.7–27.8%** against the preceding review. Resident ship PSS after the workloads rises by **2.0–2.7 MiB**.
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -199,6 +201,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [c45cfd8d75](https://github.com/yapishu/vere/commit/c45cfd8d752db1a63486c055eb7068f19452e218) | count both loss inputs while validating their spines | [Multiple commits](#change-c45cfd8d75) |
 | [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362) | index loss occurrence chains by integer position | [Multiple commits](#change-c45cfd8d75) |
 | [56b5327a55](https://github.com/yapishu/vere/commit/56b5327a5511c2087cdc8783dc5ae9b242686f6b) | reuse private cores across prepared native calls | [Incremental](#change-56b5327a55) |
+| [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2) | rebuild only the treap path changed by deletion | [Incremental](#change-52bac63838) |
 
 ## Measurements by change
 
@@ -2651,3 +2654,61 @@ On a checkpoint replay of events 144–153, nine timed pairs against develop too
 | Compile Zuse | 3.612 | 1.480 | 1.465 | 1.1% less |
 
 **Correctness.** Eight native test executables pass on both loom widths, including tests for a jet that retains the core, payload or sample and a jet that punts to Nock. Develop also opens a checkpoint saved by the signed build at event 294 and replays event 295. On each loom width the replay audit matches develop’s canonical byte lengths and SHA-256 hashes for the bootstrap core, 138 cold-replay products and 17 checkpoint products (33.28 GB per width). The audited noun library and the signed build’s noun library differ only in debug metadata and assertion source line numbers.
+
+<a id="change-52bac63838"></a>
+
+### Delete keys from persistent maps and sets
+
+When the key is absent, `(~(del by m) key)` and `(~(del in s) key)` return the original root. On a hit, the jet joins the two child treaps by priority and copies the ancestors whose child changes. A single stack holds both search and join paths. The measurements compare this commit with develop `baf98ea9c3` and the preceding review `be2f5d242a` (runtime `56b5327a55`).
+
+**Calls from cold replay.** A Kelvin 135 fake `~zod` replay through event 143 makes 2,011 nonempty map deletions. The key is absent 1,014 times. Both set deletions find their key. The sample below comprises 50 input trees, keys and expected results captured by call position. Each live Dojo batch evaluates the indicated group 64 times. The timer covers the Hoon operation, including its list traversal. Each timed result matches develop by SHA-256 of the complete jammed noun. Each pair of figures gives the medians for two independent boots, with one warm-up and 11 timed trials per build on each boot.
+
+| Calls per live batch | Develop, µs | Previous review, µs | Review, µs | Less time vs previous review |
+|---|---:|---:|---:|---:|
+| 26 absent map keys × 64 | 623 / 618 | 587 / 575 | 328 / 324 | 44.1% / 43.7% |
+| 22 present map keys × 64 | 523 / 508 | 489 / 483 | 346 / 350 | 29.2% / 27.5% |
+| 2 present set members × 64 | 48 / 48 | 37 / 37 | 35 / 35 | 5.4% / 5.4% |
+
+An isolated native run measures the same 26 misses at 495 → 47 ns per call on the 32-bit loom and 440 → 46 ns on the 64-bit loom. The 24 hits take 414 → 366 ns and 373 → 310 ns respectively. Each median covers 12 timed trials after warm-up, alternating the two implementations in the same binary.
+
+**Removal of versioned files.** Starting at Arvo `5a187feded` and Vere `baf98ea9c3`, take the 24 most recent first-parent revisions in each repository with deletions under `pkg/arvo/` or `pkg/`, respectively. Count renames as deletion and addition. Build a set of file paths and a map from path to Git object ID using the parent tree. Apply each revision’s deletions in Git order, then repeat them against the remaining collection. Both implementations produce the exact canonical jam of a collection rebuilt independently from the surviving paths.
+
+The live runs use the largest removal in each corpus. Arvo `3ce1c00105` removes 294 of 688 paths. Vere `b339b5067a` removes 160 of 452. The three builds rotate on one core. Each column shows the medians from two independent boots, each with one warm-up and 11 timed trials. Every timed output has the same digest across builds and boots.
+
+| Live Dojo batch | Develop, µs | Previous review, µs | Review, µs | Less time vs previous review |
+|---|---:|---:|---:|---:|
+| Arvo, map, present | 218 / 223 | 203 / 192 | 167 / 189 | 17.7% / 1.6% |
+| Arvo, set, present | 210 / 216 | 180 / 185 | 161 / 155 | 10.6% / 16.2% |
+| Arvo, map, already absent | 203 / 203 | 168 / 167 | 99 / 97 | 41.1% / 41.9% |
+| Arvo, set, already absent | 189 / 184 | 168 / 166 | 94 / 89 | 44.0% / 46.4% |
+| Vere, map, present | 128 / 122 | 116 / 118 | 110 / 101 | 5.2% / 14.4% |
+| Vere, set, present | 124 / 117 | 111 / 104 | 99 / 101 | 10.8% / 2.9% |
+| Vere, map, already absent | 106 / 110 | 105 / 112 | 72 / 63 | 31.4% / 43.8% |
+| Vere, set, already absent | 106 / 102 | 102 / 113 | 59 / 60 | 42.2% / 46.9% |
+
+Each native sweep covers all 24 revisions in one repository, totaling 478 file deletions for Arvo and 328 for Vere. The old and new deletion functions run in the same binary. Each trial averages 45 sweeps, with alternating execution order, one warm-up and nine measured trials.
+
+| Native sweep | 32-bit loom, previous → review, µs | Less time | 64-bit loom, previous → review, µs | Less time |
+|---|---:|---:|---:|---:|
+| Arvo, map, present | 303.4 → 266.6 | 12.1% | 309.2 → 269.5 | 12.8% |
+| Arvo, set, present | 310.6 → 261.1 | 15.9% | 312.0 → 263.2 | 15.6% |
+| Arvo, map, already absent | 283.4 → 28.8 | 89.9% | 283.5 → 28.8 | 89.9% |
+| Arvo, set, already absent | 291.1 → 26.1 | 91.0% | 290.5 → 26.4 | 90.9% |
+| Vere, map, present | 199.8 → 177.4 | 11.2% | 181.3 → 160.0 | 11.8% |
+| Vere, set, present | 207.3 → 170.3 | 17.8% | 187.2 → 155.3 | 17.1% |
+| Vere, map, already absent | 180.3 → 17.5 | 90.3% | 166.9 → 16.5 | 90.1% |
+| Vere, set, already absent | 187.5 → 16.3 | 91.3% | 171.1 → 15.0 | 91.2% |
+
+**Memory.** All 806 repeated deletions return their input root for both maps and sets. For each collection type, the sum of newly reachable cells across those calls falls from 17,650 to zero. Successful removals produce 16,528 newly reachable cells on either implementation. These are per-call counts of cells reachable only from the output. Combined king and worker PSS after the two file-history runs is 277.88 / 276.84 MiB on develop, 216.88 / 216.35 MiB on the preceding review, 216.51 / 217.14 MiB on this commit.
+
+**Whole-ship controls.** Four pairs of cold replays exchange physical cores on successive runs. Median wall time is 109.065 s on the preceding review and 109.895 s on this commit (0.8% longer). The range across the four trials is 105.13–119.04 s and 106.26–113.61 s respectively. Peak RSS is 835.49 and 835.28 MiB. Other workloads run concurrently on separate cores.
+
+Nine pairs of checkpoint replays over events 144–153 measure 1.308 → 1.399 s wall time against the preceding review (6.9% longer) and 1.812 → 1.312 s against develop (27.6% less) in a separate series. Each binary has a warm-up on a disposable copy before timing. The three compiler controls below and checkpoint events 233–249 make zero calls to either deletion jet. Compiler times are medians of three measured evaluations per build after warm-up.
+
+| Compiler | Develop, s | Previous review, s | Review, s |
+|---|---:|---:|---:|
+| Hoon | 12.425 | 4.909 | 4.874 |
+| Lull | 9.329 | 3.007 | 3.032 |
+| Zuse | 3.763 | 1.540 | 1.563 |
+
+**Correctness.** Eight native test suites pass on each loom width. Differential tests against the original implementation match all 26,553 successful products and 13,055 exits per width, including malformed trees and structurally unequal keys with the same mug. On each width the bootstrap core, 138 cold-replay products and 17 checkpoint products match develop in canonical length and SHA-256 (33,279,069,693 bytes per width). Develop opens a checkpoint saved by this build at event 294 and replays event 295.
