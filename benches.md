@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+Tagging 12,251 prebuilt singleton lists takes **22.3–24.9% less time** and tagging singleton sets takes **19.5–21.3% less time** than on the preceding review across two live Dojo boots. Inside the Hoon compiler, 52,152 calls to the captured set gate take **28.7% less time**, saving a few milliseconds per compile.
 
 On 24 complete Arvo file revisions, two source-annotated Clay map gates take **30.1–36.6% less time** across two live Dojo boots. During three desk changes, time inside all 147 map calls falls by **16.8–19.4%** across two replay series.
 
@@ -12,7 +14,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -208,6 +210,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2) | rebuild only the treap path changed by deletion | [Incremental](#change-52bac63838) |
 | [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17) | pass treap partitions directly through difference | [Incremental](#change-0aebc87353) |
 | [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974) | prepare one-hole constructors for repeated gate calls | [Incremental](#change-78c2194073) |
+| [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67) | prepare short-lived gates without building their fallback | [Incremental](#change-0c171e9479) |
 
 ## Measurements by change
 
@@ -2814,3 +2817,55 @@ Across 12 replays per uninstrumented binary, the median event interval is 966.18
 Separate invocation counts give 54,596 direct constructions for 53,915 prepared constructors in the Hoon compiler replay, 19,095 for 17,477 in Lull and 14,190 for 13,879 in Zuse. The desk replay records 14,965 direct constructions for 3,310 prepared constructors.
 
 **Correctness.** Eight native suites pass on each loom width. In 8,500 differential cases, all 4,735 successful products and all 3,765 exits, including their source traces, match the full Nock evaluator. Develop and both review loom widths produce byte-identical traces. The bootstrap core, 138 cold-replay products and 17 checkpoint products match develop in canonical length and SHA-256 on both widths (33,279,069,693 bytes per width). All 53 additional desk-event products match develop on the 32-bit loom (12,708,342,437 bytes). Develop opens the checkpoint written by review at event 300 and replays events 301–302.
+
+<a id="change-0c171e9479"></a>
+
+### Prepare short-lived gates without building their fallback
+
+Vere can execute a prepared gate by selecting a field, running a program on the sample, or filling a noun constructor. For an unregistered gate with one of these entry points, it can defer looking up the full Nock program until a call needs it. A constructor with one fixed sibling stores that noun and the field axis directly in the existing call site. Map and set traversals retain the nouns they need across calls. A traversal that borrows interior pointers resolves a constructor’s fallback before borrowing, since program lookup can unify equal nouns. The site has the same size and lifetime as on the preceding review. The preceding review is `9ddd3b8720` and develop is `baf98ea9c3`.
+
+**Short traversals in a running ship.** The inputs are the 12,251 path and blob-ID pairs from the same 24 Arvo revisions as the Clay constructor test. The first two rows map the gate `|=(r=[path @t] [%ktcl r])` across 12,251 singleton lists or sets constructed before timing. Its battery also occurs in the compiler. The next three rows include singleton construction in the timed expression. The last two controls amortize preparation over more rows. Each pair of numbers gives the medians from two fresh Kelvin 135 fake ~zod boots. Each boot uses one warm-up and 18 timed Dojo evaluations per build and workload, rotating the three binaries on one core. SHA-256 of the ordered jam product agrees for every evaluation. [Revision selection and map construction](#change-78c2194073).
+
+| Workload | Develop, µs | Previous review, µs | Review, µs | Time vs previous review |
+|---|---:|---:|---:|---:|
+| Tag prebuilt singleton lists | 2,545.5 / 2,587 | 2,252.5 / 2,283 | 1,750.5 / 1,714.5 | 22.3% less / 24.9% less |
+| Tag prebuilt singleton sets | 3,540 / 3,592 | 2,776.5 / 2,798 | 2,236 / 2,201 | 19.5% less / 21.3% less |
+| Build and tag singleton lists | 4,698 / 4,741.5 | 3,810 / 3,838 | 3,317.5 / 3,286 | 12.9% less / 14.4% less |
+| Build and tag singleton sets | 9,631.5 / 9,704.5 | 7,018 / 7,039.5 | 6,404.5 / 6,343.5 | 8.7% less / 9.9% less |
+| Tag singleton lists with a captured value | 3,886 / 3,900 | 3,194 / 3,260.5 | 2,654.5 / 2,622 | 16.9% less / 19.6% less |
+| Map one list with a captured value | 563 / 521 | 256.5 / 229.5 | 264.5 / 224.5 | 3.1% longer / 2.2% less |
+| Clay `+tako-ford` across 24 maps | 873 / 820.5 | 571.5 / 503.5 | 575.5 / 482.5 | 0.7% longer / 4.2% less |
+
+An additional boot during concurrent replay measures 23.1% less time on the prebuilt lists and 20.2% less on the prebuilt sets. The long-list and Clay controls in that boot take 4.8% longer and 10.4% longer, respectively.
+
+Combined king and worker PSS after the full sequence is 272.61 / 272.59 MiB on develop, 213.54 / 213.84 MiB on previous review, 213.95 / 213.55 MiB on review.
+
+**Inside the compiler.** Identical timers surround each public jet invocation, including preparation and traversal. The table gives the median sum per replay over six alternating trials on each review build. The set gate pairs each sample with a lexical value. Other `+turn` rows show the literal `%ktcl` gate and a larger sample expression.
+
+| Compiler and public jet | Calls per replay | Previous review, ms | Review, ms | Less time |
+|---|---:|---:|---:|---:|
+| Hoon, captured `+run:in` | 52,152 | 8.984 | 6.408 | 28.7% |
+| Hoon, `%ktcl` `+turn` | 1,840 | 0.671 | 0.533 | 20.6% |
+| Hoon, larger `+turn` | 84,165 | 34.520 | 33.286 | 3.6% |
+| Lull, captured `+run:in` | 13,594 | 2.986 | 2.148 | 28.1% |
+| Lull, `%ktcl` `+turn` | 4,294 | 1.158 | 1.007 | 13.0% |
+| Lull, larger `+turn` | 65,137 | 26.007 | 24.622 | 5.3% |
+| Zuse, captured `+run:in` | 13,086 | 2.449 | 1.683 | 31.2% |
+| Zuse, `%ktcl` `+turn` | 862 | 0.267 | 0.207 | 22.5% |
+| Zuse, larger `+turn` | 30,095 | 12.902 | 11.911 | 7.7% |
+
+**Whole compiler and replay controls.** For each binary, replay prepares its own checkpoint immediately before the timed events. Four trials per binary rotate the order on one core. Times are the median recorded Dojo evaluations.
+
+| Compiler | Develop, s | Previous review, s | Review, s | Time vs previous review |
+|---|---:|---:|---:|---:|
+| Hoon | 11.909 | 4.627 | 4.974 | 7.5% longer |
+| Lull | 9.594 | 3.106 | 3.063 | 1.4% less |
+| Zuse | 3.642 | 1.603 | 1.616 | 0.9% longer |
+
+A second Hoon series alternates the two review binaries for ten trials each. The median is 4.732 s on previous review and 4.725 s on review (0.2% less). The short-gate savings are only a few milliseconds of this complete job.
+
+Four paired cold replays rebuild the ship through event 143 and exchange cores between trials. Median wall time is 115.11 s on previous review and 115.87 s on review (0.7% longer). Median peak RSS is 835.22 and 835.35 MiB, respectively.
+
+**Correctness.** Eight native suites pass on each loom width. Both ways of preparing a gate match develop byte for byte across 4,735 successful products and 3,765 exits, including source traces, on both widths. The bootstrap core, 138 cold replay products and 17 checkpoint products match develop’s canonical jam lengths and SHA-256 on each width (33,279,069,693 bytes per width). All six events in the three compiler windows also match develop on the 32-bit loom (1,439,791,403 bytes). Develop opens the checkpoint review writes at event 294 and replays event 295.
+
+**Wet-gate profile.** Two separately timed compiler replays on the preceding review record 42,363 wet entries to the `+fire:ut` callback during self-hosted Hoon compilation. Of its 7,432 direct calls to `+mull`, 1,253 hit the memo table and 6,179 miss. The miss bodies account for 1.090 / 1.091 s in the instrumented runs, with time in nested prepared gates charged separately. This measures where compilation spends time. An optimization would still need to show how much of that work it can avoid.
