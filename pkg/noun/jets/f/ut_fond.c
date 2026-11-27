@@ -22,8 +22,37 @@ typedef struct _fond_seen {
   const struct _fond_seen* parent;
 } _fond_seen;
 
+/* An axis starts with 1. Each descent appends 0 for a head or 1 for a
+** tail. Remember just the head depths until a match needs its axis.
+*/
+typedef struct _fond_head {
+  c3_d depth;
+  const struct _fond_head* parent;
+} _fond_head;
+
+static u3_atom
+_fond_axis(c3_d len_d, const _fond_head* head)
+{
+  c3_w top_w = ~(c3_w)0 >> (u3a_word_bits - 1 - len_d % u3a_word_bits);
+  c3_w* buf_w = &top_w;
+  u3i_slab sab_u;
+
+  if ( len_d >= u3a_word_bits ) {
+    u3i_slab_bare(&sab_u, 0, len_d + 1);
+    buf_w = sab_u.buf_w;
+    memset(buf_w, 0xff, (sab_u.len_w - 1) * sizeof(c3_w));
+    buf_w[sab_u.len_w - 1] = top_w;
+  }
+  for ( ; head; head = head->parent ) {
+    c3_d bit_d = len_d - head->depth;
+    buf_w[bit_d / u3a_word_bits] &= ~((c3_w)1 << (bit_d % u3a_word_bits));
+  }
+  return (len_d < u3a_word_bits) ? u3i_word(top_w) : u3i_slab_moot(&sab_u);
+}
+
 typedef struct {
   u3_noun van;
+  const _fond_head* head;
   const _fond_seen* seen;
   c3_w fuel;
   c3_y kel_y;
@@ -31,7 +60,7 @@ typedef struct {
 
 static u3_weak
 _fond_name(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
-           c3_w axe_w, c3_w dep_w, _fond_walk* walk);
+           c3_d len_d, c3_w dep_w, _fond_walk* walk);
 
 /* +twin joins natural matches at the same vein. A punt lets Hoon
 ** produce its own trace for conflicting matches.
@@ -64,22 +93,22 @@ _fond_twin(u3_noun a, u3_noun b)
 */
 static c3_o
 _fond_fork(u3_noun set, u3_noun name, u3_noun way, u3_noun vein,
-           c3_w axe_w, c3_w dep_w, _fond_walk* walk, u3_noun* port)
+           c3_d len_d, c3_w dep_w, _fond_walk* walk, u3_noun* port)
 {
   if ( set == u3_nul ) return c3y;
   u3_noun typ, lef, rit;
   if ( !dep_w || !walk->fuel || c3n == u3r_trel(set, &typ, &lef, &rit) ||
-       c3n == _fond_fork(lef, name, way, vein, axe_w, dep_w-1, walk, port) ) {
+       c3n == _fond_fork(lef, name, way, vein, len_d, dep_w-1, walk, port) ) {
     return c3n;
   }
-  u3_weak hit = _fond_name(typ, name, way, vein, axe_w, dep_w-1, walk);
+  u3_weak hit = _fond_name(typ, name, way, vein, len_d, dep_w-1, walk);
   if ( hit == u3_none ) return c3n;
   u3_weak pro = _fond_twin(hit, *port);
   u3z(hit);
   if ( pro == u3_none ) return c3n;
   u3z(*port);
   *port = pro;
-  return _fond_fork(rit, name, way, vein, axe_w, dep_w-1, walk, port);
+  return _fond_fork(rit, name, way, vein, len_d, dep_w-1, walk, port);
 }
 
 /* +repo uses a leg at Kelvin 135 and a list of legs at Kelvin 137.
@@ -88,7 +117,7 @@ _fond_fork(u3_noun set, u3_noun name, u3_noun way, u3_noun vein,
 */
 static u3_weak
 _fond_hold(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
-           c3_w axe_w, c3_w dep_w, _fond_walk* walk)
+           c3_d len_d, c3_w dep_w, _fond_walk* walk)
 {
   u3_noun item = u3t(sut);
   u3_weak fan = u3r_at(u3qfu_van_fan, walk->van);
@@ -105,7 +134,7 @@ _fond_hold(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
 
   _fond_seen here = {sut, walk->seen};
   walk->seen = &here;
-  u3_weak pro = _fond_name(typ, name, way, vein, axe_w, dep_w-1, walk);
+  u3_weak pro = _fond_name(typ, name, way, vein, len_d, dep_w-1, walk);
   walk->seen = here.parent;
   u3z(typ);
   return pro;
@@ -113,21 +142,22 @@ _fond_hold(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
 
 static u3_weak
 _fond_name(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
-           c3_w axe_w, c3_w dep_w, _fond_walk* walk)
+           c3_d len_d, c3_w dep_w, _fond_walk* walk)
 {
   u3_noun tag, p, q;
-  if ( !dep_w || !walk->fuel || axe_w >= (1U << 29) ) return u3_none;
+  if ( !dep_w || !walk->fuel ) return u3_none;
   walk->fuel--;
 
+next:
   if ( sut == c3__void ) return u3_nul;
   if ( sut == c3__noun ) return _fond_miss();
   if ( c3n == u3du(sut) ) return u3_none;
   if ( u3h(sut) == c3__hold ) {
-    return _fond_hold(sut, name, way, vein, axe_w, dep_w, walk);
+    return _fond_hold(sut, name, way, vein, len_d, dep_w, walk);
   }
   if ( u3h(sut) == c3__fork ) {
     u3_noun port = u3_nul;
-    if ( c3y == _fond_fork(u3t(sut), name, way, vein, axe_w, dep_w, walk, &port) ) {
+    if ( c3y == _fond_fork(u3t(sut), name, way, vein, len_d, dep_w, walk, &port) ) {
       return port;
     }
     u3z(port);
@@ -137,18 +167,34 @@ _fond_name(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
 
   switch ( tag ) {
     case c3__atom: return _fond_miss();
-    case c3__hint: return _fond_name(q, name, way, vein, axe_w, dep_w-1, walk);
+    case c3__hint: return _fond_name(q, name, way, vein, len_d, dep_w-1, walk);
     case c3__face: {
       if ( c3n == u3ud(p) ) return u3_none;
       if ( c3n == u3r_sing(p, name) ) return _fond_miss();
-      u3_noun path = u3nt(u3_nul, u3nc(u3_nul, axe_w), u3k(vein));
+      u3_noun axis = _fond_axis(len_d, walk->head);
+      u3_noun path = u3nt(u3_nul, u3nc(u3_nul, axis), u3k(vein));
       return u3nq(c3y, path, c3y, u3k(q));
     }
     case c3__cell: {
-      u3_weak hed = _fond_name(p, name, way, vein, 2*axe_w, dep_w-1, walk);
+      //  Simple faces hide their payload. Skip a field that cannot match
+      //  and resume the search at its tail, including a core or a fork.
+      //
+      u3_noun field;
+      if ( p == c3__noun ||
+           (c3y == u3r_trel(p, &tag, &field, 0) &&
+            (tag == c3__atom || (tag == c3__face && c3y == u3ud(field) &&
+                                 c3n == u3r_sing(field, name)))) ) {
+        sut = q;
+        len_d++;
+        goto next;
+      }
+      _fond_head here = {len_d + 1, walk->head};
+      walk->head = &here;
+      u3_weak hed = _fond_name(p, name, way, vein, len_d+1, dep_w-1, walk);
+      walk->head = here.parent;
       if ( hed == u3_none || hed == u3_nul || u3h(hed) == c3y ) return hed;
       u3z(hed);
-      return _fond_name(q, name, way, vein, 2*axe_w+1, dep_w-1, walk);
+      return _fond_name(q, name, way, vein, len_d+1, dep_w-1, walk);
     }
     case c3__core: {
       u3_noun pol, met, dom;
@@ -164,12 +210,13 @@ _fond_name(u3_noun sut, u3_noun name, u3_noun way, u3_noun vein,
         u3_noun axe = u3qc_peg(2, u3h(hit));
         u3_noun leg = u3nc(u3k(sut), u3nc(pol, u3k(u3t(hit))));
         u3_noun set = u3nt(leg, u3_nul, u3_nul);
-        u3_noun path = u3nc(u3nc(u3_nul, axe_w), u3k(vein));
+        u3_noun axis = _fond_axis(len_d, walk->head);
+        u3_noun path = u3nc(u3nc(u3_nul, axis), u3k(vein));
         u3z(arm);
         return u3nq(c3y, path, c3n, u3nc(axe, set));
       }
       if ( met == c3__gold || way == c3__free ) {
-        return _fond_name(p, name, way, vein, 2*axe_w+1, dep_w-1, walk);
+        return _fond_name(p, name, way, vein, len_d+1, dep_w-1, walk);
       }
       return u3_none;
     }
@@ -306,7 +353,7 @@ u3qfu_fond(u3_noun van, u3_noun sut, u3_noun way, u3_noun hyp, c3_y kel_y)
     u3_noun limb = limbs[--len_w];
     u3_weak next = u3_none;
     if ( c3y == u3ud(limb) ) {
-      next = _fond_name(sut, limb, way, vein, 1, 40, &walk);
+      next = _fond_name(sut, limb, way, vein, 0, 40, &walk);
     }
     else if ( u3h(limb) == c3y && c3y == u3a_is_cat(u3t(limb)) ) {
       c3_w axe_w = u3t(limb);
@@ -324,7 +371,7 @@ u3qfu_fond(u3_noun van, u3_noun sut, u3_noun way, u3_noun hyp, c3_y kel_y)
         }
         else if ( !skip && c3y == u3r_cell(unit, &mark, &name) &&
                   mark == u3_nul && c3y == u3ud(name) ) {
-          next = _fond_name(sut, name, way, vein, 1, 40, &walk);
+          next = _fond_name(sut, name, way, vein, 0, 40, &walk);
         }
       }
     }

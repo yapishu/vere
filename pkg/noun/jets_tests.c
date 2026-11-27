@@ -1735,6 +1735,29 @@ _test_toss(void)
 }
 
 static void
+_test_fond_record(void)
+{
+  // A mismatching face hides the same name in its payload. The first
+  // visible x wins, including across atom and machine-word boundaries.
+  //
+  u3_noun hidden = u3nt(c3__face, 'y', u3nt(c3__face, 'x', c3__void));
+  u3_noun hit = u3nt(c3__face, 'x', c3__noun);
+  u3_noun later = u3nt(c3__face, 'x', c3__void);
+  u3_noun rec = u3nt(c3__cell, u3k(hit), u3k(later));
+  u3_atom axe = 2;
+  for ( c3_w i = 0; i <= 130; i++ ) {
+    u3_noun sut = u3nt(c3__cell, u3k(rec), u3k(later));
+    u3_noun path = u3nt(0, u3nc(0, u3qa_add(axe, axe)), 0);
+    _check_fond(sut, u3nc('x', 0), u3nq(0, path, 0, c3__noun));
+    rec = u3nt(c3__cell, u3k(hidden), rec);
+    axe = u3i_vint(u3ka_add(u3k(axe), axe));
+  }
+  _check_fond(rec, u3nc('z', 0), u3nt(1, 0, 0));
+  _check_fond(u3nt(c3__cell, c3__void, hit), u3nc('x', 0), 0);
+  u3z(axe); u3z(hidden); u3z(later);
+}
+
+static void
 _test_fond(void)
 {
   u3_noun pair = u3nt(c3__cell, c3__noun, u3nt(c3__face, 'x', c3__noun));
@@ -2102,6 +2125,7 @@ _test_jets(void)
 
   _test_arm_axes();
   _test_fond();
+  _test_fond_record();
   _test_peek();
   _test_toss();
   _test_nest();
