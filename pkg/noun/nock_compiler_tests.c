@@ -154,6 +154,7 @@ _memo_scry(void)
   for ( c3_w i = 0; i < 2; i++ ) {
     u3_noun clue = i ? u3nt(c3__clay, c3__ford, 0) : u3nc(1, 2);
     u3_noun body = u3nt(12, _slot(1), _slot(2));
+    body = u3nq(6, u3nc(3, _slot(1)), body, _lit(0));
     u3_noun hint = u3nt(11, u3nc(c3__memo, _lit(clue)), body);
 
     for ( u3_noun val = 71; val <= 72; val++ ) {
@@ -310,6 +311,43 @@ _log(u3_noun msg)
   u3_assert(logs < 8);
   logged[logs++] = msg;
   u3z(msg);
+}
+
+// The clue runs on every call. A repeated expensive arm hits the original
+// whole-formula key and skips its effect. The cheap arm returns its slot.
+//
+static void
+_memo_decision(void)
+{
+  u3m_hate(0);
+  u3_noun clue = u3nt(11, u3nc(c3__slog, _lit(51)), _lit(0));
+  u3_noun hard = u3nt(11, u3nc(c3__slog, _lit(52)), _slot(3));
+  u3_noun test = u3nt(5, _lit(0), _slot(2));
+  u3_noun body = u3nq(6, test, _slot(3), hard);
+  u3_noun fol = u3nt(11, u3nc(c3__memo, clue), u3k(body));
+  u3_noun bus = u3nc(1, 42);
+  logs = 0;
+  u3C.slog_f = _log;
+  u3_assert(17 == u3n_nock_on(u3nc(0, 17), u3k(fol)));
+  u3_assert(42 == u3n_nock_on(u3k(bus), u3k(fol)));
+  u3_assert(42 == u3n_nock_on(u3k(bus), fol));
+  u3_assert(logs == 4 && logged[0] == 51 && logged[1] == 51 &&
+            logged[2] == 52 && logged[3] == 51);
+  u3_noun key = u3z_key_2(144 + c3__nock, bus, body);
+  u3_assert(42 == u3z_find(u3z_memo_toss, key));
+  u3z(key); u3z(bus); u3z(body);
+
+  // An effectful decision stays inside the memo and runs once on a miss.
+  test = u3nt(11, u3nc(c3__slog, _lit(53)), _slot(2));
+  fol = _memo(u3nq(6, test, _lit(11), _lit(12)));
+  for ( c3_w i = 0; i < 2; i++ ) {
+    u3_assert(12 == u3n_nock_on(u3nc(1, 0), u3k(fol)));
+  }
+  u3_assert(logs == 5 && logged[4] == 53);
+  u3z(fol);
+  u3C.slog_f = 0;
+  logs = 0;
+  u3z(u3m_love(0));
 }
 
 static void
@@ -1611,6 +1649,7 @@ main(void)
   _indexed();
   _mixed();
   _mixed_effects();
+  _memo_decision();
   _memo_scry();
   _full_literal_pool();
   _project_pair();

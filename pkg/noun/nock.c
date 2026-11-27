@@ -1079,6 +1079,104 @@ _n_emit(u3_noun *ops, u3_noun op)
 
 static c3_w _n_comp(u3_noun*, u3_noun, c3_o, c3_o);
 
+static c3_t _n_formulaic(u3_noun fol);
+
+// Bound the work of re-evaluating a transient memo. Comparing with a direct
+// literal is constant time even when the other operand is a large noun.
+//
+static c3_t
+_n_memo_small(u3_noun fol, c3_w* fuel)
+{
+  u3_noun op, arg, a, b, c, lit;
+  if ( !*fuel || c3n == u3r_cell(fol, &op, &arg) ) return 0;
+  --*fuel;
+
+  if ( c3y == u3du(op) ) {
+    return _n_memo_small(op, fuel) && _n_memo_small(arg, fuel);
+  }
+  switch ( op ) {
+    case 0: return arg && arg <= 65535;
+    case 1: return 1;
+    case 3: return _n_memo_small(arg, fuel);
+    case 5:
+      return c3y == u3r_cell(arg, &a, &b) &&
+             ((c3y == u3r_p(a, 1, &lit) && _(u3a_is_cat(lit))) ||
+              (c3y == u3r_p(b, 1, &lit) && _(u3a_is_cat(lit)))) &&
+             _n_memo_small(a, fuel) && _n_memo_small(b, fuel);
+    case 6:
+      return c3y == u3r_trel(arg, &a, &b, &c) &&
+             _n_memo_small(a, fuel) && _n_memo_small(b, fuel) &&
+             _n_memo_small(c, fuel);
+    default: return 0;
+  }
+}
+
+// Move a transient lookup past a cheap decision with a cheap arm. The other
+// arm looks up the original formula on the original subject. The hint's clue
+// has already run. Persistent and Ford memos always emit their lookup/save.
+// https://www.cs.cmu.edu/~blelloch/papers/ABH03.pdf
+//
+static c3_w
+_n_comp_memo(u3_noun* ops, u3_noun key, u3z_cid cid, c3_o los_o, c3_o tel_o)
+{
+  struct { u3_noun test, arm; c3_t first; } path[3];
+  u3_noun fol = key, body = u3_nul;
+  c3_w depth = 0, len_w;
+  c3_t direct = 0;
+
+  while ( u3z_memo_toss == cid ) {
+    u3_noun test, yes, no, lit;
+    c3_w fuel = 22, gate = 8;
+    if ( _n_memo_small(fol, &fuel) ) { direct = 1; break; }
+    if ( c3n == u3r_pqr(fol, 6, &test, &yes, &no) ||
+         !_n_memo_small(test, &gate) ||
+         (c3y == u3r_safe(test, &lit) && u3_none != lit) ) break;
+
+    fuel = 22;
+    c3_t first = _n_memo_small(yes, &fuel);
+    if ( !first ) {
+      fuel = 22;
+      if ( !_n_memo_small(no, &fuel) ) break;
+    }
+    // Leave long chains intact for the compiler's tag dispatch.
+    if ( depth == c3_array_len(path) ) { fol = key; depth = 0; break; }
+    path[depth].test = test;
+    path[depth].arm = first ? yes : no;
+    path[depth++].first = first;
+    fol = first ? no : yes;
+  }
+  if ( depth && !_n_formulaic(fol) ) { fol = key; depth = 0; direct = 0; }
+  u3_noun* dst = depth ? &body : ops;
+  if ( direct ) {
+    len_w = _n_comp(dst, fol, los_o, tel_o);
+  }
+  else {
+    u3_noun mem = u3_nul;
+    len_w = 1 + _n_comp(&mem, fol, c3y, c3n);
+    _n_emit(&mem, SAVE);
+    _n_emit(dst, u3nq((c3y == los_o) ? SLIB : SKIB, cid, len_w, u3k(key)));
+    _n_apen(dst, mem);
+    ++len_w;
+  }
+  if ( !depth ) return len_w;
+  while ( depth ) {
+    --depth;
+    u3_noun arm = u3_nul, cond = u3_nul;
+    c3_w arm_w = _n_comp(&arm, path[depth].arm, los_o, tel_o);
+    c3_w test_w = _n_comp(&cond, path[depth].test, c3n, c3n);
+    c3_t first = path[depth].first;
+    u3_noun yep = first ? arm : body, nop = first ? body : arm;
+    _n_emit(&yep, u3nc(SBIP, first ? len_w : arm_w));
+    _n_emit(&cond, u3nc(SBIN, 1 + (first ? arm_w : len_w)));
+    _n_apen(&cond, yep);
+    _n_apen(&cond, nop);
+    body = cond;
+    len_w += arm_w + test_w + 2;
+  }
+  _n_apen(ops, body);
+  return len_w;
+}
+
 /* _n_bint(): hint-processing helper for _n_comp.
  *            hif: hint-formula (first part of 11). RETAIN.
  *            nef: next-formula (second part of 11). RETAIN.
@@ -1199,17 +1297,9 @@ _n_bint(u3_noun* ops, u3_noun hif, u3_noun nef, c3_o los_o, c3_o tel_o)
         break;
 
       case c3__memo: {
-        u3_noun mem = u3_nul;
-        c3_w mem_w = 0;
-        c3_y op_y;
-
         tot_w += _n_comp(ops, hod, c3n, c3n);
         ++tot_w; _n_emit(ops, TOSS);
 
-        mem_w += _n_comp(&mem, nef, c3y, c3n);
-        ++mem_w; _n_emit(&mem, SAVE);
-
-        op_y   = (c3y == los_o) ? SLIB : SKIB; // overflows to SLIS / SKIS
         u3z_cid cid = u3z_memo_toss;
         {
           u3_weak con = u3r_skip(hod);
@@ -1225,8 +1315,7 @@ _n_bint(u3_noun* ops, u3_noun hif, u3_noun nef, c3_o los_o, c3_o tel_o)
             }
           }
         }
-        ++tot_w; _n_emit(ops, u3nq(op_y, cid, mem_w, u3k(nef)));
-        tot_w += mem_w; _n_apen(ops, mem);
+        tot_w += _n_comp_memo(ops, nef, cid, los_o, tel_o);
         break;
       }
     }
