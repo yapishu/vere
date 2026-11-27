@@ -1545,6 +1545,22 @@ _test_map_union(void)
 }
 
 static void
+_test_tree_difference(void)
+{
+  for ( c3_t map_t = 0; map_t < 2; map_t++ ) {
+    u3_noun lo = map_t ? u3nc(1, 11) : 1;
+    u3_noun hi = map_t ? u3nc(4, 44) : 4;
+    // gor orders 1, 2, 4. Joining across the absent key promotes 4 by mor.
+    u3_noun tree = u3nt(u3k(lo), 0, u3nt(u3k(hi), 0, 0));
+    u3_noun mask = u3nt(map_t ? u3nc(2, 22) : 2, 0, 0);
+    u3_noun want = u3nt(hi, u3nt(lo, 0, 0), 0);
+    u3_noun got = map_t ? u3qdb_dif(tree, mask) : u3qdi_dif(tree, mask);
+    u3_assert(c3y == u3r_sing(got, want));
+    u3z(got); u3z(want); u3z(mask); u3z(tree);
+  }
+}
+
+static void
 _test_tree_intersection(void)
 {
   u3_noun maps[2] = {0}, sets[2] = {0};
@@ -2165,6 +2181,7 @@ _test_jets(void)
   _test_byte_reverse();
   _test_byte_list();
   _test_map_union();
+  _test_tree_difference();
   _test_tree_intersection();
   _test_bif_del();
   _test_put_rotation();
