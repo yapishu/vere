@@ -352,14 +352,25 @@ _loss_index(u3_noun hel, u3_noun hev, c3_w rows, c3_w right, c3_w cap)
   return pro;
 }
 
-u3_noun
-u3qe_loss(u3_noun hel, u3_noun hev)
+static u3_noun
+_loss(u3_noun hel, u3_noun hev, c3_m malformed)
 {
-  u3_noun left = u3qb_lent(hel), right = u3qb_lent(hev);
-  if ( c3n == u3a_is_cat(right) ) return u3m_bail(c3__fail);
-  c3_w cap = c3_min(u3r_word(0, left), right);
-  c3_w rows = c3y == u3a_is_cat(left) ? left : 0;
-  u3z(left);
+  // Count while validating. Interleave the two input walks.
+  static_assert(u3a_cells < c3_w_max, "list length precision");
+  u3_noun a = hel, b = hev;
+  c3_w left = 0, right = 0;
+  while ( c3y == u3du(a) && c3y == u3du(b) ) {
+    a = u3t(a);
+    b = u3t(b);
+    ++left;
+  }
+  right = left;
+  for ( ; c3y == u3du(a); a = u3t(a) ) ++left;
+  for ( ; c3y == u3du(b); b = u3t(b) ) ++right;
+  if ( u3_nul != a || u3_nul != b ) return u3m_bail(malformed);
+  if ( right > u3a_direct_max ) return u3m_bail(c3__fail);
+  c3_w cap = c3_min(left, right);
+  c3_w rows = left <= u3a_direct_max ? left : 0;
   if ( !cap ) return u3_nul;
   c3_w prefix = 0;
   if ( rows && cap >= 32 ) {
@@ -382,28 +393,16 @@ u3qe_loss(u3_noun hel, u3_noun hev)
   return result;
 }
 
-static u3_noun
-_listp(u3_noun lix)
+u3_noun
+u3qe_loss(u3_noun hel, u3_noun hev)
 {
-  while ( 1 ) {
-    if ( u3_nul == lix ) return c3y;
-    if ( c3n == u3du(lix) ) return c3n;
-    lix = u3t(lix);
-  }
+  return _loss(hel, hev, c3__exit);
 }
 
 u3_noun
 u3we_loss(u3_noun cor)
 {
-  u3_noun hel, hev;
-
-  if ( (u3_none == (hel = u3r_at(u3x_sam_2, cor))) ||
-       (u3_none == (hev = u3r_at(u3x_sam_3, cor))) ||
-       (c3n == _listp(hel)) ||
-       (c3n == _listp(hev)) )
-  {
-    return u3m_bail(c3__fail);
-  } else {
-    return u3qe_loss(hel, hev);
-  }
+  u3_noun hel = u3r_at(u3x_sam_2, cor), hev = u3r_at(u3x_sam_3, cor);
+  if ( u3_none == hel || u3_none == hev ) return u3m_bail(c3__fail);
+  return _loss(hel, hev, c3__fail);
 }
