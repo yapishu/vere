@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+Finding added and removed paths between complete Arvo and Vere revisions takes **14.8–31.7% less time** than on the preceding review across eight live Dojo workloads and two independent boots. Combined king and worker PSS after the comparisons stays within **0.7 MiB** of the preceding review.
 
 In two live Kelvin 135 Dojos, batches of map deletions captured from cold replay take **27.5–29.2% less time** when the key exists and **43.7–44.1% less time** when it is absent, against the preceding review. Across 806 repeated file removals, the map and set jets each return the original root every time. Ship PSS after the file workloads is within **0.8 MiB** of the preceding review.
 
@@ -8,7 +10,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -202,6 +204,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362) | index loss occurrence chains by integer position | [Multiple commits](#change-c45cfd8d75) |
 | [56b5327a55](https://github.com/yapishu/vere/commit/56b5327a5511c2087cdc8783dc5ae9b242686f6b) | reuse private cores across prepared native calls | [Incremental](#change-56b5327a55) |
 | [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2) | rebuild only the treap path changed by deletion | [Incremental](#change-52bac63838) |
+| [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17) | pass treap partitions directly through difference | [Incremental](#change-0aebc87353) |
 
 ## Measurements by change
 
@@ -2712,3 +2715,51 @@ Nine pairs of checkpoint replays over events 144–153 measure 1.308 → 1.399 s
 | Zuse | 3.763 | 1.540 | 1.563 |
 
 **Correctness.** Eight native test suites pass on each loom width. Differential tests against the original implementation match all 26,553 successful products and 13,055 exits per width, including malformed trees and structurally unequal keys with the same mug. On each width the bootstrap core, 138 cold-replay products and 17 checkpoint products match develop in canonical length and SHA-256 (33,279,069,693 bytes per width). Develop opens a checkpoint saved by this build at event 294 and replays event 295.
+
+<a id="change-0aebc87353"></a>
+
+### Pass treap partitions directly through difference
+
+For `(~(dif by a) b)` and `(~(dif in a) b)`, a matching root key exposes the two child trees directly. A split below the root hands its two results to the recursive calls separately. A sole surviving branch becomes the result. The public `+bif` gate uses the same search and returns its ordinary pair. The comparison uses develop `baf98ea9c3` and the preceding review `76be11f6aa` (runtime `52bac63838`).
+
+**Complete file revisions in a live Dojo.** Use the parent and child Git trees for Arvo `3ce1c00105` under `pkg/arvo/` and Vere `b339b5067a` under `pkg/`. A set holds file paths as lists of components. A map associates each path with its Git object ID. Each batch takes the indicated difference 32 times. The driver independently checks the complete result against Git, including the values on the surviving keys. SHA-256 over each ordered batch of jammed results agrees across all three builds. The table gives medians in µs from two independent Kelvin 135 fake-`~zod` boots. Each boot has one warm-up and 11 timed rounds per build in rotating order on the same core.
+
+| 32 differences | Develop, µs | Previous review, µs | Review, µs | Less time vs previous review |
+|---|---:|---:|---:|---:|
+| Arvo, map, removals | 1301 / 1352 | 1170 / 1265 | 961 / 1016 | 17.9% / 19.7% |
+| Arvo, map, additions | 1198 / 1256 | 858 / 873 | 680 / 679 | 20.7% / 22.2% |
+| Arvo, set, removals | 1245 / 1213 | 1192 / 1187 | 974 / 969 | 18.3% / 18.4% |
+| Arvo, set, additions | 1057 / 1102 | 890 / 891 | 608 / 623 | 31.7% / 30.1% |
+| Vere, map, removals | 845 / 854 | 747 / 749 | 636 / 638 | 14.9% / 14.8% |
+| Vere, map, additions | 806 / 798 | 603 / 598 | 453 / 449 | 24.9% / 24.9% |
+| Vere, set, removals | 770 / 786 | 794 / 751 | 618 / 625 | 22.2% / 16.8% |
+| Vere, set, additions | 714 / 744 | 583 / 603 | 434 / 452 | 25.6% / 25.0% |
+
+**Native file-history sweeps.** Take the 24 most recent first-parent commits with deletions under each source prefix, starting at Arvo `5a187feded` and Vere `baf98ea9c3`, with rename detection off. Construct the complete parent and child collections independently. Both directions match the canonical jam of the paths computed by literal filename comparison. Times are µs per sweep of 24 revision pairs. Both loom widths take turns on the same core after replay and compilation finish. Each median covers nine timed trials after warm-up, averaging 18 sweeps per trial and alternating the old and new functions.
+
+| Native sweep | 32-bit previous → review, µs | Less time | 64-bit previous → review, µs | Less time |
+|---|---:|---:|---:|---:|
+| Arvo, map, removals | 496.9 → 436.6 | 12.1% | 559.4 → 493.4 | 11.8% |
+| Arvo, map, additions | 490.8 → 422.1 | 14.0% | 547.3 → 477.3 | 12.8% |
+| Arvo, set, removals | 484.1 → 418.1 | 13.6% | 523.6 → 468.0 | 10.6% |
+| Arvo, set, additions | 478.8 → 404.8 | 15.5% | 518.1 → 454.3 | 12.3% |
+| Vere, map, removals | 334.7 → 287.5 | 14.1% | 369.9 → 319.6 | 13.6% |
+| Vere, map, additions | 328.3 → 278.4 | 15.2% | 360.6 → 312.1 | 13.4% |
+| Vere, set, removals | 330.4 → 277.2 | 16.1% | 352.0 → 306.7 | 12.9% |
+| Vere, set, additions | 323.5 → 271.5 | 16.1% | 343.1 → 295.4 | 13.9% |
+
+Across both directions and all 48 revisions, the preceding difference implementation allocates 3,263 intermediate partition-pair cells for maps and the same number for sets. This commit allocates zero such cells. Standalone native `+bif` trials split the same parent trees at 12 evenly spaced present keys, 12 absent keys and the root key. The reductions across projects, key groups and collection types span 9.2–29.6% on the two loom widths.
+
+**Clay.** A new desk receives 320 numbered text files and a probe file. The bulk commit edits 240 numbered files and the probe, removes 32 files and adds 96. The third commit changes just the probe. Each commit is checked by reading its probe back through Clay. The 53-event window makes 13 calls with a nonempty right operand. A timer around the registered difference gates measures the original arguments during replay, once per call. The median sum over all 13 calls is 114.7 µs on the preceding review and 96.8 µs on this commit (15.6% less, one warm-up and 14 timed replays per build in alternating order). In a separate nine-replay comparison, median wall time for all 53 events is 1.90 s on develop, 1.01 s on the preceding review and 0.97 s on this commit. The time saved inside the measured gates is about 18 µs per replay.
+
+**Memory and cold replay.** Combined king and worker PSS after the two file-history Dojo runs is 278.98 / 278.81 MiB on develop, 222.01 / 221.47 MiB on the preceding review, 221.63 / 222.15 MiB on this commit. Peak process RSS in the 53-event desk replay is 305.18 MiB, 317.17 MiB, 317.04 MiB respectively. Four cold replays through event 143 exchange cores between the preceding review and candidate. Median wall time is 114.500 → 114.465 s and peak RSS is 835.35 → 835.35 MiB. This cold replay has ten calls with a nonempty right operand. Other benchmarks run concurrently on separate cores.
+
+**Compiler controls.** Each compiler replay makes 12 map-difference calls with an empty right operand and zero set-difference calls. The table gives the median Dojo evaluation time after one warm-up and three timed trials per build, replaying the same recorded expression on each build.
+
+| Compiler | Develop, s | Previous review, s | Review, s |
+|---|---:|---:|---:|
+| Hoon | 12.731 | 4.818 | 4.940 |
+| Lull | 9.692 | 3.125 | 3.159 |
+| Zuse | 3.930 | 1.747 | 1.699 |
+
+**Correctness.** Eight native suites pass on each loom width. A differential test for split and difference matches 49,792 successful products and 34,010 exits per width, including malformed trees, hash collisions and unbalanced search paths. On both widths, the bootstrap core, 138 cold-replay products and 17 checkpoint products match develop in canonical length and SHA-256 (33,279,069,693 bytes per width). The signed 32-bit build also matches upstream on every product from the 53 desk events (12,708,297,167 bytes). Develop opens the checkpoint this build writes at event 300 and replays events 301–302.
