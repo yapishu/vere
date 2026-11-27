@@ -1324,6 +1324,49 @@ _test_bulk_trees(void)
   u3z(tree); u3z(expected); u3z(actual);
 }
 
+// Shared input subtrees appear at both positions in the output. On a
+// child road the key is senior; on its own road each list head owns it.
+static void
+_test_tree_tap(void)
+{
+  u3_assert(u3_nul == u3qdi_tap(u3_nul));
+  u3_noun key = u3nc(42, 7);
+  u3_noun tree = u3nt(u3k(key), 0, 0);
+  for ( c3_w i = 1; i <= 10; ++i ) tree = u3nt(i, u3k(tree), tree);
+  u3m_hate(0);
+  u3_noun senior = u3m_love(u3qdi_tap(tree));
+  u3_noun list = u3kdi_tap(tree);
+  u3_noun at = list, other = senior;
+  for ( c3_w i = 1; i < 2048; ++i ) {
+    u3_noun want = (i & 1) ? key : __builtin_ctz(i);
+    u3_assert(u3h(at) == want && u3h(other) == want);
+    at = u3t(at);
+    other = u3t(other);
+  }
+  u3_assert(!at && !other);
+  u3z(senior); u3z(list);
+  u3_assert(u3a_use(key) == 1);
+  u3z(key);
+
+  // Reverse in-order includes every node of an uneven tree, without
+  // requiring a native stack frame per level.
+  tree = u3_nul;
+  for ( c3_w i = 1; i <= 8192; ++i ) tree = u3nt(i, tree, u3nt(i + 8192, 0, 0));
+  list = u3kdi_tap(tree);
+  at = list;
+  for ( c3_w i = 8192; i; --i ) {
+    u3_assert(u3h(at) == i + 8192 && u3h(u3t(at)) == i);
+    at = u3t(u3t(at));
+  }
+  u3_assert(!at);
+  u3z(list);
+
+  u3_noun bad = u3nt(7, u3nt(8, 0, u3nc(9, 10)), u3nt(11, 0, 0));
+  u3_noun err = u3m_soft(0, u3qdi_tap, bad);
+  u3_assert(c3__exit == u3h(err));
+  u3z(err);
+}
+
 static void
 _test_tree_find(void)
 {
@@ -2021,6 +2064,7 @@ _test_jets(void)
   _test_bif();
   _test_put_rotation();
   _test_tree_find();
+  _test_tree_tap();
 
   // Both alternating triples are longest. The earlier right endpoint wins.
   u3_noun left = u3nc(1, u3nq(2, 1, 2, 0));
