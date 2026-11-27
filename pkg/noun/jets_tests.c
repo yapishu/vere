@@ -2186,6 +2186,67 @@ _test_og_raw(void)
   u3z(wide);
 }
 
+static u3_noun
+_stir_register(const char* name, u3_noun axis, u3_noun core)
+{
+  u3_noun parent = axis ? u3nc(0, axis) : u3nc(1, 0);
+  u3j_mine(u3nt(u3i_string(name), parent, 0), u3k(core));
+  return core;
+}
+
+static void
+_test_stir(void)
+{
+  c3_w flags = u3C.wag_h;
+  u3C.wag_h |= u3o_hashless;
+  u3_noun parent = _stir_register("k135", 0, u3nc(u3nc(1, 9100), 0));
+  const char* path[] = {"one", "two", "tri", "qua"};
+  for ( c3_w i = 0; i < c3_array_len(path); ++i )
+    parent = _stir_register(path[i], 3, u3nc(u3nc(1, 9101 + i), parent));
+
+  const char* names[] = {"just", "shim", "mask"};
+  u3_noun (*drivers[])(u3_noun) = {u3we_just_fun, u3we_shim_fun, u3we_mask_fun};
+  u3_noun specs[] = {10, u3nc(0, 255), u3nl(0, 10, 63, 64, 127, 128, 255)};
+  for ( c3_w i = 0; i < c3_array_len(names); ++i ) {
+    u3_noun outer = _stir_register(names[i], 7, u3nt(u3nc(1, 9110 + i), specs[i], u3k(parent)));
+    u3_noun rule = _stir_register("fun", 7, u3nt(u3nc(1, 9120 + i), 0, outer));
+    u3_assert(c3y == u3j_gate_is(rule, drivers[i]));
+    u3_noun tapes[] = {
+      0, u3nc(10, 37), u3nl(10, 10, 63, 64, 127, 128, 255, 256),
+      u3nl(10, 10, 0), u3nl(10, u3nc(5, 6)), u3nl(0)
+    };
+    for ( c3_w k = 0; k < c3_array_len(tapes); ++k ) {
+      for ( c3_w j = 0; j < 4; ++j ) {
+        // Identity, a nonempty initial accumulator, and a reducer
+        // selecting the first character distinguish fold order and sharing.
+        u3_noun fol = j == 3 ? u3nc(u3nc(0, 12), u3nc(0, 13))
+                             : u3nc(0, j == 2 ? 12 : 6);
+        u3_noun gate = u3nt(fol, 0, 0);
+        u3_noun args = u3nt(j == 1 ? 88 : 0, gate, u3k(rule));
+        u3_noun nail = u3nc(u3nc(3, k == 5 ? u3a_direct_max : 7), u3k(tapes[k]));
+        u3_noun cor = u3nt(0, nail, u3nt(0, args, 0));
+        u3_noun fast = u3m_soft(0, u3we_stir_fun, u3k(cor));
+        if ( i != 0 && k == 3 && (j == 0 || j == 3) ) {
+          u3_noun edge = u3t(fast);
+          u3_assert(u3h(fast) == 0 && u3h(u3h(edge)) == 5 && u3t(u3h(edge)) == 2);
+          u3_assert(c3y == u3r_sing(tapes[k], u3x_at(14, edge)));
+        }
+        u3C.wag_h |= u3o_debug_ram;
+        u3_noun slow = u3m_soft(0, u3we_stir_fun, cor);
+        u3C.wag_h &= ~u3o_debug_ram;
+        u3_assert(c3y == u3r_sing(fast, slow));
+        if ( k < 4 ) u3_assert(u3h(fast) == 0);
+        if ( k == 5 && i != 0 ) u3_assert(u3h(fast) == c3__fail);
+        u3z(slow); u3z(fast);
+      }
+      u3z(tapes[k]);
+    }
+    u3z(rule);
+  }
+  u3z(parent);
+  u3C.wag_h = flags;
+}
+
 static c3_i
 _test_jets(void)
 {
@@ -2202,6 +2263,7 @@ _test_jets(void)
   _test_bulk_trees();
   _test_byte_text();
   _test_byte_reverse();
+  _test_stir();
   _test_byte_list();
   _test_map_union();
   _test_tree_difference();

@@ -2304,6 +2304,30 @@ _cj_sample_prep(u3j_site* site)
   }
 }
 
+const u3j_harm*
+u3j_gate_driver(const u3j_site* site)
+{
+  return site->sample_y == gate_native ? site->ham_u : NULL;
+}
+
+c3_t
+u3j_gate_returns_pair(const u3j_site* site)
+{
+#if defined(U3_CPU_DEBUG) || defined(U3_MEMORY_DEBUG)
+  return 0;
+#else
+  if ( u3C.wag_h & (u3o_debug_cpu | u3o_debug_ram | u3o_trace) ) return 0;
+  if ( site->sample_y == gate_slot ) return site->sample_axis == 1;
+  if ( site->sample_y != gate_borrow_program ) return 0;
+
+  // With a cell as the sample, [[0 12] 0 13] returns that cell.
+  u3_noun left, right, head, tail;
+  return c3y == u3r_cell(u3h(site->bat), &left, &right) &&
+         c3y == u3r_p(left, 0, &head) && head == 12 &&
+         c3y == u3r_p(right, 0, &tail) && tail == 13;
+#endif
+}
+
 c3_o
 u3j_gate_read_only(const u3j_site* site)
 {

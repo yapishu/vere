@@ -951,6 +951,102 @@
     u3_noun res;  //  parse-result, puq_vex
   } _stir_pair;
 
+/* Scan a run of single-character parsers before folding their results.
+** The last successful position is also the furthest. The intervening
+** edges and positions never escape the repetition. For specialization
+** of parser combinators, see https://doi.org/10.1145/3314221.3314625
+*/
+  static u3_weak
+  _stir_run(const u3j_site* site, u3_noun tub, u3_noun rud, u3_noun raq)
+  {
+    const u3j_harm* arm = u3j_gate_driver(site);
+    if ( !arm ) return u3_none;
+    u3_noun (*parse)(u3_noun) = arm->fun_f;
+    if ( parse != u3we_just_fun && parse != u3we_shim_fun &&
+         parse != u3we_mask_fun ) return u3_none;
+    u3_weak spec = u3r_at(u3x_con_sam, site->bat);
+    u3_noun lo, hi, hair, tape, line, col;
+    c3_d mask[4] = {0};
+    if ( spec == u3_none || c3n == u3r_cell(tub, &hair, &tape) ||
+         c3n == u3r_cell(hair, &line, &col) ||
+         c3n == u3a_is_cat(line) || c3n == u3a_is_cat(col) ) return u3_none;
+    if ( c3n == u3du(tape) ) return u3nq(u3k(hair), 0, u3k(rud), u3k(tub));
+    if ( parse == u3we_just_fun ) {
+      lo = hi = spec;
+      if ( c3n == u3a_is_cat(lo) ) return u3_none;
+    }
+    else if ( parse == u3we_shim_fun ) {
+      if ( c3n == u3r_cell(spec, &lo, &hi) ||
+           c3n == u3a_is_cat(lo) || c3n == u3a_is_cat(hi) ) return u3_none;
+    }
+    else {
+      lo = 0; hi = 255;
+      for ( c3_w i = 0; c3y == u3du(spec); ++i, spec = u3t(spec) ) {
+        u3_noun ch = u3h(spec);
+        if ( i == 256 || ch > 255 ) return u3_none;
+        mask[ch >> 6] |= UINT64_C(1) << (ch & 63);
+      }
+    }
+
+    size_t count = 0;
+    u3_noun rest = tape;
+    while ( c3y == u3du(rest) ) {
+      u3_noun ch = u3h(rest);
+      if ( c3n == u3a_is_cat(ch) ) return u3_none;
+      if ( ch < lo || ch > hi ||
+           (parse == u3we_mask_fun && !(mask[ch >> 6] & (UINT64_C(1) << (ch & 63))))) break;
+      if ( 10 == ch ) { ++line; col = 1; } else ++col;
+      if ( c3n == u3a_is_cat(line) || c3n == u3a_is_cat(col) ) return u3_none;
+      ++count;
+      rest = u3t(rest);
+    }
+    if ( !count ) return u3nq(u3k(hair), 0, u3k(rud), u3k(tub));
+
+    // Preparing the reducer can unify interior pointers in the tape.
+    // Keep both ends live and walk by the number of successful tokens.
+    u3k(rest);
+    u3k(tape);
+    u3k(rud);
+    u3j_site reducer;
+    u3j_gate_prep(&reducer, u3k(raq));
+    u3_noun result;
+    if ( u3j_gate_returns_pair(&reducer) ) {
+      if ( rud == rest ) {
+        result = u3k(tape);
+        u3z(rud);
+      }
+      else {
+        u3_noun* tail = &result;
+        for ( u3_noun t = tape; count--; t = u3t(t) ) {
+          u3_noun* head;
+          u3_noun* next;
+          *tail = u3i_defcons(&head, &next);
+          *head = u3h(t);
+          tail = next;
+        }
+        *tail = rud;
+      }
+    }
+    else {
+      u3a_pile pile;
+      u3a_pile_prep(&pile, sizeof(u3_noun), _Alignof(u3_noun));
+      u3_noun* top;
+      for ( u3_noun t = tape; count--; t = u3t(t) ) {
+        top = u3a_push(&pile);
+        *top = u3h(t);
+      }
+      result = rud;
+      while ( c3n == u3a_pile_done(&pile) ) {
+        result = u3j_gate_slam(&reducer, u3nc(*top, result));
+        top = u3a_pop(&pile);
+      }
+    }
+    u3j_gate_lose(&reducer);
+    u3z(tape);
+    hair = u3nc(line, col);
+    return u3nq(u3k(hair), 0, result, u3nc(hair, rest));
+  }
+
 /* stir
 */
   static u3_noun
@@ -975,6 +1071,11 @@
       u3_noun    vex, p_vex, q_vex, puq_vex, quq_vex;
       u3j_site fel_u;
       u3j_gate_prep(&fel_u, u3k(fel));
+      u3_weak run = _stir_run(&fel_u, tub, rud, raq);
+      if ( run != u3_none ) {
+        u3j_gate_lose(&fel_u);
+        return run;
+      }
 
       vex = u3j_gate_slam(&fel_u, u3k(tub));
       u3x_cell(vex, &p_vex, &q_vex);
@@ -1009,10 +1110,12 @@
     if ( c3n == u3a_pile_done(&pil_u) ) {
       u3j_site raq_u;
       u3j_gate_prep(&raq_u, u3k(raq));
+      c3_t pair = u3j_gate_returns_pair(&raq_u);
 
       while ( c3n == u3a_pile_done(&pil_u) ) {
         p_wag   = _last_k(par_u->har, p_wag);
-        puq_wag = u3j_gate_slam(&raq_u, u3nc(par_u->res, puq_wag));
+        puq_wag = u3nc(par_u->res, puq_wag);
+        if ( !pair ) puq_wag = u3j_gate_slam(&raq_u, puq_wag);
         par_u   = u3a_pop(&pil_u);
       }
 

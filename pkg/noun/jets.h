@@ -313,6 +313,14 @@
         void
         u3j_gate_prep_owned(u3j_site* site, u3_noun cor);
 
+      /* Driver selected for a freshly prepared, trusted native gate. */
+        const u3j_harm*
+        u3j_gate_driver(const u3j_site* site);
+
+      /* Does the prepared gate return its sample when given a cell? */
+        c3_t
+        u3j_gate_returns_pair(const u3j_site* site);
+
       /* Can this prepared gate run while borrowing interior noun pointers? */
         c3_o
         u3j_gate_read_only(const u3j_site* site);
