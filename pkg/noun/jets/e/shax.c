@@ -28,11 +28,10 @@
   static u3_atom
   _cqe_shax(u3_atom a)
   {
-    c3_w  len_w;
-    c3_y  out_y[32];
-    c3_y* dat_y = u3r_bytes_all(&len_w, a);
-    urcrypt_shay(dat_y, len_w, out_y);
-    u3a_free(dat_y);
+    c3_w wor_w;
+    c3_y out_y[32];
+    const c3_y* dat_y = (const c3_y*)u3r_word_buffer(&a, &wor_w);
+    urcrypt_shay(dat_y, u3r_met(3, a), out_y);
     return u3i_bytes(32, out_y);
   }
 
@@ -57,14 +56,14 @@
   _cqe_shas(u3_atom sal,
             u3_atom ruz)
   {
-    c3_w sal_w, ruz_w;
-    c3_y *sal_y, *ruz_y, out_y[32];
-
-    sal_y = u3r_bytes_all(&sal_w, sal);
-    ruz_y = u3r_bytes_all(&ruz_w, ruz);
-    urcrypt_shas(sal_y, sal_w, ruz_y, ruz_w, out_y);
+    c3_w sal_w, wor_w;
+    c3_y out_y[32];
+    //  urcrypt_shas writes into salts wider than one digest.
+    //
+    c3_y* sal_y = u3r_bytes_all(&sal_w, sal);
+    const c3_y* ruz_y = (const c3_y*)u3r_word_buffer(&ruz, &wor_w);
+    urcrypt_shas(sal_y, sal_w, ruz_y, u3r_met(3, ruz), out_y);
     u3a_free(sal_y);
-    u3a_free(ruz_y);
     return u3i_bytes(32, out_y);
   }
 
