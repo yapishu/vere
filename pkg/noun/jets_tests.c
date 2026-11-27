@@ -1430,6 +1430,12 @@ _test_tree_find(void)
   u3_assert(u3_none == u3qdb_git(map, 0));
   u3_assert(c3y == u3qdb_has(map, b));
 
+  // Deletion distinguishes the keys even though both treap ranks collide.
+  u3_noun rest = u3qdb_del(map, a);
+  u3_noun want = u3qdb_put(0, b, b);
+  u3_assert(c3y == u3r_sing(rest, want));
+  u3z(rest); u3z(want);
+
   // The result owns its value after both the map and the key are released.
   u3_noun got = u3kdb_get(map, b);
   u3_assert(u3r_chub(0, got) == UINT64_C(0xc001d00d00012a3e));
@@ -1468,7 +1474,7 @@ _test_put_rotation(void)
 }
 
 static void
-_test_bif(void)
+_test_bif_del(void)
 {
   u3_noun map = 0, set = 0;
   for ( c3_w i = 0; i < 64; i++ ) {
@@ -1492,6 +1498,13 @@ _test_bif(void)
     u3_assert(c3y == u3r_sing(u3h(t), sets[0]));
     u3_assert(c3y == u3r_sing(u3t(t), sets[1]));
     u3z(m); u3z(t);
+
+    m = u3qdb_del(map, key); t = u3qdi_del(set, key);
+    u3_noun want_m = u3qdb_uni(maps[0], maps[1]);
+    u3_noun want_t = u3qdi_uni(sets[0], sets[1]);
+    u3_assert(c3y == u3r_sing(m, want_m) && c3y == u3r_sing(t, want_t));
+    if ( key == 64 ) u3_assert(m == map && t == set);
+    u3z(m); u3z(t); u3z(want_m); u3z(want_t);
     u3z(maps[0]); u3z(maps[1]); u3z(sets[0]); u3z(sets[1]);
   }
   u3z(map); u3z(set);
@@ -2153,7 +2166,7 @@ _test_jets(void)
   _test_byte_list();
   _test_map_union();
   _test_tree_intersection();
-  _test_bif();
+  _test_bif_del();
   _test_put_rotation();
   _test_tree_find();
   _test_tree_tap();
