@@ -619,14 +619,36 @@ _ch_trim_node(u3h_root* har_u, u3h_slot* sot_w, c3_h lef_h, c3_h rem_h)
   bit_h = (rem_h >> lef_h);
   map_h = han_u->map_h;
 
-  if ( !BIT_SET(map_h, bit_h) ) {
-    har_u->arm_u.mug_h = _ch_skip_slot(har_u->arm_u.mug_h, lef_h);
-    return u3_none;
-  }
-
+  // Walk the occupied children in hash order using Bagwell's HAMT bitmap.
+  // https://infoscience.epfl.ch/entities/publication/b892b2ce-7bf0-41d2-b68c-fb44a3c64a33
+  // A warm leaf takes its second chance in place before the hand advances.
+  c3_h mug_h = har_u->arm_u.mug_h;
+  c3_h set_h = map_h & (~(c3_h)0 << bit_h);
+  c3_h pre_h = mug_h - CUT_END(mug_h, lef_h + 5);
+  inx_h = _ch_popcount(map_h ^ set_h);
   rem_h = CUT_END(rem_h, lef_h);
-  inx_h = _ch_popcount(CUT_END(map_h, bit_h));
-  tos_w = &(han_u->sot_w[inx_h]);
+
+  for (;;) {
+    if ( !set_h ) {
+      har_u->arm_u.mug_h = _ch_skip_slot(mug_h, lef_h + 5);
+      return u3_none;
+    }
+
+    c3_h nex_h = c3_tz_h(set_h);
+    if ( bit_h != nex_h ) {
+      bit_h = nex_h;
+      har_u->arm_u.mug_h = pre_h | (bit_h << lef_h);
+      rem_h = 0;
+    }
+
+    tos_w = &(han_u->sot_w[inx_h]);
+    if ( c3n == u3h_slot_is_noun(*tos_w) || c3n == u3h_slot_is_warm(*tos_w) ) {
+      break;
+    }
+    *tos_w = u3h_noun_be_cold(*tos_w);
+    set_h &= set_h - 1;
+    inx_h++;
+  }
 
   u3_weak ret = _ch_trim_slot(har_u, tos_w, lef_h, rem_h);
   if ( (u3_none != ret) && (0 == *tos_w) ) {

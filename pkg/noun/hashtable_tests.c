@@ -229,6 +229,35 @@ _test_cache_trimming(void)
   return ret_i;
 }
 
+/* _test_clock_order(): move through sparse children and wrap at the root.
+*/
+static void
+_test_clock_order(void)
+{
+  u3p(u3h_root) har_p = u3h_new();
+  u3h_root*     har_u = u3to(u3h_root, har_p);
+  // 4749 has root slot 0. The others have root slot 63 and child slots
+  // 0, 6, 19 and 31, respectively.
+  c3_h keys_h[] = {4749, 969, 720, 266, 8096};
+  c3_h evict_h[] = {720, 266, 8096, 969, 4749};
+  c3_h after_h[] = {0x7e700000, 0x7f400000, 0, 0, 0x02000000};
+
+  for ( c3_h i_h = 0; i_h < 5; i_h++ ) {
+    u3h_put(har_p, keys_h[i_h], keys_h[i_h]);
+  }
+  har_u->arm_u.mug_h = (63U << 25) | (3U << 20) | 5U;
+
+  for ( c3_h i_h = 0; i_h < 5; i_h++ ) {
+    u3h_trim_to(har_p, 4 - i_h);
+    u3_assert(u3_none == u3h_git(har_p, evict_h[i_h]));
+    u3_assert(after_h[i_h] == har_u->arm_u.mug_h);
+    if ( 0 == i_h ) {
+      u3_assert(4749 == u3h_git(har_p, 4749));
+    }
+  }
+  u3h_free(har_p);
+}
+
 /* _test_cache_replace_value():
 */
 static c3_i
@@ -273,6 +302,7 @@ _test_hashtable(void)
   ret_i &= _test_no_cache();
   ret_i &= _test_skip_slot();
   ret_i &= _test_cache_trimming();
+  _test_clock_order();
   ret_i &= _test_cache_replace_value();
   ret_i &= _test_put_del();
 
