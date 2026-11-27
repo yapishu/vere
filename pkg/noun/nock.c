@@ -4077,6 +4077,7 @@ _n_feb(u3_noun kev)
 void
 u3n_free()
 {
+  if ( u3R->par_p ) ((u3a_child_road*)u3R)->gates_valid = 0;
   u3p(u3h_root) har_p = u3R->byc.har_p;
   u3h_walk(har_p, _n_feb);
   u3h_free(har_p);

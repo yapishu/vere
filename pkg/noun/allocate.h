@@ -358,6 +358,8 @@ STATIC_ASSERT( u3a_vits <= u3a_min_log,
         u3a_jet_absence absent[32];
         c3_d            registry_d;
         c3_o            hashless_o;
+        c3_t            gates_valid;
+        u3p(void)       gates_p;   // native gate dispatch, local to this road
         u3a_equal_pair  pairs[8];
         u3a_equal_pair  nested;    // inner matches preserve the eight root entries
         c3_y            next_y;

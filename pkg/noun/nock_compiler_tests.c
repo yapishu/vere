@@ -1029,6 +1029,51 @@ _native_field(u3_noun cor)
 }
 
 static void
+_native_dispatch(u3_noun parent)
+{
+  // The battery returns a constant. Registering it as +add makes the
+  // selected path visible even when both evaluations succeed.
+  u3_noun bat = _lit(92871), empty = u3nt(0, 0, 0);
+  u3_noun gate = u3nt(u3k(bat), u3nc(20, 22), u3k(parent));
+  u3_noun saved = u3h_get(u3R->jed.cod_p, u3h(parent));
+  u3_assert(saved != u3_none);
+  u3m_hate(0);
+  u3_assert(92871 == u3n_kick_on(u3k(gate)));
+  u3_assert(92871 == u3n_kick_on(u3k(gate)));
+  u3n_reclaim();
+  u3_assert(92871 == u3n_kick_on(u3k(gate)));
+  u3j_mine(u3nt(u3i_string("add"), _slot(7), 0), u3k(gate));
+
+  // Each caller builds a fresh intermediate core with the same parent.
+  for ( c3_w i = 0; i < 4; i++ ) {
+    u3_noun copy = u3nc(u3k(u3h(parent)), u3k(u3t(parent)));
+    u3_assert(42 + i == u3n_kick_on(u3nt(u3k(bat), u3nc(20 + i, 22), copy)));
+  }
+  u3_noun wrong = u3nc(u3k(u3h(parent)), _lit(0));
+  u3_assert(92871 == u3n_kick_on(u3nt(u3k(bat), u3nc(20, 22), wrong)));
+
+  // Load a static rule alongside +add's dynamic rule. It takes
+  // precedence for this payload only.
+  u3_noun other = u3nc(_lit(92872), u3k(u3t(gate)));
+  u3j_mine(u3nt(u3i_string("literal"), _lit(0), 0), u3k(other));
+  u3_noun sta = u3h_git(u3R->jed.cod_p, u3h(other));
+  u3_noun dyn = u3h_git(u3R->jed.cod_p, bat);
+  u3_assert(sta != u3_none && dyn != u3_none);
+  u3_noun rules = u3nt(u3k(u3h(dyn)), u3k(u3h(u3t(sta))), u3k(u3t(u3t(dyn))));
+  u3j_load(u3nc(u3nc(u3k(bat), rules), 0));
+  u3z(other);
+  u3_assert(92871 == u3n_kick_on(u3k(gate)));
+  u3_assert(43 == u3n_slam_on(u3k(gate), u3nc(21, 22)));
+  u3j_load(u3nc(u3nc(u3k(u3h(parent)), u3k(empty)), 0));
+  u3_assert(92871 == u3n_slam_on(u3k(gate), u3nc(21, 22)));
+  u3j_load(u3nc(u3nc(u3k(u3h(parent)), u3k(saved)), 0));
+  u3_assert(43 == u3n_slam_on(u3k(gate), u3nc(21, 22)));
+  u3m_grab();
+  u3z(u3m_love(0));
+  u3z(saved); u3z(gate); u3z(empty); u3z(bat);
+}
+
+static void
 _prepared_native(void)
 {
   u3m_hate(1 << 16);
@@ -1040,6 +1085,7 @@ _prepared_native(void)
   u3j_mine(u3nt(u3i_string("k135"), _lit(0), 0), root);
   u3j_mine(u3nt(u3i_string("one"), _slot(3), 0), one);
   u3j_mine(u3nt(u3i_string("add"), _slot(7), 0), u3k(gate));
+  _native_dispatch(u3r_at(7, gate));
 
   const c3_w axes[] = {1, 3, 6};
   for ( unsigned i = 0; i < c3_array_len(axes); i++ ) {

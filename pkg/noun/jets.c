@@ -528,6 +528,7 @@ _cj_reg_check(u3a_child_road* kid_u)
   c3_d gen_d = atomic_load_explicit(&_cj_registry_d, memory_order_relaxed);
   c3_o haz_o = __(u3C.wag_h & u3o_hashless);
   if ( kid_u->registry_d != gen_d || kid_u->hashless_o != haz_o ) {
+    kid_u->gates_valid = 0;
     memset(kid_u->parents, 0, sizeof(kid_u->parents));
     memset(kid_u->absent, 0, sizeof(kid_u->absent));
     kid_u->registry_d = gen_d;
@@ -1925,11 +1926,147 @@ u3j_cook(const c3_c* key_c,
   return pro;
 }
 
+typedef struct {
+  u3_noun bat, root;
+  c3_w depth;
+  struct { u3_noun bat, axe; } step[4];
+  c3_l core_l, arm_l;
+  u3p(u3n_prog) pog_p;
+} _cj_gate;
+
+typedef struct { _cj_gate gate[64]; } _cj_gates;
+
+/* Specialize the registry search along a single chain of parent axes.
+** Each step checks the battery. The final core is compared in full.
+** All retained noun handles belong to ancestors of the calling road.
+** See https://bibliography.selflanguage.org/pics.html for guarded dispatch.
+*/
+static u3_weak
+_cj_gate_path(_cj_gate* gate, u3_noun cor, c3_w depth)
+{
+  if ( c3n == u3du(cor) ) return u3_none;
+  if ( depth && c3y == u3a_is_senior(u3R, cor) ) {
+    gate->root = cor;
+    gate->depth = depth;
+    return _cj_parent(cor);
+  }
+  u3_noun bat = u3h(cor);
+  if ( depth == c3_array_len(gate->step) || c3n == u3a_is_senior(u3R, bat) )
+    return u3_none;
+  u3_weak bar = _cj_find_cold(bat);
+  if ( bar == u3_none ) {
+    if ( !depth ) {
+      u3_noun bas = _cj_bash(bat);
+      if ( (u3C.wag_h & u3o_hashless) || u3_none == u3h_git(u3H->rod_u.jed.hot_p, bas) )
+        gate->root = u3_none;  // no payload can select a jet
+      u3z(bas);
+    }
+    return u3_none;
+  }
+
+  u3_noun reg = u3t(bar), paths = u3t(reg);
+  u3_weak loc = u3_none;
+  if ( !depth && c3y == u3a_is_senior(u3R, cor) ) {
+    gate->root = cor;
+    loc = _cj_reg_find(reg, cor);
+  }
+  else if ( u3h(reg) == 0 && c3y == u3du(paths) && u3t(paths) == 0 ) {
+    u3_noun rule = u3h(paths), axe = u3h(rule);
+    if ( c3y == u3a_is_cat(axe) && axe > 1 ) {
+      u3_weak par = u3r_at(axe, cor);
+      if ( par != u3_none ) {
+        gate->step[depth].bat = bat;
+        gate->step[depth].axe = axe;
+        u3_weak pel = _cj_gate_path(gate, par, depth + 1);
+        if ( pel != u3_none ) {
+          loc = u3qdb_git(u3t(rule), pel);
+          if ( loc != u3_none ) u3k(loc);
+          u3z(pel);
+        }
+      }
+    }
+  }
+  u3z(bar);
+  return loc;
+}
+
+static c3_t
+_cj_gate_matches(const _cj_gate* gate, u3_noun cor)
+{
+  if ( gate->root == u3_none ) return 1;
+  for ( c3_w i = 0; i < gate->depth; i++ ) {
+    if ( cor == u3_none || c3n == u3du(cor) || u3h(cor) != gate->step[i].bat )
+      return 0;
+    cor = u3r_at(gate->step[i].axe, cor);
+  }
+  return cor == gate->root;
+}
+
+static u3_weak
+_cj_gate_try(u3_noun cor)
+{
+  if ( c3n == u3du(cor) || c3n == u3du(u3h(cor)) ||
+       c3n == u3a_is_senior(u3R, u3h(cor)) ) return u3_none;
+
+  u3a_child_road* kid = (u3a_child_road*)u3R;
+  c3_d gen = _cj_reg_check(kid);
+  _cj_gates* slots = kid->gates_p ? u3to(_cj_gates, kid->gates_p) : NULL;
+  u3_noun bat = u3h(cor);
+  size_t index = ((bat >> 3) ^ (bat >> 11)) % c3_array_len(slots->gate);
+  _cj_gate* gate = kid->gates_valid ? &slots->gate[index] : NULL;
+  if ( !gate || gate->bat != bat || !_cj_gate_matches(gate, cor) ) {
+    _cj_gate next = {.bat = bat};
+    u3_weak loc = _cj_gate_path(&next, cor, 0);
+    if ( loc != u3_none ) {
+      u3_weak act = _cj_find_warm(loc);
+      u3z(loc);
+      if ( act != u3_none ) {
+        u3_noun jax, hap, bal, jit;
+        u3x_qual(act, &jax, &hap, &bal, &jit);
+        u3_weak arm = u3qdb_git(hap, 2);
+        if ( arm != u3_none ) {
+          next.core_l = jax;
+          next.arm_l = arm;
+        }
+        u3z(act);
+      }
+    }
+    else if ( next.root != u3_none ) return u3_none;
+    if ( !next.core_l ) next.pog_p = u3n_find(0, bat);
+    if ( !slots ) {
+      if ( u3a_open(u3R) < 2 * c3_wiseof(_cj_gates) ) return u3_none;
+      slots = u3a_walloc(c3_wiseof(_cj_gates));
+      kid->gates_p = u3of(_cj_gates, slots);
+    }
+    gate = &slots->gate[index];
+    u3m_hold();
+    if ( gen != atomic_load_explicit(&_cj_registry_d, memory_order_relaxed) ) {
+      u3m_hold_done();
+      return u3_none;
+    }
+    if ( !kid->gates_valid ) {
+      memset(slots, 0, sizeof(*slots));
+      kid->gates_valid = 1;
+    }
+    *gate = next;
+    u3m_hold_done();
+  }
+  if ( gate->pog_p ) return u3n_burn(gate->pog_p, cor);
+  u3j_core* cop_u = &u3D.ray_u[gate->core_l];
+  u3_weak pro = _cj_kick_z(cor, cop_u, &cop_u->arm_u[gate->arm_l], 2);
+  return pro == u3_none ? _cj_sink(cor, 2) : pro;
+}
+
 /* u3j_kink(): kick either by jet or by nock.
 */
 u3_noun
 u3j_kink(u3_noun cor, u3_noun axe)
 {
+  if ( axe == 2 && u3R->par_p &&
+       !(u3C.wag_h & (u3o_trace | u3o_debug_cpu | u3o_debug_ram)) ) {
+    u3_weak gate = _cj_gate_try(cor);
+    if ( gate != u3_none ) return gate;
+  }
   u3_weak pro = u3j_kick(cor, axe);
 
   if ( u3_none != pro ) {
@@ -3219,6 +3356,10 @@ u3j_mark()
   qua_u[4] = c3_calloc(sizeof(*qua_u[4]));
   qua_u[4]->nam_c = strdup("call site cache");
   u3h_walk_with(u3R->jed.han_p, _cj_mark_hank, &qua_u[4]->siz_w);
+  if ( u3R->par_p ) {
+    u3_post gates_p = ((u3a_child_road*)u3R)->gates_p;
+    if ( gates_p ) qua_u[4]->siz_w += u3a_mark_ptr(u3to(c3_w, gates_p));
+  }
   qua_u[4]->siz_w *= sizeof(c3_w);
 
   c3_w sum_w = 0;
