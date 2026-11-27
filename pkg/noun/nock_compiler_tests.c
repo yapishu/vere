@@ -670,6 +670,12 @@ _test_list_weld(void)
 static void
 _list_guards(void)
 {
+  // A pair with a hint still runs the gate once per row, in order.
+  u3_noun improper = 9;
+  for ( c3_w i = 8; i; --i ) improper = u3nc(i, improper);
+  u3_noun hint = u3nt(11, u3nc(c3__slog, _slot(6)), _lit(0));
+  _list_failure(0, improper, u3nc(_lit(0), hint), 8);
+
   for ( unsigned kind = 0; kind < 4; kind++ ) {
     u3_noun val = (kind == 3) ? u3nc(0, 7) : 0;
     _list_failure(kind, u3nt(1, 2, 9), _lit(u3k(val)), 0);
@@ -772,6 +778,32 @@ _list_reference(unsigned kind, u3_noun list, u3_noun formula)
   if ( val == u3_none ) return tail;
   if ( tail == u3_none ) { u3z(val); return tail; }
   return u3nc(val, tail);
+}
+
+// Repeated fields can share their input paths. A reconstructed sample must
+// still demand both children, including when only the last row is an atom.
+static void
+_turn_layouts(void)
+{
+  const c3_w axes[] = {2, 3, 6, 7, 12, 13, 14, 24, 25, 26, 27};
+  for ( c3_w bad = 0; bad < 2; ++bad ) {
+    u3_noun rows = bad ? u3nc(42, 0) : u3_nul;
+    for ( c3_w i = 0; i < 10; ++i ) rows = u3nc(_numbered(2, i+1), rows);
+    for ( c3_w i = 0; i < c3_array_len(axes); ++i ) {
+      u3_noun left = u3nc(_slot(24), _slot(25));
+      u3_noun fol = u3nc(u3nc(left, _slot(13)), u3nc(_slot(axes[i]), _lit(_tag(i))));
+      u3_weak want = _list_reference(0, rows, fol);
+      u3_noun gate = u3nt(fol, 0, 37);
+      u3_noun got = u3m_soft(0, _list_call, u3nt(0, u3k(rows), gate));
+      u3_assert(_matches(want, got));
+      if ( want != u3_none ) u3z(want);
+      u3z(got);
+    }
+    u3_noun eta = u3nc(_slot(12), _slot(13));
+    u3_noun got = u3m_soft(0, _list_call, u3nt(0, u3k(rows), u3nt(eta, 0, 37)));
+    u3_assert(_matches(bad ? u3_none : rows, got));
+    u3z(got); u3z(rows);
+  }
 }
 
 static void
@@ -1543,6 +1575,7 @@ main(void)
   u3z(u3m_love(0));
   _list_guards();
   _list_expressions();
+  _turn_layouts();
   _fold_check();
   u3m_hate(0);
   _fold_check();
