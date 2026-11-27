@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [9d47dd576c](https://github.com/yapishu/vere/commit/9d47dd576caaceb26116044fc1523f7422edb4dc) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [3c0ed69633](https://github.com/yapishu/vere/commit/3c0ed696331df29829b7959400cb1c78c9e38168) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+Across two live Kelvin 135 fake ~zod boots, `+ream` takes **14.4–14.5% less time** to parse Clay and **14.0% less time** to parse Lull than the preceding review. Both workloads parse the complete source file.
 
 On an x86-64 CPU with SHA instructions, Clay page hashing takes **74.8–75.0% less time** and the complete Ames packet round-trip test takes **20.6–20.9% less time** than the preceding review, across two live fake ~zod boots.
 
@@ -20,7 +22,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -220,6 +222,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff) | write og digest blocks directly into the result atom | [Incremental](#change-7f16135a2d) |
 | [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948) | hash shax and shas messages directly from the atom | [Incremental](#change-c7aab99a51) |
 | [9d47dd576c](https://github.com/yapishu/vere/commit/9d47dd576caaceb26116044fc1523f7422edb4dc) | use Nettle SHA-256 instructions on capable CPUs | [Incremental](#change-9d47dd576c) |
+| [3c0ed69633](https://github.com/yapishu/vere/commit/3c0ed696331df29829b7959400cb1c78c9e38168) | reuse native gate dispatch along registered parent axes | [Incremental](#change-3c0ed69633) |
 
 ## Measurements by change
 
@@ -2953,3 +2956,29 @@ Four paired cold replays through event 143 overlap other workloads. They take 12
 Both loom widths pass eight native suites and 5,352 hash-jet cases. The bootstrap core and 155 replay products match develop’s canonical lengths and SHA-256 on each width. All six compiler-window products match on the 32-bit loom. SHA-224 and SHA-256 match Python’s `hashlib` for 1,178 byte strings on the physical x86-64 host and under x86-64 and AArch64 emulation. The portable Vere jets suite passes under AArch64 emulation and with SHA masked on x86-64. The Nettle library and a program calling its public hash API cross-link for all nine supported target combinations.
 
 Across the nine targets, the SHA assembly produces three distinct machine-code sequences after linking. Linux, FreeBSD and macOS have identical compression instructions on each architecture. Windows x86-64 has a different calling convention. A Linux harness executes all three sequences, using the Microsoft ABI for the Windows code and QEMU for AArch64. Each matches Python’s SHA-224 and SHA-256 on a further 1,178 inputs, including empty inputs, every byte length through 512 and a 1 MiB + 1 byte message.
+
+<a id="change-3c0ed69633"></a>
+
+### Reuse native gate dispatch along registered parent axes
+
+When C calls a Hoon gate, Vere can recognize the battery and follow the registered axes to its enclosing core. Each hit checks the batteries along that path and the identity of the enclosing core. A registry change invalidates the table. Every call executes the gate with its current sample. This uses the guarded dispatch technique from [Hölzle, Chambers and Ungar](https://bibliography.selflanguage.org/pics.html).
+
+Two Kelvin 135 fake ~zod boots per build use the same checkpoint and installed sources. Each case warms once and runs seven more times. Builds rotate on one physical core. The Dojo timer covers the parse, and the harness hashes the entire parsed noun after the timer stops. The table gives median times from the first boot and the percentage reduction from the preceding review in each boot. A negative percentage is a slowdown.
+
+| Workload | Develop | Previous review `098f8b36a5` | Review | Less time, boot 1 | Less time, boot 2 |
+|---|---:|---:|---:|---:|---:|
+| Clay vane, full source | 460.31 ms | 296.79 ms | 254.12 ms | 14.4% | 14.5% |
+| Lull, full source | 298.76 ms | 192.18 ms | 165.24 ms | 14.0% | 14.0% |
+| Comma-separated list of 2,000 decimal numbers | 7.47 ms | 4.93 ms | 4.30 ms | 12.8% | 12.2% |
+| Map library, full source | 20.60 ms | 14.29 ms | 13.59 ms | 4.9% | 11.1% |
+| 80,000 spaces with `(star ace)` | 5.91 ms | 3.93 ms | 3.91 ms | 0.5% | −0.1% |
+| 25,000 letters with `(star low)` | 1.90 ms | 1.22 ms | 1.23 ms | −0.9% | −0.1% |
+| 25,000 letters with `+stir` and an addition gate | 3.88 ms | 2.92 ms | 2.89 ms | 1.0% | 0.4% |
+
+To reproduce the Clay case in Dojo, bind `=src .^(@t %cx /~zod/base/1/sys/vane/clay/hoon)` and evaluate `(shax (jam ~>(%bout (ream src))))`. For Lull, use `/sys/lull/hoon` on the same desk revision. Two more boots during concurrent replay audits give Clay reductions of 14.0–14.1% and Lull reductions of 11.4–19.9%.
+
+After all seven workloads, combined king and worker PSS is 183.5 MiB in both boots on review and 183.8 and 183.7 MiB on the preceding review. The two concurrent runs use 1.1 and 1.0 MiB more on review. The 64-entry table occupies 3.5 KiB on a 32-bit loom and 7 KiB on a 64-bit loom and is allocated on demand in a child road.
+
+In five alternating trials on one core, median Hoon compilation time rises from 3.92 to 3.97 s and Lull from 2.59 to 2.61 s. Zuse takes 1.43 s on both builds. In six trials during the other workloads, Hoon takes 4.50 versus 4.70 s, Lull 3.03 versus 2.98 s and Zuse 1.71 versus 1.64 s, in previous-review and review order. Two paired cold replays through event 143 exchange cores and take 105.85 s on previous review and 105.06 s on review, with median peak RSS of 816.20 and 816.23 MiB.
+
+Eight native suites pass on each loom width. A focused test changes which jet registration applies to a live gate and checks each resulting product. On both widths the bootstrap core and all 155 replay products match develop’s canonical jam lengths and SHA-256 hashes (33,279,069,693 bytes per width). All six Hoon, Lull and Zuse compiler-window products match develop on the 32-bit loom. Develop also opens the checkpoint saved by review at event 241 and replays events 242–249.
