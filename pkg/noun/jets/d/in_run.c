@@ -43,7 +43,7 @@ u3qdi_run(u3_noun a, u3_noun b)
   u3_noun    out = u3_nul;
   u3j_site sit_u;
 
-  u3j_gate_prep(&sit_u, u3k(b));
+  u3j_gate_prep_owned(&sit_u, u3k(b));
   _in_run(u3k(a), &sit_u, &out);
   u3j_gate_lose(&sit_u);
 

@@ -123,14 +123,17 @@
         c3_o          jet_o;          //  have jet driver?
         c3_o          fon_o;          //  site owns fink?
         c3_y          sample_y;       //  entry selected by gate preparation
-        u3_weak       lab;            //  label (for tracing)
+        union {
+          u3_weak     lab;            //  label for a located site
+          c3_w        sample_field;   //  selector for an unregistered constructor
+        };
         u3j_core*     cop_u;          //  jet core
         u3j_harm*     ham_u;          //  jet arm
         union {
           u3p(u3j_fink) fin_p;        //  ordinary call site
           c3_w          sample_axis;  //  prepared slot on the sample
           u3p(struct _u3n_prog) sample_p; //  prepared program on the sample
-          u3_noun        sample_context; // selector, hole axis and fixed siblings
+          u3_noun        sample_context; // constructor recipe or sole fixed sibling
           u3_noun        sample_core;  //  private core for a prepared jet
         };
       } u3j_site;
@@ -304,6 +307,11 @@
        */
         void
         u3j_gate_prep(u3j_site* sit_u, u3_noun cor);
+
+      /* Prepare a gate for a caller retaining its live cursors across slams.
+       * The full program for a constructor can be resolved on a punt. */
+        void
+        u3j_gate_prep_owned(u3j_site* site, u3_noun cor);
 
       /* Can this prepared gate run while borrowing interior noun pointers? */
         c3_o

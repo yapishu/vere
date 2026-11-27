@@ -37,7 +37,7 @@ u3qdb_run(u3_noun a, u3_noun b)
   u3_noun    pro;
   u3j_site sit_u;
 
-  u3j_gate_prep(&sit_u, u3k(b));
+  u3j_gate_prep_owned(&sit_u, u3k(b));
   pro = _by_run(u3k(a), &sit_u);
   u3j_gate_lose(&sit_u);
 

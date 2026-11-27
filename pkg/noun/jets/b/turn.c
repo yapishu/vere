@@ -139,7 +139,10 @@ u3qb_turn(u3_noun a, u3_noun b)
     u3_noun   i, t;
     u3j_site sit_u;
 
-    u3j_gate_prep(&sit_u, u3k(b));
+    if ( c3y == u3du(a) && u3t(a) == u3_nul ) {
+      u3j_gate_prep_owned(&sit_u, u3k(b));
+    }
+    else u3j_gate_prep(&sit_u, u3k(b));
 #if !defined(U3_CPU_DEBUG) && !defined(U3_MEMORY_DEBUG)
     // Amortize the plan over at least eight rows.
     if ( !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) &&

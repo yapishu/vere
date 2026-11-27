@@ -922,6 +922,26 @@ _constructor_cases(void)
     u3_assert(c3y == u3r_sing(want, got));
     u3z(want); u3z(got);
   }
+#if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+  // A fallback compiled on a daughter road must not escape into the site.
+  u3m_hate(0);
+  u3j_site owned, borrowed;
+  u3_noun pair = u3nt(u3nc(_slot(7), _slot(13)), 0, 37);
+  u3j_gate_prep(&borrowed, u3k(pair));
+  u3j_gate_prep_owned(&owned, pair);
+  u3_assert(c3y == u3j_gate_read_only(&borrowed) && borrowed.pog_p);
+  u3_assert(c3n == u3j_gate_read_only(&owned) && !owned.pog_p);
+  u3m_hate(0);
+  c3_w flags = u3C.wag_h;
+  u3C.wag_h |= u3o_debug_ram;
+  u3_noun result = u3j_gate_slam(&owned, u3nc(11, 12));
+  u3C.wag_h = flags;
+  result = u3m_love(result);
+  u3_assert(!owned.pog_p && u3h(result) == 37 && u3t(result) == 12);
+  u3z(result);
+  u3j_gate_lose(&owned); u3j_gate_lose(&borrowed);
+  u3z(u3m_love(0));
+#endif
   u3z(arm);
 }
 
@@ -941,6 +961,11 @@ _prepared_cases(void)
     _check_prepared(u3k(expression), u3k(tree), 1);
     _check_prepared(expression, i, 1);
   }
+#if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+  // The field and its fixed sibling can occur in either order.
+  _check_prepared(u3nc(_slot(7), _slot(13)), u3k(tree), 1);
+  _check_prepared(u3nc(_slot(12), _lit(u3k(tree))), u3k(tree), 1);
+#endif
   _check_prepared(_slot(0), u3k(tree), 0);
   _check_prepared(_slot(1), u3k(tree), 0);
   _check_prepared(_slot(3), u3k(tree), 0);
@@ -982,6 +1007,7 @@ _prepared_ownership(void)
 {
   u3j_site site;
   u3j_gate_prep(&site, u3nt(_slot(12), 0, 37));
+  u3_assert(site.pog_p == 0);
   u3_noun child = u3nc(9, 8);
   u3_noun result = u3j_gate_slam(&site, u3nc(u3k(child), u3k(child)));
   u3_assert(result == child && u3a_use(child) == 2);

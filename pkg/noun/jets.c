@@ -1941,7 +1941,13 @@ u3j_kink(u3_noun cor, u3_noun axe)
 }
 
 enum { gate_full, gate_slot, gate_literal, gate_program, gate_borrow_program,
-       gate_native, gate_context };
+       gate_native, gate_context, gate_fixed_head, gate_fixed_tail };
+
+static c3_t
+_cj_is_constructor(c3_y mode)
+{
+  return mode == gate_context || mode == gate_fixed_head || mode == gate_fixed_tail;
+}
 
 typedef struct {
   c3_w nodes;
@@ -1995,14 +2001,14 @@ _cj_fixed(u3_noun fol, u3_noun gate)
 // Record the path from the root to the one sample field. Its fixed siblings
 // run in reverse order so a slam can construct the product from the field up.
 // https://doi.org/10.1017/S0956796897002864
-static u3_noun
-_cj_context(u3_noun fol, u3_noun gate)
+static c3_t
+_cj_context_prep(u3j_site* site, u3_noun fol)
 {
-  u3_noun siblings[16], left, right;
+  u3_noun siblings[16], left, right, gate = site->bat;
   c3_w depth = 0, path = 1, budget = 32;
   fol = _cj_unspot(fol, &budget);
   while ( c3y == u3r_cell(fol, &left, &right) && c3y == u3du(left) ) {
-    if ( depth == 16 ) return u3_nul;
+    if ( depth == 16 ) return 0;
     left = _cj_unspot(left, &budget);
     right = _cj_unspot(right, &budget);
     u3_weak fixed = _cj_fixed(left, gate);
@@ -2016,22 +2022,33 @@ _cj_context(u3_noun fol, u3_noun gate)
       path *= 2;
       fol = left;
     }
-    else return u3_nul;
+    else return 0;
   }
-  if ( !depth || c3n == u3du(fol) || u3h(fol) != 0 ||
-       u3R->cel.hav_w < depth + 2 ) return u3_nul;
+  if ( !depth || c3n == u3du(fol) || u3h(fol) != 0 ) return 0;
   c3_w axis = _cj_sample_axis(u3t(fol));
-  if ( !axis ) return u3_nul;
+  if ( !axis ) return 0;
 
+  // The unregistered site has room for the selector and one fixed noun.
+  if ( depth == 1 && site->loc == u3_none ) {
+    if ( !_cj_gain_fits(siblings[0], 1) ) return 0;
+    site->sample_y = (path & 1) ? gate_fixed_head : gate_fixed_tail;
+    site->sample_field = axis;
+    site->sample_context = u3k(siblings[0]);
+    return 1;
+  }
+
+  if ( u3R->cel.hav_w < depth + 2 ) return 0;
   u3_noun fixed = u3_nul;
   for ( c3_w i = 0; i < depth; ++i ) {
     if ( !_cj_gain_fits(siblings[i], 1) ) {
       u3z(fixed);
-      return u3_nul;
+      return 0;
     }
     fixed = u3nc(u3k(siblings[i]), fixed);
   }
-  return u3nt(axis, path, fixed);
+  site->sample_y = gate_context;
+  site->sample_context = u3nt(axis, path, fixed);
+  return 1;
 }
 
 static u3_weak
@@ -2127,14 +2144,8 @@ _cj_sample_prep(u3j_site* site)
   if ( c3n == u3r_cell(fol, &op, &arg) ) return;
 #if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
   if ( (op == 11 || c3y == u3du(op)) &&
-       !(u3C.wag_h & (u3o_trace | u3o_debug_cpu | u3o_debug_ram)) ) {
-    u3_noun context = _cj_context(fol, site->bat);
-    if ( context ) {
-      site->sample_y = gate_context;
-      site->sample_context = context;
-      return;
-    }
-  }
+       !(u3C.wag_h & (u3o_trace | u3o_debug_cpu | u3o_debug_ram)) &&
+       _cj_context_prep(site, fol) ) return;
 #endif
   if ( op == 1 ) site->sample_y = gate_literal;
   else if ( op == 0 ) {
@@ -2161,8 +2172,10 @@ u3j_gate_read_only(const u3j_site* site)
 {
   if ( u3C.wag_h & (u3o_trace | u3o_debug_cpu) ) return c3n;
   switch ( site->sample_y ) {
-    case gate_slot:
     case gate_context:
+    case gate_fixed_head:
+    case gate_fixed_tail: return __(site->pog_p != 0);
+    case gate_slot:
     case gate_literal:
     case gate_borrow_program: return c3y;
     default: return c3n;
@@ -2172,8 +2185,8 @@ u3j_gate_read_only(const u3j_site* site)
 /* u3j_gate_prep(): prepare a locally cached gate to call repeatedly.
  *                  core is TRANSFERRED.
  */
-void
-u3j_gate_prep(u3j_site* sit_u, u3_noun cor)
+static void
+_cj_gate_prep(u3j_site* sit_u, u3_noun cor, c3_t borrow)
 {
   u3_noun loc;
   u3t_on(glu_o);
@@ -2185,8 +2198,9 @@ u3j_gate_prep(u3j_site* sit_u, u3_noun cor)
   sit_u->axe   = 2;
   sit_u->bat   = cor; // a lie, this isn't really the battery!
   sit_u->loc   = loc = _cj_spot(cor, &(sit_u->bas));
-  sit_u->pog_p = _cj_prog(loc, u3h(cor));
+  sit_u->pog_p = 0;
   if ( u3_none != loc ) {
+    sit_u->pog_p = _cj_prog(loc, u3h(cor));
     u3_noun pax = _cj_loc_axe(loc),
             pay = u3qc_cap(pax),
             pam = u3qc_mas(pax);
@@ -2206,7 +2220,25 @@ u3j_gate_prep(u3j_site* sit_u, u3_noun cor)
     u3z(pam); u3z(pax);
   }
   _cj_sample_prep(sit_u);
+  // A constructor can punt on an empty cell pool and still succeed. Resolve
+  // its program before a caller borrows list links, since lookup can unify.
+  if ( loc == u3_none &&
+       (sit_u->sample_y == gate_full || (borrow && _cj_is_constructor(sit_u->sample_y))) ) {
+    sit_u->pog_p = _cj_prog(loc, u3h(cor));
+  }
   u3t_off(glu_o);
+}
+
+void
+u3j_gate_prep(u3j_site* site, u3_noun cor)
+{
+  _cj_gate_prep(site, cor, 1);
+}
+
+void
+u3j_gate_prep_owned(u3j_site* site, u3_noun cor)
+{
+  _cj_gate_prep(site, cor, 0);
 }
 
 // A prepared jet borrows its core. Reuse the two cells while both remain
@@ -2252,6 +2284,20 @@ u3j_gate_slam(u3j_site* sit_u, u3_noun sam)
   u3t_on(glu_o);
   if ( sit_u->sample_y && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
     switch ( sit_u->sample_y ) {
+      case gate_fixed_head:
+      case gate_fixed_tail: {
+        c3_w axis = sit_u->sample_field;
+        u3_noun fixed = sit_u->sample_context;
+        pro = axis == 1 ? sam : u3r_at(axis, sam);
+        if ( pro == u3_none || !u3R->cel.hav_w || (u3C.wag_h & u3o_debug_ram) ||
+             !_cj_gain_fits(pro, 2) || !_cj_gain_fits(fixed, 2) ) goto full;
+        if ( axis != 1 ) u3k(pro);
+        fixed = u3k(fixed);
+        pro = sit_u->sample_y == gate_fixed_head ? u3nc(fixed, pro) : u3nc(pro, fixed);
+        if ( axis != 1 ) u3z(sam);
+        u3t_off(glu_o);
+        return pro;
+      }
       case gate_context:
         pro = _cj_fill(sit_u->sample_context, sam);
         if ( pro == u3_none ) goto full;
@@ -2297,7 +2343,11 @@ full:
     pro = _cj_site_kick_hot(sit_u->loc, cor, sit_u, c3n);
   }
   if ( u3_none == pro ) {
-    pro = _cj_burn(sit_u->pog_p, cor);
+    // The caller can borrow this site on a daughter road. Keep a program
+    // resolved on that road local to this slam.
+    u3p(u3n_prog) pog_p = sit_u->pog_p;
+    if ( !pog_p ) pog_p = _cj_prog(sit_u->loc, u3h(cor));
+    pro = _cj_burn(pog_p, cor);
   }
   u3t_off(glu_o);
   return pro;
@@ -2309,7 +2359,7 @@ void
 u3j_gate_lose(u3j_site* sit_u)
 {
   if ( sit_u->sample_y == gate_native ) u3z(sit_u->sample_core);
-  if ( sit_u->sample_y == gate_context ) u3z(sit_u->sample_context);
+  if ( _cj_is_constructor(sit_u->sample_y) ) u3z(sit_u->sample_context);
   u3z(sit_u->bat);
   u3z(sit_u->bas);
   if ( u3_none != sit_u->loc ) {
