@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [3c0ed69633](https://github.com/yapishu/vere/commit/3c0ed696331df29829b7959400cb1c78c9e38168) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [1b502dc345](https://github.com/yapishu/vere/commit/1b502dc34587aeff54cfbc5113ac1daadeb407d9) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+Across two Kelvin 135 fake ~zod boots, scanning leading spaces on 11,383 Clay and Lull source lines takes **28.1–29.1% less time** than the preceding review. A full match on 25,000 lowercase letters takes **91.1–91.2% less time**.
 
 Across two live Kelvin 135 fake ~zod boots, `+ream` takes **14.4–14.5% less time** to parse Clay and **14.0% less time** to parse Lull than the preceding review. Both workloads parse the complete source file.
 
@@ -22,7 +24,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -223,6 +225,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948) | hash shax and shas messages directly from the atom | [Incremental](#change-c7aab99a51) |
 | [9d47dd576c](https://github.com/yapishu/vere/commit/9d47dd576caaceb26116044fc1523f7422edb4dc) | use Nettle SHA-256 instructions on capable CPUs | [Incremental](#change-9d47dd576c) |
 | [3c0ed69633](https://github.com/yapishu/vere/commit/3c0ed696331df29829b7959400cb1c78c9e38168) | reuse native gate dispatch along registered parent axes | [Incremental](#change-3c0ed69633) |
+| [1b502dc345](https://github.com/yapishu/vere/commit/1b502dc34587aeff54cfbc5113ac1daadeb407d9) | scan character runs in stir and share matched tapes | [Incremental](#change-1b502dc345) |
 
 ## Measurements by change
 
@@ -2982,3 +2985,48 @@ After all seven workloads, combined king and worker PSS is 183.5 MiB in both boo
 In five alternating trials on one core, median Hoon compilation time rises from 3.92 to 3.97 s and Lull from 2.59 to 2.61 s. Zuse takes 1.43 s on both builds. In six trials during the other workloads, Hoon takes 4.50 versus 4.70 s, Lull 3.03 versus 2.98 s and Zuse 1.71 versus 1.64 s, in previous-review and review order. Two paired cold replays through event 143 exchange cores and take 105.85 s on previous review and 105.06 s on review, with median peak RSS of 816.20 and 816.23 MiB.
 
 Eight native suites pass on each loom width. A focused test changes which jet registration applies to a live gate and checks each resulting product. On both widths the bootstrap core and all 155 replay products match develop’s canonical jam lengths and SHA-256 hashes (33,279,069,693 bytes per width). All six Hoon, Lull and Zuse compiler-window products match develop on the 32-bit loom. Develop also opens the checkpoint saved by review at event 241 and replays events 242–249.
+
+<a id="change-1b502dc345"></a>
+
+### Scan character runs and share the result of +star
+
+The native `+stir` jet scans a run directly when the prepared parser selects `+just`, `+shim` or a byte-valued `+mask`. It tracks the line and column while scanning. For `+star`, each result is the matched character paired with the remaining results. A full match can therefore return the input tape itself. A partial match copies the prefix up to the first rejected character. Custom reducers receive every matched character in reverse order, as in Hoon. [Krishnaswami and Yallop on specializing parser combinators](https://doi.org/10.1145/3314221.3314625)
+
+Each build opens a copy of the same Kelvin 135 fake ~zod checkpoint. The table shows median Dojo time from the first of two independent boots. Each case warms once and runs seven times with the builds rotating on one physical core. Each timed call is followed by a SHA-256 check of the entire jammed product. Percentages are the reduction in elapsed time against the preceding review. Negative values indicate a slowdown.
+
+| Workload | Develop | Previous review `9040ac2869` | Review | Less time, boot 1 | Less time, boot 2 |
+|---|---:|---:|---:|---:|---:|
+| Azimuth RPC `+enkebab`, 2,048 method names | 18.68 ms | 12.60 ms | 11.00 ms | 12.7% | 12.5% |
+| Leading spaces on 11,383 Clay and Lull source lines | 19.22 ms | 13.68 ms | 9.70 ms | 29.1% | 28.1% |
+| `(star ace)`, 80,000 spaces | 5.92 ms | 3.92 ms | 0.37 ms | 90.6% | 90.8% |
+| `(star low)`, 25,000 letters | 1.91 ms | 1.24 ms | 0.11 ms | 91.2% | 91.1% |
+| `+stir` with an addition gate, 25,000 letters | 3.88 ms | 2.91 ms | 2.12 ms | 27.0% | 29.3% |
+| Comma-separated list of 2,000 formatted numbers | 7.46 ms | 4.31 ms | 3.96 ms | 8.2% | 6.7% |
+| Hood’s `+tape-to-tanks` grammar on the complete Clay and Lull source text | 185.90 ms | 133.29 ms | 126.94 ms | 4.8% | 4.2% |
+| `+ream`, complete Clay source | 458.51 ms | 254.42 ms | 251.91 ms | 1.0% | 0.9% |
+| `+ream`, complete Lull source | 301.55 ms | 164.56 ms | 163.32 ms | 0.8% | 1.0% |
+| Zuse `+stud:chrono:userlib`, 256 UTC date strings | 26.22 ms | 13.87 ms | 13.86 ms | 0.1% | -0.1% |
+| `+slaw %da`, 512 date strings | 21.75 ms | 11.76 ms | 11.80 ms | -0.4% | 0.3% |
+
+In Dojo, `=az -build-file /=base=/lib/azimuth-roll-rpc/hoon` loads the installed RPC library. The timed expression is `(turn methods enkebab:az)` over 256 repetitions of `getPoint`, `getDns`, `getNaiveState`, `getRefresh`, `getSpawned`, `setManagementProxy`, `transferPoint` and `configureKeys`. For the character benchmark, bind `=pad (reap 80.000 ' ')` and evaluate `(shax (jam ~>(%bout ((star ace) [[1 1] pad]))))`. A third boot during concurrent audits measures 7.9% less time for the RPC gate and 26.8% less for indentation.
+
+An isolated native call starts with a million spaces on its input tape. Each median covers three fresh processes. A full match returns the input list itself on review. Appending an exclamation mark to the input forces the parser to produce a separate prefix. Both builds return the same characters, final position and remainder.
+
+| Million-character parse | 32-bit loom, previous review | 32-bit loom, review | 64-bit loom, previous review | 64-bit loom, review |
+|---|---:|---:|---:|---:|
+| Full match, peak process RSS | 40.3 MiB | 17.5 MiB | 78.3 MiB | 32.4 MiB |
+| Partial match, peak process RSS | 40.3 MiB | 32.8 MiB | 78.3 MiB | 63.0 MiB |
+
+Across the two quiet boots, combined king and worker PSS after the eleven parser workloads is 247.4–247.7 MiB on previous review and 247.4–247.6 MiB on review. With a million-character input already in a live ship, median additional worker peak RSS is 4 KiB on each build across three fresh boots.
+
+In two paired cold replays through event 143, the builds exchange cores between pairs. Median wall time is 110.81 s versus 112.97 s, with peak RSS of 816.23 versus 816.21 MiB. The hash audits run concurrently. Five alternating compiler trials on one core after the audits give these median times.
+
+| Full compilation | Previous review | Review |
+|---|---:|---:|
+| Hoon | 3.999 s | 3.985 s |
+| Lull | 2.609 s | 2.617 s |
+| Zuse | 1.446 s | 1.449 s |
+
+With other workloads active, five additional trials give 4.76 versus 4.76 s for Hoon, 3.12 versus 3.14 s for Lull, and 1.67 versus 1.71 s for Zuse, in previous-review and review order.
+
+Eight native suites pass on each loom width. A differential run of 4,608 parser and reducer combinations on each build and width gives 3,822 products, 786 errors and 1,389 ordered log messages. Their complete canonical bytes match across the four runs. The cases cover newlines, a nonempty initial accumulator, improper tapes, atom and cell tokens, wide positions, and a reducer that emits a log on every call. The bootstrap core and 155 replay products match develop’s canonical jam lengths and SHA-256 (33,279,069,693 bytes per width). Six compiler-window products match develop on the 32-bit loom. Develop opens the checkpoint saved by review at event 241 and replays events 242–249.
