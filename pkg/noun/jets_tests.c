@@ -961,6 +961,31 @@ _test_json_de_array(void)
   return ret_i;
 }
 
+// Exercise each short atom length and every escape position across the
+// overlapping blocks at the end of a string.
+static void
+_test_json_en_string(void)
+{
+  c3_y bytes[40], expected[sizeof(bytes) + 3];
+  for ( size_t len = 0; len <= sizeof(bytes); ++len ) {
+    for ( size_t pos = 0; pos <= len; ++pos ) {
+      size_t out = 0;
+      expected[out++] = '"';
+      for ( size_t i = 0; i < len; ++i ) {
+        bytes[i] = (i == pos) ? '"' : (c3_y)(0x80 + i);
+        if ( i == pos ) expected[out++] = '\\';
+        expected[out++] = bytes[i];
+      }
+      expected[out++] = '"';
+      u3_atom got = u3ke_json_en(u3nc(c3__s, u3i_bytes(len, bytes)));
+      u3_atom want = u3i_bytes(out, expected);
+      u3_assert(c3y == u3r_sing(got, want));
+      u3z(got);
+      u3z(want);
+    }
+  }
+}
+
 static c3_i
 _test_json_de_string(void)
 {
@@ -2085,6 +2110,8 @@ _test_jets(void)
   common = u3qe_loss(left, right);
   u3_assert(c3y == u3r_sing(common, expected));
   u3z(left); u3z(right); u3z(common); u3z(expected);
+
+  _test_json_en_string();
 
   // Escapes on either side of a word boundary, including zero and DEL.
   const c3_y bytes[] = {'a','b','c','d','e','f','g','"',0,'\\',10,127,'z'};
