@@ -2536,6 +2536,22 @@ _n_arm_result(u3_noun cor, u3j_site* sit_u, c3_ys mov, c3_ys off)
   return result;
 }
 
+/* _n_memo_key(): consume the subject and mug the lookup key from its fields.
+** Keep construction out of the interpreter dispatch loop.
+*/
+static __attribute__((noinline)) u3_noun
+_n_memo_key(const u3n_memo* mem_u, u3_noun sub)
+{
+  c3_m fun = (u3z_memo_ford == mem_u->cid) ? 136 + c3__ford : 144 + c3__nock;
+  c3_h mug_h = u3r_mug_cell(sub, mem_u->key);
+  u3_noun key = u3nt(fun, sub, u3k(mem_u->key));
+  u3a_cell* root = u3a_to_ptr(key);
+  u3a_cell* pair = u3a_to_ptr(root->tel);
+  pair->mug_w = mug_h;
+  root->mug_w = u3r_mug_both(u3r_mug_word(fun), mug_h);
+  return key;
+}
+
 /* _n_burn(): pog: program
  *            bus: subject (TRANSFER)
  *            mov: -1 north, 1 south
@@ -3313,19 +3329,12 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm,
       mem_u = &(pog_u->mem_u.sot_u[x]);
       x     = _n_pep(mov, off);
     skim_out:
-      o     = u3k(mem_u->key);
-      x     = u3nc(x, o);
-      switch ( mem_u->cid ) {
-        case u3z_memo_ford: {
-          o = u3z_find_m(mem_u->cid, 136 + c3__ford, x);
-        } break;
-        default: {
-          o = u3z_find_m(mem_u->cid, 144 + c3__nock, x);
-        }
-      }
+      x = _n_memo_key(mem_u, x);
+      o = u3z_find(mem_u->cid, x);
       if ( u3_none == o ) {
-        _n_push(mov, off, u3nc(mem_u->cid, x));
-        _n_push(mov, off, u3k(u3h(x)));
+        _n_push(mov, off, mem_u->cid);
+        _n_push(mov, off, x);
+        _n_push(mov, off, u3k(u3h(u3t(x))));
       }
       else {
         ip_w += mem_u->sip_l;
@@ -3336,22 +3345,17 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm,
 
     do_save:
       x   = _n_pep(mov, off);  // product
-      top = _n_peek(off);
-      o   = *top;
-      if ( u3z_memo_ford == u3h(o) && ( 0 == u3R->ski.gul ) ) {
-        x = u3z_save_m_sole(u3h(o), 136 + c3__ford, u3t(o), x);
+      o   = _n_pep(mov, off);  // key used by the lookup
+      top = _n_peek(off);      // cache id
+      // Persistent memos can only be saved outside a scry context.
+      if ( (u3z_memo_toss == *top) ? (&(u3H->rod_u) != u3R)
+                                     : (0 == u3R->ski.gul) ) {
+        x = u3z_save_sole(*top, o, x);
       }
-      else if ( ( u3z_memo_toss == u3h(o) )
-         ? ( &(u3H->rod_u) != u3R )
-         : ( 0 == u3R->ski.gul ) ) {  //  prevents persistent memoization when scrying is avaliable
-        x = u3z_save_m_sole(u3h(o), 144 + c3__nock, u3t(o), x);
+      else {
+        u3z(o);
       }
-      // XX can we still print?
-      // else if ( u3z_memo_keep == u3h(o) ) {
-      //   fprintf(stderr, "\r\nnock: userspace can't save to persistent cache\r\n");
-      // }
       *top = x;
-      u3z(o);
       BURN();
 
     do_hilb:

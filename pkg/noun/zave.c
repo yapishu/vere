@@ -151,20 +151,18 @@ u3z_save_m(u3z_cid cid, c3_m fun, u3_noun one, u3_noun val)
   return val;
 }
 
-/* u3z_save_m_sole(): save in memo cache, canonicalized. All but val is retained.
+/* u3z_save_sole(): save the canonicalized key and return the canonicalized value.
+** Both arguments are transferred.
 */
 u3_noun
-u3z_save_m_sole(u3z_cid cid, c3_m fun, u3_noun one, u3_noun val)
+u3z_save_sole(u3z_cid cid, u3_noun key, u3_noun val)
 {
-  u3_noun key = u3nc(fun, u3k(one));
   if ( u3z_memo_toss != cid ) {
     key = u3m_sole_try(key);
     val = u3m_sole_home(val);
   }
 
-  u3h_put(_har(u3R, cid), key, u3k(val));
-  u3z(key);
-  return val;
+  return u3z_save(cid, key, val);
 }
 
 /* u3z_uniq(): uniquify with memo cache. XX not used.

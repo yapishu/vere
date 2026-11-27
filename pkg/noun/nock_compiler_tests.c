@@ -147,6 +147,25 @@ _memo(u3_noun fol)
   return u3nt(11, u3nc(c3__memo, _lit(0)), fol);
 }
 
+// A persistent memo around the same scry must observe each virtual namespace.
+static void
+_memo_scry(void)
+{
+  for ( c3_w i = 0; i < 2; i++ ) {
+    u3_noun clue = i ? u3nt(c3__clay, c3__ford, 0) : u3nc(1, 2);
+    u3_noun body = u3nt(12, _slot(1), _slot(2));
+    u3_noun hint = u3nt(11, u3nc(c3__memo, _lit(clue)), body);
+
+    for ( u3_noun val = 71; val <= 72; val++ ) {
+      u3_noun gate = u3nt(_lit(u3nt(0, 0, val)), 0, 0);
+      u3_noun got = u3m_soft_run(gate, u3n_nock_on, u3nc(4, 5), u3k(hint));
+      u3_assert(c3y == u3du(got) && 0 == u3h(got) && val == u3t(got));
+      u3z(got);
+    }
+    u3z(hint);
+  }
+}
+
 static u3_noun
 _chain(c3_w count, c3_t guard, c3_w axis)
 {
@@ -1592,6 +1611,7 @@ main(void)
   _indexed();
   _mixed();
   _mixed_effects();
+  _memo_scry();
   _full_literal_pool();
   _project_pair();
   _borrow_cases();
