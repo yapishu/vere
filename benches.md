@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+Calling `+sham` on the noun behind the largest salted hash in cold replay takes **51.1 ms** in a live Dojo, down from **55.5 ms** on the preceding review and **65.9 ms** on develop. Reading its 20.8 MiB message in place also saves **19.3 MiB** of peak RSS across the full replay.
 
 On two live Kelvin 135 boots, deterministic draws using inputs from successful Eyre logins take **23.7–24.2% less time** than the preceding review. Generating an 8 MiB atom reduces peak process RSS from **37.2 to 8.9 MiB** on a 32-bit loom and **49.2 to 8.8 MiB** on a 64-bit loom.
 
@@ -16,7 +18,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -214,6 +216,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974) | prepare one-hole constructors for repeated gate calls | [Incremental](#change-78c2194073) |
 | [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67) | prepare short-lived gates without building their fallback | [Incremental](#change-0c171e9479) |
 | [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff) | write og digest blocks directly into the result atom | [Incremental](#change-7f16135a2d) |
+| [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948) | hash shax and shas messages directly from the atom | [Incremental](#change-c7aab99a51) |
 
 ## Measurements by change
 
@@ -2903,3 +2906,22 @@ Generating an 8 MiB atom from seed `0x53.4f21` in a fresh process gives the foll
 | 64-bit | 133.1 | 80.4 | 49.2 MiB | 8.8 MiB |
 
 **Correctness.** Both loom widths match an independent SHA-256 implementation of the Hoon recurrence byte for byte on 5,039 seed and width combinations. Cases include seed and width cancellation, partial bytes and blocks, and seeds wider than the digest. Both widths pass eight native suites and match develop’s canonical lengths and SHA-256 hashes for the bootstrap core and 155 replay products. All 34 further event products in a recorded session containing two HTTP logins also match develop on both widths.
+
+<a id="change-c7aab99a51"></a>
+
+### Hash atom storage directly in +shax and +shas
+
+Cold replay through event 143 calls `+shas` with the salt `%sham` on messages of 1,417,051 and 21,780,543 bytes. Both are canonical jams. The table times `(sham noun)` on those exact cued inputs in a Kelvin 135 fake ~zod. Each median covers six measured Dojo evaluations per build after warmup, rotating build order on one core.
+
+| Message in the salted hash | Develop | Previous review `a25b3bc11f` | Review | Time vs previous review |
+|---|---:|---:|---:|---:|
+| 1.35 MiB | 3.80 ms | 3.41 ms | 3.29 ms | 3.6% less |
+| 20.77 MiB | 65.85 ms | 55.52 ms | 51.12 ms | 7.9% less |
+
+For the larger message, `+shas` alone takes 7.1–10.5% less time over two independent boots. After the hash batches, combined king and worker PSS falls from 354.0–354.3 to 336.3–336.7 MiB. In a fresh native process, peak RSS for one call falls from 42.7 to 21.7 MiB on the 32-bit loom and from 42.5 to 21.8 MiB on the 64-bit loom (12 trials each). A synthetic message of the same width can be prepared in Dojo with `=msg (bex 174.244.336)` and timed with `~>(%bout (shas %sham msg))`.
+
+Across 24 Hoon source files sampled by size from the mounted base desk, four passes through Clay's `+page-to-lobe` take 5.34 ms versus 5.59 ms on previous review. Hashing 4,096 small atoms with `+sham` takes 3.10 ms versus 3.07 ms.
+
+During the 20.77 MiB call in an instrumented cold replay, worker RSS grows by 19.24 MiB on previous review and by 0 KiB on review, measured at entry and immediately after hashing. Four paired cold replays swap cores between trials. Median wall time and peak RSS are 109.58 s and 835.3 MiB on previous review and 110.47 s and 816.0 MiB on review.
+
+Both loom widths match Python `hashlib` on all 1,482 `+shax` and `+shas` cases, including empty messages, wide salts and the same atom passed as salt and message. Eight native suites pass on each width. The bootstrap core and all 155 replay products match develop’s canonical jam lengths and SHA-256 hashes (33,279,069,693 bytes per width).
