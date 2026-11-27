@@ -1180,6 +1180,47 @@ _parent_registration(void)
 }
 
 static void
+_inherited_registration(void)
+{
+  u3m_hate(0);
+  u3_noun clue = u3nt(u3i_string("shape"), _lit(0), 0);
+  u3_noun formula = _factory_formula(37, u3k(clue));
+  u3n_prog* program = u3to(u3n_prog, u3n_find(0, formula));
+  u3_assert(program->reg_u.len_w == 1);
+  u3j_rite* rite = program->reg_u.rit_u;
+  u3_assert(rite->clu == u3_none);
+
+  // The inner road registers the core. Its parent has no local program.
+  u3m_hate(0);
+  u3m_hate(0);
+  u3_noun core = u3n_nock_on(0, u3k(formula));
+  core = u3m_love(core);
+  core = u3m_love(core);
+  u3_assert(rite->own_o == c3y && rite->fin_p);
+  u3_assert(c3y == u3r_sing(rite->clu, clue));
+
+  u3p(u3j_fink) fink = rite->fin_p;
+  u3m_hate(0);
+  u3z(u3n_nock_on(0, u3k(formula)));
+  u3z(u3m_love(0));
+  u3_assert(rite->fin_p == fink);
+
+  // A borrowed call site also acquires a finder on its first resolved kick.
+  u3_noun kick = u3nt(9, 2, _slot(1));
+  program = u3to(u3n_prog, u3n_find(0, kick));
+  u3_assert(program->cal_u.len_w == 1 && program->cal_u.sit_u->loc == u3_none);
+  u3m_hate(0);
+  u3_assert((0x10000 + 37) == u3n_nock_on(u3k(core), u3k(kick)));
+  u3z(u3m_love(0));
+  u3_assert(program->cal_u.sit_u->fon_o == c3y && program->cal_u.sit_u->fin_p);
+  u3z(kick);
+  u3z(core);
+  u3z(formula);
+  u3z(clue);
+  u3z(u3m_love(0));
+}
+
+static void
 _factory_cases(void)
 {
   // A single program crosses both byte-sized pools, including one valid
@@ -1568,6 +1609,7 @@ main(void)
   }
   _bind_cases();
   _factory_cases();
+  _inherited_registration();
   _projection_cases();
   _check_short_axes();
   u3C.wag_h |= u3o_debug_ram;

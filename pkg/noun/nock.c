@@ -3666,6 +3666,26 @@ _cn_reap_prog_dat(u3n_prog* dst_u, u3n_prog* src_u)
   }
 }
 
+/* _cn_prog_changed(): newly compiled programs move to the parent. In a
+**                     borrowed program the literals and memo descriptors
+**                     are fixed. Resolving a call site or registering a
+**                     core installs a fink owned by this road. Battery
+**                     and bytecode locks live on the road alone.
+*/
+static c3_t
+_cn_prog_changed(const u3n_prog* pog_u)
+{
+  if ( c3y == pog_u->byc_u.own_o ) return 1;
+
+  for ( c3_w i_w = 0; i_w < pog_u->cal_u.len_w; ++i_w ) {
+    if ( c3y == pog_u->cal_u.sit_u[i_w].fon_o ) return 1;
+  }
+  for ( c3_w i_w = 0; i_w < pog_u->reg_u.len_w; ++i_w ) {
+    if ( c3y == pog_u->reg_u.rit_u[i_w].own_o ) return 1;
+  }
+  return 0;
+}
+
 /*  _cn_reap_prog_cb(): u3h_walk_with cb for integrating junior u3n_prog's.
 */
 static void
@@ -3677,6 +3697,8 @@ _cn_reap_prog_cb(u3_noun kev, void* wit)
   u3_weak         got;
   u3_weak         yek = u3_none;
   u3x_cell(kev, &key, &pog_w);
+
+  if ( !_cn_prog_changed(_cn_to_prog(pog_w)) ) return;
 
   //  a key can have left already, as a part of a key or a literal taken
   //  earlier in this walk (keys are deduplicated, see _n_find()): its mug
