@@ -2118,6 +2118,22 @@ _test_byte_list(void)
   u3z(u3m_love(0));
 }
 
+// Distinct indirect atoms share a mug, and each appears more than once.
+static void
+_test_loss_positions(void)
+{
+  c3_d x = UINT64_C(0xc001d00d0000b33f);
+  c3_d y = UINT64_C(0xc001d00d00012a3e);
+  u3_noun left  = u3nq(u3i_chub(x), u3i_chub(y), u3i_chub(x), 0);
+  u3_noun right = u3nq(u3i_chub(y), u3i_chub(x), u3i_chub(y), 0);
+  u3_assert(u3r_mug(u3h(left)) == u3r_mug(u3h(right)));
+  u3_noun cor = u3nt(0, u3nc(left, right), 0);
+  u3_noun got = u3we_loss(cor);
+  u3_noun want = u3nt(u3i_chub(y), u3i_chub(x), 0);
+  u3_assert(c3y == u3r_sing(got, want));
+  u3z(want); u3z(got); u3z(cor);
+}
+
 static c3_i
 _test_jets(void)
 {
@@ -2141,6 +2157,7 @@ _test_jets(void)
   _test_put_rotation();
   _test_tree_find();
   _test_tree_tap();
+  _test_loss_positions();
 
   // Both alternating triples are longest. The earlier right endpoint wins.
   u3_noun left = u3nc(1, u3nq(2, 1, 2, 0));

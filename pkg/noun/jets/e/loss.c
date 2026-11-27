@@ -50,9 +50,47 @@ _loss_rank(const c3_d* row, c3_w col)
   return rank;
 }
 
+// Map an atom or mug to its latest one-based position in the right list.
+// Distinct indirect nouns with the same mug occupy successive integer keys.
+#define NAME    _loss_positions
+#define KEY_TY  c3_w
+#define VAL_TY  c3_w
+#define HASH_FN vt_hash_integer
+#define MALLOC_FN u3a_malloc
+#define FREE_FN(p, size) u3a_free(p)
+#include "verstable.h"
+
+static _loss_positions_itr
+_loss_find(_loss_positions* heads, const _loss_match* match, u3_noun key, c3_t insert)
+{
+  c3_w tag = (c3y == u3a_is_cat(key)) ? key : u3a_indirect_flag | u3r_mug(key);
+  for (;;) {
+    _loss_positions_itr itr = insert ? _loss_positions_get_or_insert(heads, tag, 0)
+                                     : _loss_positions_get(heads, tag);
+    if ( _loss_positions_is_end(itr) || !itr.data->val ||
+         c3y == u3r_sing(match[itr.data->val - 1].value, key) ) {
+      return itr;
+    }
+    tag = u3a_indirect_flag | (tag + 1);
+  }
+}
+
+// Consume the current list cell. Equality may unify children of shared nouns.
+static c3_w
+_loss_read(_loss_positions* heads, const _loss_match* match, u3_noun* list)
+{
+  u3_noun item = u3k(u3h(*list));
+  u3_noun tail = u3k(u3t(*list));
+  u3z(*list);
+  *list = tail;
+  _loss_positions_itr itr = _loss_find(heads, match, item, 0);
+  u3z(item);
+  return _loss_positions_is_end(itr) ? 0 : itr.data->val;
+}
+
 static u3_weak
 _loss_dense(u3_noun list, c3_w rows, c3_w cols, const _loss_match* match,
-            u3p(u3h_root) heads)
+            _loss_positions* heads)
 {
   enum { stripe = 64, budget = 1024 * 1024 };
   if ( rows < 64 || cols < 64 || rows > budget / sizeof(c3_w) ||
@@ -75,10 +113,9 @@ _loss_dense(u3_noun list, c3_w rows, c3_w cols, const _loss_match* match,
   if ( found * 8 < words * samples ) return u3_none;
 
   // Values absent from the right list cannot contribute to the result.
-  while ( list && u3_none == u3h_git(heads, u3h(list)) ) {
-    list = u3t(list);
-    --rows;
-  }
+  u3k(list);
+  c3_w first = 0;
+  while ( rows && !(first = _loss_read(heads, match, &list)) ) --rows;
   if ( !rows ) return u3_nul;
 
   _loss_group* groups = u3a_malloc(cols * sizeof(*groups));
@@ -94,10 +131,10 @@ _loss_dense(u3_noun list, c3_w rows, c3_w cols, const _loss_match* match,
     }
   }
   c3_w* ids = u3a_malloc(rows * sizeof(*ids));
-  c3_d pairs = 0;
-  for ( c3_w i = 0; i < rows; ++i, list = u3t(list) ) {
-    u3_weak last = u3h_git(heads, u3h(list));
-    ids[i] = last == u3_none ? 0 : last;
+  c3_d pairs = groups[first - 1].count;
+  ids[0] = first;
+  for ( c3_w i = 1; i < rows; ++i ) {
+    ids[i] = _loss_read(heads, match, &list);
     if ( ids[i] ) pairs += groups[ids[i] - 1].count;
   }
   if ( pairs * 4 < (c3_d)rows * words ) {
@@ -298,28 +335,31 @@ _loss_index(u3_noun hel, u3_noun hev, c3_w rows, c3_w right, c3_w cap)
   static_assert(u3a_cells < SIZE_MAX / sizeof(_loss_match), "match array size");
   static_assert(u3a_cells < SIZE_MAX / sizeof(_loss_best), "candidate array size");
   _loss_match* match = u3a_malloc(right * sizeof(*match));
-  u3p(u3h_root) heads = u3h_new();
+  _loss_positions heads;
+  _loss_positions_init(&heads);
+  // Bound the initial allocation on inputs with many repeated values.
+  if ( !_loss_positions_reserve(&heads, c3_min(right, 1024)) ) {
+    return u3m_bail(c3__meme);
+  }
   c3_w len = 0;
 
-  // Position zero ends each occurrence chain. Each key owns one table slot.
+  // Capture the elements before equality can unify a shared list spine.
+  u3k(hel);
   for ( c3_w i = 0; i < right; ++i, hev = u3t(hev) ) {
-    u3_noun value = u3h(hev);
-    u3_weak last = u3h_git(heads, value);
-    match[i].value = value;
-    match[i].previous = (last == u3_none) ? 0 : last;
-    u3h_put(heads, value, i + 1);
+    match[i].value = u3k(u3h(hev));
   }
-
-  u3_weak dense = _loss_dense(hel, rows, right, match, heads);
-  if ( dense != u3_none ) {
-    u3h_free(heads);
-    u3a_free(match);
-    return dense;
+  for ( c3_w i = 0; i < right; ++i ) {
+    _loss_positions_itr itr = _loss_find(&heads, match, match[i].value, 1);
+    if ( _loss_positions_is_end(itr) ) return u3m_bail(c3__meme);
+    match[i].previous = itr.data->val;
+    itr.data->val = i + 1;
   }
+  u3_noun pro = _loss_dense(hel, rows, right, match, &heads);
+  if ( pro != u3_none ) goto done;
   _loss_best* best = u3a_malloc(cap * sizeof(*best));
-  for ( ; hel != u3_nul; hel = u3t(hel) ) {
-    u3_weak last = u3h_git(heads, u3h(hel));
-    if ( last == u3_none ) continue;
+  while ( hel != u3_nul ) {
+    c3_w last = _loss_read(&heads, match, &hel);
+    if ( !last ) continue;
 
     // Walk positions from right to left. A candidate can extend only a
     // chain from a previous input row. Equal endpoints keep their chain.
@@ -344,10 +384,13 @@ _loss_index(u3_noun hel, u3_noun hev, c3_w rows, c3_w right, c3_w cap)
     }
   }
 
-  u3_noun pro = len ? u3kb_flop(u3k(best[len - 1].chain)) : u3_nul;
+  pro = len ? u3kb_flop(u3k(best[len - 1].chain)) : u3_nul;
   for ( c3_w i = 0; i < len; ++i ) u3z(best[i].chain);
-  u3h_free(heads);
   u3a_free(best);
+done:
+  u3z(hel);
+  for ( c3_w i = 0; i < right; ++i ) u3z(match[i].value);
+  _loss_positions_cleanup(&heads);
   u3a_free(match);
   return pro;
 }
