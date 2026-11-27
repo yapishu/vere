@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+On 24 complete Arvo file revisions, two source-annotated Clay map gates take **30.1–36.6% less time** across two live Dojo boots. During three desk changes, time inside all 147 map calls falls by **16.8–19.4%** across two replay series.
 
 Finding added and removed paths between complete Arvo and Vere revisions takes **14.8–31.7% less time** than on the preceding review across eight live Dojo workloads and two independent boots. Combined king and worker PSS after the comparisons stays within **0.7 MiB** of the preceding review.
 
@@ -10,7 +12,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -205,6 +207,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [56b5327a55](https://github.com/yapishu/vere/commit/56b5327a5511c2087cdc8783dc5ae9b242686f6b) | reuse private cores across prepared native calls | [Incremental](#change-56b5327a55) |
 | [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2) | rebuild only the treap path changed by deletion | [Incremental](#change-52bac63838) |
 | [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17) | pass treap partitions directly through difference | [Incremental](#change-0aebc87353) |
+| [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974) | prepare one-hole constructors for repeated gate calls | [Incremental](#change-78c2194073) |
 
 ## Measurements by change
 
@@ -1672,7 +1675,7 @@ Stack parent before this change is [487f06c938](https://github.com/yapishu/vere/
 | Caught-up restart, 9 quiet rounds | 1.097 s | 0.928 s | 0.854 s | 8.0% |
 | Rebuild within that restart | 556.00 ms | 460.00 ms | 338.00 ms | 26.5% |
 | Memory at checked reply | 225.28 MiB | 218.38 MiB | 218.95 MiB | -0.3% |
-| Archived checkpoint, events 233–249, 8 quiet rounds | 1.420 s | 1.215 s | 1.050 s | 13.6% |
+| Saved checkpoint, events 233–249, 8 quiet rounds | 1.420 s | 1.215 s | 1.050 s | 13.6% |
 | Peak RSS for those 17 events | 249.02 MiB | 238.67 MiB | 238.89 MiB | -0.1% |
 | Caught-up restart, 9 rounds alongside other suites | 1.325 s | 1.099 s | 0.917 s | 16.5% |
 | Rebuild within that restart | 732.00 ms | 607.00 ms | 430.00 ms | 29.2% |
@@ -1680,7 +1683,7 @@ Stack parent before this change is [487f06c938](https://github.com/yapishu/vere/
 | Launch at 233, catch up and answer in Dojo, 9 rounds | 1.458 s | 1.349 s | 1.165 s | 13.6% |
 | Replay events 234–249, 12 rounds | 0.805 s | 0.800 s | 0.650 s | 18.8% |
 | Peak RSS for those 16 events | 197.22 MiB | 190.15 MiB | 190.36 MiB | -0.1% |
-| Archived checkpoint, events 233–249, 8 rounds | 1.845 s | 1.550 s | 1.275 s | 17.7% |
+| Saved checkpoint, events 233–249, 8 rounds | 1.845 s | 1.550 s | 1.275 s | 17.7% |
 | Caught-up restart, 64-bit loom, 7 rounds | — | 1.250 s | 1.068 s | 14.6% |
 | Memory at that 64-bit reply | — | 379.16 MiB | 379.55 MiB | -0.1% |
 | Replay events 234–249, 64-bit loom, 9 rounds | — | 0.890 s | 0.720 s | 19.1% |
@@ -1708,8 +1711,8 @@ Stack parent before this change is [ad0fcb22d4](https://github.com/yapishu/vere/
 | King and worker PSS at reply | 225.2 MiB | 218.7 MiB | 219.3 MiB | 2.6% less | 0.3% more | 9 |
 | Reopen event 233 and play events 234–249 | 0.630 s | 0.540 s | 0.370 s | 41.3% less | 31.5% less | 10 |
 | Peak RSS on that replay | 197.2 MiB | 190.3 MiB | 190.5 MiB | 3.4% less | 0.1% more | 10 |
-| Archive at event 232, play 233–249 | 1.380 s | 1.030 s | 1.035 s | 25.0% less | 0.5% more | 8 |
-| Peak RSS from the archive | 249.0 MiB | 238.8 MiB | 238.8 MiB | 4.1% less | 0.0% more | 8 |
+| Checkpoint at event 232, play 233–249 | 1.380 s | 1.030 s | 1.035 s | 25.0% less | 0.5% more | 8 |
+| Peak RSS for checkpoint replay | 249.0 MiB | 238.8 MiB | 238.8 MiB | 4.1% less | 0.0% more | 8 |
 | Restart a checkpoint after its first pill boot | — | 0.855 s | 0.652 s | — | 23.7% less | 7 |
 | Restart a checkpoint after compiling Lull | — | 0.838 s | 0.671 s | — | 20.0% less | 7 |
 | Restart with a planted duplicate | — | 0.836 s | 0.904 s | — | 8.2% more | 7 |
@@ -2763,3 +2766,51 @@ Across both directions and all 48 revisions, the preceding difference implementa
 | Zuse | 3.930 | 1.747 | 1.699 |
 
 **Correctness.** Eight native suites pass on each loom width. A differential test for split and difference matches 49,792 successful products and 34,010 exits per width, including malformed trees, hash collisions and unbalanced search paths. On both widths, the bootstrap core, 138 cold-replay products and 17 checkpoint products match develop in canonical length and SHA-256 (33,279,069,693 bytes per width). The signed 32-bit build also matches upstream on every product from the 53 desk events (12,708,297,167 bytes). Develop opens the checkpoint this build writes at event 300 and replays events 301–302.
+
+<a id="change-78c2194073"></a>
+
+### Prepare one-hole constructors for repeated gate calls
+
+Vere recognizes a gate that selects one field of its sample and builds a noun around it. Gate preparation records the field axis and the fixed siblings on the path to that field. Each call fills the hole with its own input. The path can contain up to 16 cells. At each level the fixed sibling can sit on either side and can be a literal or a field of the gate’s battery or lexical environment. A missing field takes the ordinary Nock path and reports the original source locations. The comparison uses develop `baf98ea9c3` and the preceding review `1610b3c303` (runtime `0aebc87353`).
+
+**Clay gates in a running ship.** Take the 24 most recent first-parent Arvo commits with deletions under `pkg/arvo/` starting at `5a187feded`, with rename detection off. In chronological order, build one map from each resulting Git tree, keyed by path components with the hexadecimal blob ID as its value. The 24 maps contain 12,251 entries in total. Apply `+run:by` to each with the gate from `+tako-ford` or the changed-file gate at Clay line 1958. The canonical jam of each benchmark battery equals the bytes captured from that gate during desk replay. The control applies the same value constructor without source annotations. Each number is the median of 18 timed evaluations after one warm-up in a fresh Kelvin 135 fake `~zod`. The three builds rotate on one core. The ordered batch products agree by SHA-256.
+
+| Workload on 24 revisions | Develop, µs | Previous review, µs | Review, µs | Time vs previous review |
+|---|---:|---:|---:|---:|
+| Clay `+tako-ford` | 1,061 / 953 | 1,062.5 / 1,032 | 743 / 685 | 30.1% less / 33.6% less |
+| Clay changed-file gate | 1,003 / 963 | 1,068 / 1,099.5 | 709 / 697 | 33.6% less / 36.6% less |
+| Unannotated control | 814 / 752 | 738 / 719.5 | 712 / 659 | 3.5% less / 8.4% less |
+
+During two additional boots with concurrent compiler builds, the unannotated control ranges from 12.4% longer to 5.6% less time on review.
+
+Combined king and worker PSS after these workloads is 272.36 / 272.39 MiB on develop, 213.59 / 213.59 MiB on previous review, 212.26 / 212.24 MiB on review.
+
+**Captured values.** Three `+turn` workloads apply a gate twice to the same 12,251 entries with a different captured value on the second pass. They construct `[owner path]`, `[hash new]` and `[[%sand hash] owner]` respectively. These exercise left, right and nested captures. Each median covers 18 evaluations after one warm-up. All three builds return the same ordered products.
+
+| Two passes over all entries | Develop, µs | Previous review, µs | Review, µs | Time vs previous review |
+|---|---:|---:|---:|---:|
+| Fixed left sibling | 1,017.5 | 983 | 442 | 55.0% less |
+| Fixed right sibling | 1,033 | 960.5 | 543 | 43.5% less |
+| Nested constructor | 1,156 | 1,074.5 | 610 | 43.2% less |
+
+**Three desk changes in replay.** The 53 events cover creation of a desk, a bulk edit with additions and deletions, and a one-file edit. Identical timers around the public map jets record 140 nonempty `+run:by` and seven nonempty `+urn:by` calls per replay. Fourteen calls use the first Clay battery and six use the second. Each table entry is the median sum of durations per replay. The series contain 15 and 17 replays per build.
+
+| Time inside the public map calls | Previous review, ms | Review, ms |
+|---|---:|---:|
+| All `+run:by` | 1.832 / 1.762 | 1.413 / 1.300 |
+| All `+urn:by` | 0.561 / 0.536 | 0.565 / 0.561 |
+| Combined | 2.390 / 2.305 | 1.989 / 1.858 |
+
+Across 12 replays per uninstrumented binary, the median event interval is 966.188 / 707.937 / 695.025 ms on develop, previous review and review, respectively. Whole-command wall time is 2.064 / 1.046 / 1.013 s. Each build opens its own prepared copy of the same checkpoint before timing.
+
+**Cold replay and compiler controls.** For cold replay through event 143, four paired trials exchange cores between the two builds. Median wall time is 107.22 → 108.71 s and peak RSS is 835.50 → 835.19 MiB. The three-build compiler comparison rotates the order over three trials. A second series alternates the two review builds over six trials. Each compiler time is the recorded Dojo evaluation in seconds.
+
+| Compiler | Develop | Previous review | Review | Previous review / review, second series |
+|---|---:|---:|---:|---:|
+| Hoon | 11.408 | 4.961 | 4.652 | 4.556 / 4.652 |
+| Lull | 9.746 | 3.245 | 3.024 | 2.958 / 2.994 |
+| Zuse | 3.668 | 1.709 | 1.643 | 1.588 / 1.585 |
+
+Separate invocation counts give 54,596 direct constructions for 53,915 prepared constructors in the Hoon compiler replay, 19,095 for 17,477 in Lull and 14,190 for 13,879 in Zuse. The desk replay records 14,965 direct constructions for 3,310 prepared constructors.
+
+**Correctness.** Eight native suites pass on each loom width. In 8,500 differential cases, all 4,735 successful products and all 3,765 exits, including their source traces, match the full Nock evaluator. Develop and both review loom widths produce byte-identical traces. The bootstrap core, 138 cold-replay products and 17 checkpoint products match develop in canonical length and SHA-256 on both widths (33,279,069,693 bytes per width). All 53 additional desk-event products match develop on the 32-bit loom (12,708,342,437 bytes). Develop opens the checkpoint written by review at event 300 and replays events 301–302.
