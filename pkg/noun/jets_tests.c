@@ -860,6 +860,33 @@ _test_ob(void)
   return ret_i;
 }
 
+//  The suffix contributes all bits below its leading 1. Check the join
+//  on both sides of a word and where two direct axes produce a wide atom.
+static void
+_test_peg(void)
+{
+  const c3_y depths[] = {0, 1, 2, 30, 31, 32, 33, 62, 63, 64, 65, 127, 128};
+  for ( c3_w i_w = 0; i_w < sizeof(depths); i_w++ ) {
+    u3_atom a = u3qc_bex(depths[i_w]);
+    if ( depths[i_w] ) a = u3i_vint(a);
+    for ( c3_w j_w = 0; j_w < sizeof(depths); j_w++ ) {
+      c3_w dep_w = depths[j_w];
+      u3_atom b = u3qc_bex(dep_w);
+      if ( dep_w && (i_w & 1) ) b = u3i_vint(b);
+      u3_atom pro = u3qc_peg(a, b);
+      c3_w len_w = dep_w + u3r_met(0, a);
+      u3_assert(u3r_met(0, pro) == len_w);
+      for ( c3_w bit_w = 0; bit_w < len_w; bit_w++ ) {
+        c3_w want_w = (bit_w < dep_w) ? u3r_bit(bit_w, b)
+                                      : u3r_bit(bit_w - dep_w, a);
+        u3_assert(want_w == u3r_bit(bit_w, pro));
+      }
+      u3z(pro); u3z(b);
+    }
+    u3z(a);
+  }
+}
+
 static c3_i
 _test_mas(void)
 {
@@ -2184,6 +2211,8 @@ _test_jets(void)
     fprintf(stderr, "test jets: ob: failed\r\n");
     ret_i = 0;
   }
+
+  _test_peg();
 
   if ( !_test_mas() ) {
     fprintf(stderr, "test jets: mas: failed\r\n");

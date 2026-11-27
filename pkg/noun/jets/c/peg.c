@@ -3,6 +3,55 @@
 
 #include "noun.h"
 
+//  Shift the prefix into its final position and fill the unused low bits.
+static inline void
+_peg_shift(c3_w* restrict out_w, const c3_w* in_w, c3_w len_w,
+           c3_w off_w, c3_w low_w, c3_w extra_w)
+{
+  c3_w back_w = u3a_word_bits - off_w;
+  out_w[0] = (in_w[0] << off_w) | low_w;
+  for ( c3_w i_w = 1; i_w < len_w; i_w++ ) {
+    out_w[i_w] = (in_w[i_w] << off_w) | (in_w[i_w - 1] >> back_w);
+  }
+  if ( extra_w ) {
+    out_w[len_w] = in_w[len_w - 1] >> back_w;
+  }
+}
+
+static u3_atom
+_peg_wide(u3_atom a, u3_atom b)
+{
+  if ( 1 == a ) {
+    return u3k(b);
+  }
+
+  //  The leading one in b marks the join. Copy the words below it, then
+  //  write a above the remaining direction bits in a single pass.
+  c3_w len_a, len_b;
+  const c3_w* src_a = u3r_word_buffer(&a, &len_a);
+  const c3_w* src_b = u3r_word_buffer(&b, &len_b);
+  c3_w top_w = src_b[len_b - 1];
+  c3_w off_w = c3_bits_word(top_w) - 1;
+  c3_w ext_w = (off_w + c3_bits_word(src_a[len_a - 1])) > u3a_word_bits;
+  u3i_slab sab_u;
+  u3i_slab_bare(&sab_u, u3a_word_bits_log, (c3_d)len_a + len_b - 1 + ext_w);
+  c3_w* dst_w = sab_u.buf_w;
+  memcpy(dst_w, src_b, (len_b - 1) * sizeof(c3_w));
+  dst_w += len_b - 1;
+
+  //  Appending one head or tail uses a constant shift across all words.
+  if ( 1 == off_w ) {
+    _peg_shift(dst_w, src_a, len_a, 1, top_w & 1, ext_w);
+  }
+  else if ( !off_w ) {
+    memcpy(dst_w, src_a, len_a * sizeof(c3_w));
+  }
+  else {
+    _peg_shift(dst_w, src_a, len_a, off_w, top_w ^ ((c3_w)1 << off_w), ext_w);
+  }
+  return u3i_slab_moot(&sab_u);
+}
+
 u3_noun
 u3qc_peg(u3_atom a, u3_atom b)
 {
@@ -13,40 +62,15 @@ u3qc_peg(u3_atom a, u3_atom b)
     return u3k(a);
   }
 
-  c3_d a_d, b_d;
-  c3_w c_w;
-
   if ( (c3y == u3a_is_cat(a)) && (c3y == u3a_is_cat(b)) ) {
-    c_w = c3_bits_word(b) - 1;
-    a_d = a;
-    b_d = b;
-  }
-  else {
-    c3_w d_w = u3r_met(0, a);
-    c3_d e_d;
-
-    c_w = u3r_met(0, b) - 1;
-    e_d = (c3_d)c_w + d_w;
-
-    if ( 64 <= e_d ) {
-      u3i_slab sab_u;
-      u3i_slab_init(&sab_u, 0, e_d);
-
-      u3r_chop(0, 0, c_w,   0, sab_u.buf_w, b);
-      u3r_chop(0, 0, d_w, c_w, sab_u.buf_w, a);
-
-      return u3i_slab_moot(&sab_u);
+    c3_w dep_w = c3_bits_word(b) - 1;
+    //  Removing one prefix unit cancels the leading bit already in b.
+    if ( (32 == u3a_word_bits) || (a <= (UINT64_MAX >> dep_w)) ) {
+      return u3i_chub((((c3_d)a - 1) << dep_w) + b);
     }
-
-    a_d = u3r_chub(0, a);
-    b_d = u3r_chub(0, b);
   }
 
-  b_d  &= ((c3_d)1 << c_w) - 1;
-  a_d <<= c_w;
-  a_d  ^= b_d;
-
-  return u3i_chub(a_d);
+  return _peg_wide(a, b);
 }
 
 u3_noun
