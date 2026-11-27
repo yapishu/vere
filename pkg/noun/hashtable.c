@@ -36,6 +36,7 @@ u3h_new_cache(c3_w max_w)
   har_u->use_w       = 0;
   har_u->arm_u.mug_h = 0;
   har_u->arm_u.inx_h = 0;
+  har_u->arm_u.hit_t = har_u->arm_u.ret_t = har_u->arm_u.dep_t = 0;
 
   for ( i_h = 0; i_h < 64; i_h++ ) {
     har_u->sot_w[i_h] = 0;
@@ -81,12 +82,12 @@ _ch_node_new(c3_h len_h)
   return han_u;
 }
 
-static void _ch_slot_put(u3h_slot*, u3_noun, c3_h, c3_h, c3_w*);
+static void _ch_slot_put(u3h_slot*, u3h_slot, c3_h, c3_h, c3_w*);
 
 /* _ch_node_add(): add to node.
 */
 static u3h_node*
-_ch_node_add(u3h_node* han_u, c3_h lef_h, c3_h rem_h, u3_noun kev, c3_w *use_w)
+_ch_node_add(u3h_node* han_u, c3_h lef_h, c3_h rem_h, u3h_slot add_w, c3_w *use_w)
 {
   c3_h bit_h, inx_h, map_h, i_h;
 
@@ -97,7 +98,7 @@ _ch_node_add(u3h_node* han_u, c3_h lef_h, c3_h rem_h, u3_noun kev, c3_w *use_w)
   inx_h = _ch_popcount(CUT_END(map_h, bit_h));
 
   if ( BIT_SET(map_h, bit_h) ) {
-    _ch_slot_put(&(han_u->sot_w[inx_h]), kev, lef_h, rem_h, use_w);
+    _ch_slot_put(&(han_u->sot_w[inx_h]), add_w, lef_h, rem_h, use_w);
     return han_u;
   }
   else {
@@ -111,7 +112,7 @@ _ch_node_add(u3h_node* han_u, c3_h lef_h, c3_h rem_h, u3_noun kev, c3_w *use_w)
     for ( i_h = 0; i_h < inx_h; i_h++ ) {
       nah_u->sot_w[i_h] = han_u->sot_w[i_h];
     }
-    nah_u->sot_w[inx_h] = u3h_noun_be_warm(u3h_noun_to_slot(kev));
+    nah_u->sot_w[inx_h] = add_w;
     for ( i_h = inx_h; i_h < len_h; i_h++ ) {
       nah_u->sot_w[i_h + 1] = han_u->sot_w[i_h];
     }
@@ -125,9 +126,10 @@ _ch_node_add(u3h_node* han_u, c3_h lef_h, c3_h rem_h, u3_noun kev, c3_w *use_w)
 /* ch_buck_add(): add to bucket.
 */
 static u3h_buck*
-_ch_buck_add(u3h_buck* hab_u, u3_noun kev, c3_w *use_w)
+_ch_buck_add(u3h_buck* hab_u, u3h_slot add_w, c3_w *use_w)
 {
   c3_h i_h;
+  u3_noun kev = u3h_slot_to_noun(add_w);
 
   //  if our key is equal to any of the existing keys in the bucket,
   //  then replace that key-value pair with kev.
@@ -135,7 +137,7 @@ _ch_buck_add(u3h_buck* hab_u, u3_noun kev, c3_w *use_w)
   for ( i_h = 0; i_h < hab_u->len_h; i_h++ ) {
     u3_noun kov = u3h_slot_to_noun(hab_u->sot_w[i_h]);
     if ( c3y == u3r_sing(u3h(kev), u3h(kov)) ) {
-      hab_u->sot_w[i_h] = u3h_noun_to_slot(kev);
+      hab_u->sot_w[i_h] = add_w;
       u3z(kov);
       return hab_u;
     }
@@ -145,7 +147,7 @@ _ch_buck_add(u3h_buck* hab_u, u3_noun kev, c3_w *use_w)
   //  Optimize: use u3a_wealloc().
   {
     u3h_buck* bah_u = _ch_buck_new(1 + hab_u->len_h);
-    bah_u->sot_w[0] = u3h_noun_be_warm(u3h_noun_to_slot(kev));
+    bah_u->sot_w[0] = add_w;
 
     for ( i_h = 0; i_h < hab_u->len_h; i_h++ ) {
       bah_u->sot_w[i_h + 1] = hab_u->sot_w[i_h];
@@ -160,12 +162,12 @@ _ch_buck_add(u3h_buck* hab_u, u3_noun kev, c3_w *use_w)
 /* _ch_some_add(): add to node or bucket.
 */
 static void*
-_ch_some_add(void* han_v, c3_h lef_h, c3_h rem_h, u3_noun kev, c3_w *use_w)
+_ch_some_add(void* han_v, c3_h lef_h, c3_h rem_h, u3h_slot add_w, c3_w *use_w)
 {
   if ( 0 == lef_h ) {
-    return _ch_buck_add((u3h_buck*)han_v, kev, use_w);
+    return _ch_buck_add((u3h_buck*)han_v, add_w, use_w);
   }
-  else return _ch_node_add((u3h_node*)han_v, lef_h, rem_h, kev, use_w);
+  else return _ch_node_add((u3h_node*)han_v, lef_h, rem_h, add_w, use_w);
 }
 
 /* _ch_two(): create a new node with two leaves underneath
@@ -218,13 +220,13 @@ _ch_two(u3h_slot had_w, u3h_slot add_w, c3_h lef_h, c3_h ham_h, c3_h mad_h)
 */
 void _hbreak() {}
 static void
-_ch_slot_put(u3h_slot* sot_w, u3_noun kev, c3_h lef_h, c3_h rem_h, c3_w* use_w)
+_ch_slot_put(u3h_slot* sot_w, u3h_slot add_w, c3_h lef_h, c3_h rem_h, c3_w* use_w)
 {
   if ( c3n == u3h_slot_is_noun(*sot_w) ) {
     void* hav_v = _ch_some_add(u3h_slot_to_node(*sot_w),
                                lef_h,
                                rem_h,
-                               kev,
+                               add_w,
                                use_w);
 
     u3_assert( c3y == u3h_slot_is_node(*sot_w) );
@@ -233,7 +235,7 @@ _ch_slot_put(u3h_slot* sot_w, u3_noun kev, c3_h lef_h, c3_h rem_h, c3_w* use_w)
   }
   else {
     u3_noun  kov   = u3h_slot_to_noun(*sot_w);
-    u3h_slot add_w = u3h_noun_be_warm(u3h_noun_to_slot(kev));
+    u3_noun  kev   = u3h_slot_to_noun(add_w);
     if ( c3y == u3r_sing(u3h(kev), u3h(kov)) ) {
       // replace old value
       u3z(kov);
@@ -248,26 +250,25 @@ _ch_slot_put(u3h_slot* sot_w, u3_noun kev, c3_h lef_h, c3_h rem_h, c3_w* use_w)
   }
 }
 
-/* u3h_put_get(): insert in caching hashtable, returning deleted key-value pair
-**
-** `key` is RETAINED; `val` is transferred.
-*/
-u3_weak
-u3h_put_get(u3p(u3h_root) har_p, u3_noun key, u3_noun val)
+static u3_weak
+_ch_put(u3h_root* har_u, u3_noun key, u3_noun val, c3_t cold_t)
 {
-  u3h_root* har_u = u3to(u3h_root, har_p);
-  u3_noun   kev   = u3nc(u3k(key), val);
+  u3h_slot  add_w = u3h_noun_to_slot(u3nc(u3k(key), val));
   c3_h      mug_h = u3r_mug(key);
   c3_h      inx_h = (mug_h >> 25);  //  6 bits
   c3_h      rem_h = CUT_END(mug_h, 25);
   u3h_slot* sot_w = &(har_u->sot_w[inx_h]);
 
+  if ( cold_t ) {
+    add_w = u3h_noun_be_cold(add_w);
+  }
+
   if ( c3y == u3h_slot_is_null(*sot_w) ) {
-    *sot_w = u3h_noun_be_warm(u3h_noun_to_slot(kev));
+    *sot_w = add_w;
     har_u->use_w += 1;
   }
   else {
-    _ch_slot_put(sot_w, kev, 25, rem_h, &(har_u->use_w));
+    _ch_slot_put(sot_w, add_w, 25, rem_h, &(har_u->use_w));
   }
 
   {
@@ -283,6 +284,16 @@ u3h_put_get(u3p(u3h_root) har_p, u3_noun key, u3_noun val)
 
     return ret;
   }
+}
+
+/* u3h_put_get(): insert in caching hashtable, returning deleted key-value pair
+**
+** `key` is RETAINED; `val` is transferred.
+*/
+u3_weak
+u3h_put_get(u3p(u3h_root) har_p, u3_noun key, u3_noun val)
+{
+  return _ch_put(u3to(u3h_root, har_p), key, val, 0);
 }
 
 /* u3h_put(): insert in hashtable.
@@ -304,11 +315,24 @@ u3h_put(u3p(u3h_root) har_p, u3_noun key, u3_noun val)
 void
 u3h_put_batched(u3p(u3h_root) har_p, u3_noun key, u3_noun val)
 {
-  u3_weak del = u3h_put_get(har_p, key, val);
+  u3h_root* har_u = u3to(u3h_root, har_p);
+  u3_noun   kev[16];
+  c3_t      bat_t = har_u->max_w >= 256 * c3_array_len(kev);
+
+  // A stream of miss/save pairs admits warm entries. A save following
+  // a hit or another save suggests nested work. If this group also has
+  // a hit, admit cold entries until the next trim.
+  // https://jaleels.org/ajaleel/publications/isca2007-dip.pdf
+  c3_t cold_t = 0;
+  if ( bat_t && har_u->use_w >= har_u->max_w - (c3_array_len(kev) - 1) ) {
+    har_u->arm_u.dep_t |= har_u->arm_u.ret_t;
+    har_u->arm_u.ret_t = 1;
+    cold_t = har_u->arm_u.dep_t && har_u->arm_u.hit_t;
+  }
+  u3_weak del = _ch_put(har_u, key, val, cold_t);
   if ( u3_none != del ) {
-    u3h_root* har_u = u3to(u3h_root, har_p);
-    u3_noun   kev[16];
-    if ( har_u->max_w < 256 * c3_array_len(kev) ) {
+    har_u->arm_u.hit_t = har_u->arm_u.ret_t = har_u->arm_u.dep_t = 0;
+    if ( !bat_t ) {
       u3z(del);
       return;
     }

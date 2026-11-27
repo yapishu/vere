@@ -57,7 +57,9 @@
   struct {                                                                          \
     c3_h mug_h;                     /* current hash                              */ \
     c3_h inx_h;                     /* index into current hash bucket            */ \
-    c3_o buc_o;                     /* XX remove                                 */ \
+    c3_t hit_t;                     /* hit since the last group of evictions     */ \
+    c3_t ret_t;                     /* last memo operation produced a value      */ \
+    c3_t dep_t;                     /* a save followed a hit or another save     */ \
   } arm_u;                          /* clock arm                                 */ \
   U3_PASTE(u3h_slot, S) sot_w[64];  /* slots                                     */
 

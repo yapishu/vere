@@ -94,7 +94,14 @@ u3z_find(u3z_cid cid, u3_noun key)
     //  we have to check the current road only so that we don't skip portable
     //  memo hints
     //
-    return u3h_get(_har(u3R, cid), key);
+    u3p(u3h_root) har_p = _har(u3R, cid);
+    u3_weak pro = u3h_get(har_p, key);
+    if ( u3z_memo_toss == cid && u3R->par_p ) {
+      u3h_root* har_u = u3to(u3h_root, har_p);
+      har_u->arm_u.ret_t = u3_none != pro;
+      har_u->arm_u.hit_t |= har_u->arm_u.ret_t;
+    }
+    return pro;
   }
 
   return _find_in_roads(cid, key, NULL);

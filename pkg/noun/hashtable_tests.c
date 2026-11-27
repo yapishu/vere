@@ -291,6 +291,42 @@ _test_batched_put(void)
   u3z(lit);
 }
 
+/* Reserve one root slot so the clock reaches the incoming key after all
+** the warm residents. A hit makes that key the first victim. The next
+** insertion gets a second chance when no lookup hits after the trim.
+*/
+static void
+_test_memo_clock(void)
+{
+  u3m_hate(0);
+  u3h_free(u3R->cax.har_p);
+  u3p(u3h_root) har_p = u3R->cax.har_p = u3h_new_cache(4096);
+  u3h_root*     har_u = u3to(u3h_root, har_p);
+  u3_noun       key = 0, hit = 0, fresh = 0;
+
+  while ( har_u->use_w < har_u->max_w ) {
+    if ( 63 == (u3r_mug(key) >> 25) ) {
+      fresh = key;
+    }
+    else {
+      hit = key;
+      u3z_save(u3z_memo_toss, key, key);
+    }
+    ++key;
+  }
+  u3_assert(63 == (u3r_mug(fresh) >> 25));
+  u3_assert(hit == u3z_find(u3z_memo_toss, hit));
+  u3z_save(u3z_memo_toss, fresh, fresh);
+  u3_assert(u3_none == u3z_find(u3z_memo_toss, fresh));
+  u3z_save(u3z_memo_toss, fresh, fresh);
+  u3_assert(c3y == u3h_slot_is_warm(har_u->sot_w[63]));
+  u3_assert(fresh == u3z_find(u3z_memo_toss, fresh));
+  u3_assert(u3_none == u3z_find(u3z_memo_toss, key));
+  u3z_save(u3z_memo_toss, fresh, fresh);
+  u3_assert(c3y == u3h_slot_is_warm(har_u->sot_w[63]));
+  u3z(u3m_love(0));
+}
+
 /* A full release queue hands the decrement and allocator trace to u3z().
 */
 static void
@@ -354,6 +390,7 @@ _test_hashtable(void)
   ret_i &= _test_skip_slot();
   ret_i &= _test_cache_trimming();
   _test_clock_order();
+  _test_memo_clock();
   u3m_hate(0);
   _test_batched_put();
   _test_release_spill();
