@@ -472,18 +472,16 @@ _cj_find_cold(u3_noun bat)
 {
   u3a_road* rod_u = u3R;
 
-  while ( 1 ) {
-    u3_weak bar = u3h_get(rod_u->jed.cod_p, bat);
-
-    if ( u3_none != bar ) {
-      return bar;
+  while ( rod_u->par_p ) {
+    if ( u3h_wyt(rod_u->jed.cod_p) ) {
+      u3_weak bar = u3h_get(rod_u->jed.cod_p, bat);
+      if ( u3_none != bar ) {
+        return bar;
+      }
     }
-
-    if ( rod_u->par_p ) {
-      rod_u = u3to(u3_road, rod_u->par_p);
-    }
-    else return u3_none;
+    rod_u = u3to(u3a_road, rod_u->par_p);
   }
+  return u3h_get(rod_u->jed.cod_p, bat);
 }
 
 /* _cj_find_warm(): search warm state for `loc`s activation.
