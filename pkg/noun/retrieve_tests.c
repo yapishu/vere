@@ -464,6 +464,20 @@ _test_mug(void)
 
     u3z(max);
   }
+  // Compare the scalar path with the byte hash at every byte boundary.
+  // The last four inputs exercise a zero mug on the first seed.
+  {
+    const c3_d values[] = {
+      0, 1, 0xff, 0x100, 0xffff, 0x10000, 0xffffff, 0x1000000,
+      0xffffffff, 1ULL << 32, 1ULL << 40, 1ULL << 48, 1ULL << 56,
+      UINT64_MAX, 0x6ddb5cd6, 0xb33b0b40,
+      0x30c2955812345678ULL, 0x3e460a6412345678ULL
+    };
+    for ( size_t i = 0; i < sizeof(values) / sizeof(*values); i++ ) {
+      c3_w word = (c3_w)values[i];
+      u3_assert(u3r_mug_word(word) == u3r_mug_words(&word, 1));
+    }
+  }
   if __(fal_o)
     exit(1);
 }

@@ -1919,7 +1919,13 @@ u3r_mug_words(const c3_w* key_w, c3_w len_w)
 c3_l
 u3r_mug_word(c3_w key_w)
 {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   return u3r_mug_words(&key_w, 1);
+#elif defined(VERE64)
+  return ur_mug64(key_w);
+#else
+  return ur_mug32(key_w);
+#endif
 }
 
 
@@ -1940,7 +1946,7 @@ _cr_mug_next(u3a_pile* pil_u, u3_noun veb)
     //  veb is a direct atom, mug is not memoized
     //
     if ( c3y == u3a_is_cat(veb) ) {
-      return (c3_h)u3r_mug_words(&veb, 1);
+      return (c3_h)u3r_mug_word(veb);
     }
     //  veb is indirect, a pointer into the loom
     //

@@ -215,6 +215,10 @@ ur_coin64(ur_root_t *r, uint64_t n);
 ur_nref
 ur_cons(ur_root_t *r, ur_nref hed, ur_nref tal);
 
+/* Mug an integer as its significant little-endian bytes. */
+ur_mug ur_mug32(uint32_t x);
+ur_mug ur_mug64(uint64_t x);
+
 /* Combine the mugs of a cell's head and tail.
 */
 ur_mug

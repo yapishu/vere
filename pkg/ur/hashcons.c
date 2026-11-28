@@ -368,36 +368,6 @@ ur_mug_bytes(const uint8_t *byt, uint64_t len)
   return (ur_mug)0x7fff;
 }
 
-ur_mug
-ur_mug32(uint32_t x)
-{
-  uint8_t byt[4] = {
-    ur_mask_8(x >>  0),
-    ur_mask_8(x >>  8),
-    ur_mask_8(x >> 16),
-    ur_mask_8(x >> 24)
-  };
-
-  return ur_mug_bytes(byt, ur_met3_32(x));
-}
-
-ur_mug
-ur_mug64(uint64_t x)
-{
-  uint8_t byt[8] = {
-    ur_mask_8(x >>  0),
-    ur_mask_8(x >>  8),
-    ur_mask_8(x >> 16),
-    ur_mask_8(x >> 24),
-    ur_mask_8(x >> 32),
-    ur_mask_8(x >> 40),
-    ur_mask_8(x >> 48),
-    ur_mask_8(x >> 56)
-  };
-
-  return ur_mug_bytes(byt, ur_met3_64(x));
-}
-
 // MurmurHash3_x86_32 mixes each little-endian input word independently.
 // https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
 static inline uint32_t
@@ -414,6 +384,51 @@ _mug_block(uint32_t hash, uint32_t word)
   return ((hash << 13) | (hash >> 19)) * 5 + 0xe6546b64U;
 }
 
+static inline ur_mug
+_mug_finish(uint32_t hash, uint8_t len)
+{
+  hash ^= len;
+  hash ^= hash >> 16;
+  hash *= 0x85ebca6bU;
+  hash ^= hash >> 13;
+  hash *= 0xc2b2ae35U;
+  hash ^= hash >> 16;
+  return (hash >> 31) ^ ur_mask_31(hash);
+}
+
+static inline ur_mug
+_mug_scalar(uint32_t lo, uint32_t hi, uint8_t len)
+{
+  // The byte hasher reads full blocks in host order and the tail bytewise.
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  if ( len >= 4 ) lo = __builtin_bswap32(lo);
+  if ( len == 8 ) hi = __builtin_bswap32(hi);
+#endif
+  uint32_t left = _mug_word(lo);
+  uint32_t right = _mug_word(hi);
+
+  for ( uint32_t i = 0; i < 8; i++ ) {
+    uint32_t hash = 0xcafebabeU + i;
+    hash = (len < 4) ? hash ^ left : _mug_block(hash, left);
+    hash = (len == 8) ? _mug_block(hash, right) : hash ^ right;
+    ur_mug mug = _mug_finish(hash, len);
+    if ( mug ) return mug;
+  }
+  return 0x7fff;
+}
+
+ur_mug
+ur_mug32(uint32_t x)
+{
+  return _mug_scalar(x, 0, ur_met3_32(x));
+}
+
+ur_mug
+ur_mug64(uint64_t x)
+{
+  return _mug_scalar((uint32_t)x, x >> 32, ur_met3_64(x));
+}
+
 ur_mug
 ur_mug_both(ur_mug hed, ur_mug tal)
 {
@@ -425,13 +440,7 @@ ur_mug_both(ur_mug hed, ur_mug tal)
     uint32_t hash = _mug_block(0xdeadbeefU + i, left);
     // The head fills a block. The tail occupies its significant bytes.
     hash = (8 == len) ? _mug_block(hash, right) : hash ^ right;
-    hash ^= len;
-    hash ^= hash >> 16;
-    hash *= 0x85ebca6bU;
-    hash ^= hash >> 13;
-    hash *= 0xc2b2ae35U;
-    hash ^= hash >> 16;
-    ur_mug mug = (hash >> 31) ^ ur_mask_31(hash);
+    ur_mug mug = _mug_finish(hash, len);
     if ( mug ) return mug;
   }
   return 0xfffe;
