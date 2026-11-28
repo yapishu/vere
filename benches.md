@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 28 November 2026
+
+In cold replay, 1,189 outermost calls that collect blocking paths for partial Nock evaluation take **1.01 s** of worker CPU, down from **5.15 s** on the preceding review (80.5% less). In a running Dojo, partial evaluation of a 500-layer shared stencil takes **0.127 ms**, down from **7.676 ms**. [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3)
 
 In self-hosted Hoon compilation, the type intersection gate `+fuse` takes **63.1% less CPU time** than on the preceding review. Intersecting 256 records with a 64-way tagged union in Dojo takes **90.2–90.5% less time on hits** across two boots. [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c)
 
@@ -44,7 +46,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay. [c45cfd8d75](https://github.com/yapishu/vere/commit/c45cfd8d752db1a63486c055eb7068f19452e218) · [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362)
 
-[Type intersection](#change-bb13666ea0) · [Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Shared tree folds](#change-23f81a0172) · [Type intersection](#change-bb13666ea0) · [Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -257,6 +259,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [c752c28e72](https://github.com/yapishu/vere/commit/c752c28e72b0b893ff214089eb9e839d92817b9f) | check strict subtyping with the compiler’s failure continuation | [Incremental](#change-c752c28e72) |
 | [76ff110c0d](https://github.com/yapishu/vere/commit/76ff110c0d44e47518a15ef6f4c52d05b2a370a0) | share the fixed record tag across subtype checks against a union | [Incremental](#change-76ff110c0d) |
 | [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c) | intersect type trees and resume recursive checks in the Hoon trap | [Incremental](#change-bb13666ea0) |
+| [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3) | evaluate two-state folds over shared subtrees with bounded storage | [Incremental](#change-23f81a0172) |
 
 ## Measurements by change
 
@@ -3471,3 +3474,53 @@ Each replay starts from its own copy of the same frozen event log without a chec
 **Correctness.** On both 32- and 64-bit looms, each of the 288 sampled compiler calls matches both the preceding review and direct evaluation of the Hoon arm on complete products. A further 4,096 cases per width match on 3,338 normal returns and 758 errors, including complete error nouns and observed memo values. These cover disjoint heads with failing tails, indirect atoms, faces, hints, unions, malformed trees, recursive holds, altered `+repo` arms and the native depth boundary. The 512 unseeded cases also run the original Hoon arm. The other 3,584 seed existing `+fuse` or `+rest` entries.
 
 Eight native suites pass on each loom width. Each width reproduces develop’s canonical jam length and SHA-256 for the bootstrap core and all 155 replay products (33.28 GB) and all six compiler-window products (1.44 GB). Develop reopens the checkpoint saved at event 241 and completes events 242–249.
+
+<a id="change-23f81a0172"></a>
+
+### Shared tree folds
+
+The partial Nock interpreter tracks which paths block a result. Its `+squash:musk` gate visits a binary stencil and combines the sets of blockers at its leaves. One stencil captured during cold replay has **46,433 distinct branches** and depth 450. Expanding each occurrence separately visits **10,477,595 nodes**. Many paths lead to the same cell. [Hoon stencil fold](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L7202-L7211)
+
+Vere evaluates recognized two-state folds directly over this shared structure. It computes the sixteen possible binary truth tables together. It then proves how the gate merges each of the four possible pairs of leaf values and selects the corresponding result. A bounded postorder walk remembers child pairs that multiple paths can reach, including pairs held on older allocation roads. A hit grants more traversal work. Once the table reaches 4,096 entries, a new generation reuses the same storage. Each scan starts a fresh generation. A second distinct nonzero leaf, an opaque operation or a traversal limit returns control to ordinary Nock. [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3) · [Lohrey and Maneth, *The complexity of tree automata and XPath on grammar-compressed trees*](https://doi.org/10.1016/j.tcs.2006.07.024)
+
+**Cold replay through event 143.** Instrumented builds time the outermost recognized `%half` calls to `+squash:musk`. The timer measures worker-thread CPU, including ordinary Nock execution when a fold defers. Input and result mugs are recorded outside the timer. In a separate replay, the SHA-256 of every observed battery’s canonical jam matches that of the gate evaluated by name in Dojo. All four pairs of replays agree on the ordered inputs and results for **1,189 calls**. The builds exchange physical cores between trials.
+
+| Outermost fold CPU | Preceding review, s | Review, s | Less time |
+|---|---:|---:|---:|
+| Median of four replays | 5.153 | 1.005 | 80.5% |
+
+Uninstrumented releases replay the complete frozen Kelvin 135 fake ~zod from bootstrap on two physical cores in opposite build orders. Median wall time is **335.00 / 97.22 / 95.94 s** for develop / preceding review / this revision. Peak process RSS is **1145.1 / 816.4 / 816.3 MiB** in the same order. A separate series starts both reviews together, exchanges cores each round and gives **93.33 → 90.39 s** (3.2% less). This revision finishes first in all four pairs. Median peak RSS in the paired series is **816.5 → 816.3 MiB**. Other verification jobs run on the host.
+
+**Live Dojo.** Each command folds a prebuilt stencil. A shared layer attaches the same depth-10 subtree to another branch. The result must equal the expected singleton set, and the canonical jam digest is checked outside the timer. Six trials after warm-up rotate three binaries on one core. Eight trials on a second boot compare the two reviews.
+
+| Stencil | Develop, ms | Preceding review, ms | Review, ms | Less time vs preceding review, two boots |
+|---|---:|---:|---:|---:|
+| Balanced, depth 6 | 0.0310 | 0.0160 | 0.0140 | 10.3–12.5% |
+| Balanced, depth 14 | 5.8125 | 0.7360 | 0.6705 | 8.9–12.2% |
+| 300 shared layers | 103.7025 | 1.6815 | 0.0715 | 95.5–95.7% |
+| 500 shared layers | 177.1420 | 4.7715 | 0.0980 | 97.9–98.2% |
+
+After the 500-layer command, median combined king and worker PSS is 133.7 / 119.9 / 121.7 MiB in the three-way run and 123.5 / 121.7 MiB for the two reviews in the paired run. The fold table and traversal stack together reserve 76 KiB on the 32-bit loom and 144 KiB on the 64-bit loom. The preceding table reserves 96 and 128 KiB respectively.
+
+**Partial Nock evaluation.** A second live workload evaluates the identity formula `[0 1]` against a partial subject using `+araw:musk`, then uses `+abet:musk` to return the complete value or the list of blocking paths. Both builds reproduce the expected result for each input, including a union of two different block sets and a leaf that forces a thunk. The timer covers both gate calls. Values are medians of seven paired trials after warm-up. [Partial Nock result normalization](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L6740-L6775)
+
+| Input stencil | Preceding review, ms | Review, ms | Less time |
+|---|---:|---:|---:|
+| Balanced, depth 14 | 1.066 | 0.918 | 13.9% |
+| 300 shared layers | 2.758 | 0.115 | 95.8% |
+| 500 shared layers | 7.676 | 0.127 | 98.3% |
+| 300 shared layers plus a second block set | 2.748 | 0.119 | 95.7% |
+| 500 layers of empty blocks | 1.038 | 0.033 | 96.8% |
+| 300 shared layers plus a resolved lazy leaf | 2.722 | 0.124 | 95.4% |
+
+**Compilers.** Five trials rotate the release binaries on one core, from each build’s own checkpoint immediately before the command. Times cover the recorded Dojo evaluation.
+
+| Compiler | Develop, s | Preceding review, s | Review, s | Change vs preceding review |
+|---|---:|---:|---:|---:|
+| Self-hosted Hoon | 11.910 | 3.308 | 3.375 | 2.0% more |
+| Lull | 9.605 | 2.326 | 2.317 | 0.4% less |
+| Zuse | 3.882 | 1.357 | 1.342 | 1.1% less |
+
+**Correctness.** On each loom width, twenty shared tree shapes captured during cold replay supply 640 full-root comparisons against an independent bottom-up evaluator and 2,560 smaller comparisons against scalar Nock. These cover all sixteen binary truth tables in direct and curried gates. Another 131,077 calls alternate products across the generation boundary, and 48 cross-road cases exercise depths immediately around the 1,024-frame limit. Eight native suites pass on each loom width.
+
+Both widths reproduce develop’s canonical jam lengths and SHA-256 hashes for the bootstrap core and 155 replay products (33.28 GB) and six compiler-window products (1.44 GB). Develop reopens a checkpoint saved by this revision at event 241 and completes events 242–249.
