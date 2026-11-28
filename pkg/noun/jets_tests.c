@@ -1703,6 +1703,64 @@ _check_play(u3_noun sut, u3_noun gen, c3_o vet, u3_weak want)
 }
 
 static void
+_test_open_calls(void)
+{
+  for ( c3_w n = 0; n <= 70; ++n ) {
+    u3_noun args = u3_nul;
+    for ( c3_w i = n; i; --i ) args = u3nc(i, args);
+    u3_noun wing = u3nc('a', u3_nul);
+    u3_noun cor = u3nt(0, u3nq(c3__cnsg, u3k(wing), 'g', args), 0);
+    u3_weak call = u3wfp_open(cor);
+    u3z(cor);
+    u3_noun w, g, edits;
+    u3_assert(call != u3_none && c3y == u3r_pqr(call, c3__cntr, &w, &g, &edits));
+    u3_assert(c3y == u3r_sing(wing, w) && g == 'g');
+
+    cor = u3nt(0, call, 0);
+    u3_weak body = u3wfp_open(cor);
+    u3_assert(body != u3_none);
+    if ( !n ) {
+      u3_noun want = u3nt(c3__tsgr, 'g', u3nc(c3__wing, u3k(wing)));
+      u3_assert(c3y == u3r_sing(want, body));
+      u3z(want);
+    }
+    else {
+      u3_noun arm, changes, way = u3nt('a', u3nc(c3y, 2), u3_nul);
+      u3_assert(c3y == u3r_pq(body, c3__tsls, &g, &arm) && g == 'g');
+      u3_assert(c3y == u3r_pq(arm, c3__cnts, &w, &changes) && c3y == u3r_sing(w, way));
+      u3z(way);
+      for ( c3_w i = 0; i < n; ++i ) {
+        u3_atom top = u3qc_lsh(0, i, 7), axe = u3qa_dec(top);
+        u3z(top);
+        if ( i + 1 != n ) {
+          u3_atom head = u3qc_lsh(0, 1, axe);
+          u3z(axe);
+          axe = head;
+        }
+        u3_noun path = u3nt(u3nt(c3n, 0, 0), u3nc(c3y, axe), u3_nul);
+        u3_noun edit = u3nc(u3k(path), i + 1);
+        u3_noun change = u3nc(path, u3nt(c3__tsgr, u3nc(0, 3), i + 1));
+        u3_assert(c3y == u3r_sing(u3h(edits), edit));
+        u3_assert(c3y == u3r_sing(u3h(changes), change));
+        u3z(edit); u3z(change);
+        edits = u3t(edits); changes = u3t(changes);
+      }
+      u3_assert(!edits && !changes);
+    }
+    u3z(body); u3z(cor); u3z(wing);
+  }
+
+  u3_noun bad[] = {u3nq(c3__cnsg, 0, 0, u3nc(0, 1)),
+                   u3nq(c3__cntr, 0, 0, u3nt(u3nc(0, 1), 2, 0)),
+                   u3nq(c3__cntr, 1, 0, u3nc(u3nc(0, 1), 0))};
+  for ( c3_w i = 0; i < 3; ++i ) {
+    u3_noun cor = u3nt(0, bad[i], 0);
+    u3_assert(u3_none == u3wfp_open(cor));
+    u3z(cor);
+  }
+}
+
+static void
 _test_play(void)
 {
   u3_noun typ = u3nt(c3__atom, c3__ud, 0);
@@ -2308,6 +2366,7 @@ _test_jets(void)
   _test_fond();
   _test_fond_record();
   _test_peek();
+  _test_open_calls();
   _test_play();
   _test_toss();
   _test_nest();

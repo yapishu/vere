@@ -402,6 +402,7 @@ const c_source_files = [_][]const u8{
     "jets/e/trip.c",
     "jets/e/urwasm.c",
     "jets/e/zlib.c",
+    "jets/f/ap_open.c",
     "jets/f/cell.c",
     "jets/f/comb.c",
     "jets/f/cons.c",

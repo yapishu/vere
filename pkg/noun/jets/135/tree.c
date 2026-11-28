@@ -1075,8 +1075,12 @@ static u3j_core _135_qua__vi_d[] =
     {}
   };
 
+static u3j_harm _135_qua_ap_a[] = {{"open", u3wfp_open}, {}};
+static u3j_hood _135_qua_ap_ho[] = {{"open", 10}, {"rake", 188}, {}};
+
 static u3j_core _135_qua_d[] =
   { { "pen", 3, 0, _135_pen_d, no_hashes, _135_pen_ho },
+    { "ap", 15, _135_qua_ap_a, 0, no_hashes, _135_qua_ap_ho },
 
     { "po", 7, 0, _135_qua__po_d, no_hashes },
 
