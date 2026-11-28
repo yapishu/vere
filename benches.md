@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 28 November 2026
+Review branch `review/noun-runtime` through [0ed82ca73a](https://github.com/yapishu/vere/commit/0ed82ca73ac6bf14f93d0b45a6208ba353e8ca49) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 28 November 2026
+
+In real Hoon, Lull and Zuse compiler calls, constructing a tuple of quoted heads on the current subject takes **31.7–34.2% less time** than on the preceding review. Cold replay executes the instruction **256.6 million times**. [0ed82ca73a](https://github.com/yapishu/vere/commit/0ed82ca73ac6bf14f93d0b45a6208ba353e8ca49)
 
 In cold replay, 1,189 outermost calls that collect blocking paths for partial Nock evaluation take **1.01 s** of worker CPU, down from **5.15 s** on the preceding review (80.5% less). In a running Dojo, partial evaluation of a 500-layer shared stencil takes **0.127 ms**, down from **7.676 ms**. [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3)
 
@@ -46,7 +48,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay. [c45cfd8d75](https://github.com/yapishu/vere/commit/c45cfd8d752db1a63486c055eb7068f19452e218) · [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362)
 
-[Shared tree folds](#change-23f81a0172) · [Type intersection](#change-bb13666ea0) · [Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Literal subject prefixes](#change-0ed82ca73a) · [Shared tree folds](#change-23f81a0172) · [Type intersection](#change-bb13666ea0) · [Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -260,6 +262,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [76ff110c0d](https://github.com/yapishu/vere/commit/76ff110c0d44e47518a15ef6f4c52d05b2a370a0) | share the fixed record tag across subtype checks against a union | [Incremental](#change-76ff110c0d) |
 | [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c) | intersect type trees and resume recursive checks in the Hoon trap | [Incremental](#change-bb13666ea0) |
 | [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3) | evaluate two-state folds over shared subtrees with bounded storage | [Incremental](#change-23f81a0172) |
+| [0ed82ca73a](https://github.com/yapishu/vere/commit/0ed82ca73ac6bf14f93d0b45a6208ba353e8ca49) | compile literal prefixes of the Nock subject | [Incremental](#change-0ed82ca73a) |
 
 ## Measurements by change
 
@@ -3524,3 +3527,47 @@ After the 500-layer command, median combined king and worker PSS is 133.7 / 119.
 **Correctness.** On each loom width, twenty shared tree shapes captured during cold replay supply 640 full-root comparisons against an independent bottom-up evaluator and 2,560 smaller comparisons against scalar Nock. These cover all sixteen binary truth tables in direct and curried gates. Another 131,077 calls alternate products across the generation boundary, and 48 cross-road cases exercise depths immediately around the 1,024-frame limit. Eight native suites pass on each loom width.
 
 Both widths reproduce develop’s canonical jam lengths and SHA-256 hashes for the bootstrap core and 155 replay products (33.28 GB) and six compiler-window products (1.44 GB). Develop reopens a checkpoint saved by this revision at event 241 and completes events 242–249.
+
+<a id="change-0ed82ca73a"></a>
+
+### Compile literal subject prefixes
+
+A Hoon gate builder often returns `[battery sample context]` with a quoted battery, a quoted default sample and the calling subject as context. The Nock compiler recognizes programs that prepend up to sixteen quoted heads to the subject. It stores the heads in construction order and emits one instruction. The interpreter builds the cells in pairs and can return the product of a soft arm call directly to its caller. A literal `%fast` hint still runs at its own registration site. Computed heads, other hints and effects use ordinary Nock. The general technique of combining interpreter instructions is described by Casey, Ertl and Gregg. [0ed82ca73a](https://github.com/yapishu/vere/commit/0ed82ca73ac6bf14f93d0b45a6208ba353e8ca49) · [Optimizing indirect branch prediction accuracy in virtual machine interpreters](https://doi.org/10.1145/1286821.1286828)
+
+**Frequency.** The instruction executes 256,596,346 times during event evaluation in cold replay through event 143, including 245,499,406 two-head constructions. It executes 8,237,136 times during the self-hosted Hoon window, 6,550,818 during Lull and 4,440,362 during Zuse. Counts come from separate instrumented builds. Each evaluation uses the current subject.
+
+**Calls inside the compilers.** The first timer starts after ordinary kick dispatch selects a soft arm and stops when its constructed noun is back on the caller’s stack. It samples one in 1,021 non-tail soft calls and retains literal constructors. A second timer starts before kick dispatch and stops at the next arm call, after the caller replaces the sample. This second measurement covers the construction, caller field read and sample edit in 5,368 Hoon, 3,953 Lull and 3,114 Zuse sequences per trial. The ordered sample ordinals and input and output mugs agree between builds. The table gives the median of per-trial median timestamp-counter ticks on the same x86-64 core, across four and six paired trials respectively.
+
+| Compiler | Constructor samples per trial | Construction, ticks before → after | Less time | Through sample replacement, ticks before → after | Less time |
+|---|---:|---:|---:|---:|---:|
+| Self-hosted Hoon | 8,037 | 237 → 161 | 32.1% | 332 → 298.5 | 10.1% |
+| Lull | 6,438 | 230 → 157 | 31.7% | 338 → 305 | 9.8% |
+| Zuse | 4,362 | 219 → 144 | 34.2% | 297 → 268 | 9.8% |
+
+**Whole workloads.** Five release trials rotate the binaries on one core from checkpoints prepared by each binary immediately before the command. A second series alternates the two reviews for ten paired trials. The Dojo timer covers the whole evaluation.
+
+| Complete compiler command | Develop, s | Preceding review, s | Review, s | Change, three builds | Change, paired reviews |
+|---|---:|---:|---:|---:|---:|
+| Self-hosted Hoon | 12.164 | 3.450 | 3.431 | 0.5% less | 2.9% less |
+| Lull | 9.859 | 2.493 | 2.620 | 5.1% more | 5.3% less |
+| Zuse | 3.832 | 1.318 | 1.329 | 0.9% more | 2.2% less |
+
+Cold fake ~zod replay through event 143 takes **95.28 → 86.37 s** (9.4% less) across three paired trials in alternating order on one core. Upstream develop takes 347.37 s in a separate three-core rotation. Median peak RSS is 1145.0 MiB on develop, 816.3 MiB on the preceding review and 816.4 MiB on this revision.
+
+**Live Dojo.** Each case warms once and runs seven timed trials per boot on one core. The first boot rotates develop and both reviews. The second compares the two reviews in reverse initial order. The timer ends before hashing the complete product. The closure workload closes its door on a fixed context because the interactive Dojo subject differs between ships. The file-history workloads use 24 Arvo revisions. All 12,251 successful path lookups also match the Git blob identifiers row by row.
+
+| Live Dojo workload | Develop, ms | Preceding review, ms | Review, ms | Change, first boot | Change, second boot |
+|---|---:|---:|---:|---:|---:|
+| Build 8,192 closures on a captured atom | 0.619 | 0.397 | 0.400 | 0.8% more | flat |
+| Build 8,192 map lookup gates | 1.013 | 0.653 | 0.596 | 8.7% less | 11.4% less |
+| Apply 8,192 map lookup gates | 1.847 | 1.000 | 0.895 | 10.5% less | 7.6% less |
+| Look up 12,251 Arvo paths | 4.439 | 2.680 | 2.595 | 3.2% less | 2.8% less |
+| Test membership of 12,251 paths | 4.419 | 2.961 | 2.582 | 12.8% less | 7.7% less |
+| Look up 12,251 absent paths | 5.080 | 3.065 | 3.261 | 6.4% more | 5.3% less |
+| Count changed entries across 23 revision pairs | 4.650 | 2.909 | 3.014 | 3.6% more | 0.2% less |
+| Parse complete Clay source | 508.065 | 264.437 | 272.227 | 2.9% more | 2.0% less |
+| Parse complete Lull source | 327.951 | 175.055 | 167.340 | 4.4% less | 3.7% less |
+
+After comparing adjacent revisions, median combined king and worker PSS is 214.8 → 214.2 MiB on the first boot and 212.6 → 212.8 MiB on the second.
+
+**Correctness.** Eight native suites pass on each loom width. A scalar-Nock comparison checks 4,988 products per width across literal binds, literal cells and mixed spines, including lengths sixteen and seventeen. Another 32 evaluations alternate virtual namespaces while constructing a noun with a scry. The bootstrap core and 155 replay products reproduce develop’s canonical jam lengths and SHA-256 hashes (33.28 GB), as do six compiler-window products (1.44 GB) on both widths. Develop reopens a checkpoint saved by this revision at event 241 and completes events 242–249. A bytecode version change causes each reader to rebuild saved programs when switching binaries.
