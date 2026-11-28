@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [fce5bc4826](https://github.com/yapishu/vere/commit/fce5bc4826ce2d16a732777453a5e8147cc99db4) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [9c79576c45](https://github.com/yapishu/vere/commit/9c79576c45d22767e728b97ce090363b92f8b6c2) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+When `+redo` copies field names onto 2,048 distinct cell types in a running Dojo, checking a named atom field directly takes **88.8–89.7% less time** than the preceding review across two boots. [9c79576c45](https://github.com/yapishu/vere/commit/9c79576c45d22767e728b97ce090363b92f8b6c2)
 
 In a running Dojo, refurbishing 2,048 distinct held types takes **72.1–72.2% less time** than the preceding review across two boots. During self-hosted Hoon, Lull and Zuse compilation, time inside `+redo` falls **14.2–18.9%**. [fce5bc4826](https://github.com/yapishu/vere/commit/fce5bc4826ce2d16a732777453a5e8147cc99db4)
 
@@ -36,7 +38,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay. [c45cfd8d75](https://github.com/yapishu/vere/commit/c45cfd8d752db1a63486c055eb7068f19452e218) · [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362)
 
-[Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -244,6 +246,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [f5bfb46909](https://github.com/yapishu/vere/commit/f5bfb46909a3ce47f89947a3e1f60c46d1620327) | refine literal type tests along the resolved subject path | [Incremental](#change-f5bfb46909) |
 | [9be192a0ee](https://github.com/yapishu/vere/commit/9be192a0ee1214cf3d447014815789e0df140341) | check and rebuild anonymous type edits in one traversal | [Incremental](#change-9be192a0ee) |
 | [fce5bc4826](https://github.com/yapishu/vere/commit/fce5bc4826ce2d16a732777453a5e8147cc99db4) | expand subject holds inside the active redo traversal | [Incremental](#change-fce5bc4826) |
+| [9c79576c45](https://github.com/yapishu/vere/commit/9c79576c45d22767e728b97ce090363b92f8b6c2) | test emptiness beneath faces and hints | [Incremental](#change-9c79576c45) |
 
 ## Measurements by change
 
@@ -3266,3 +3269,37 @@ Cold replay from bootstrap through event 143 swaps cores between two rounds. The
 **Correctness.** On each loom width, the native local arm and the original Hoon battery agree on all 11,825 accepted calls during Hoon compilation, 4,899 during Lull and 3,636 during Zuse. A separate 6,144-case comparison runs each input on independent child roads and checks the complete returned noun, including 4,224 error traces. The cold-expansion path runs in all 4,224 exits and 384 successful cases. Inputs include active holds, faces, hints, forks, failing genes in both fields and an inherited diagnostic frame.
 
 Eight native suites pass on both loom widths. Each width matches develop’s canonical jam lengths and SHA-256 digests for the bootstrap core and all 155 replay products (33.28 GB), as well as all six compiler-window products (1.44 GB).
+
+<a id="change-9c79576c45"></a>
+
+### Type emptiness under faces and hints
+
+Hoon’s `+redo` copies field names from a reference type onto the subject. When the reference is a union, it tests which alternatives overlap the subject. Field names and diagnostic hints leave the set of possible nouns unchanged. The runtime follows these wrappers to test whether the underlying primitive type is empty and keeps the complete reference for constructing the result. For an unresolved payload it looks up the original type in the compiler’s existing nesting table. [Hoon nesting rule](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L10460-L10477)
+
+- [9c79576c45](https://github.com/yapishu/vere/commit/9c79576c45d22767e728b97ce090363b92f8b6c2) — jets: look through faces and hints when checking type emptiness
+
+**Running Dojo.** Each ship starts from a copy of the same Kelvin 135 fake ~zod checkpoint. Each of the 2,048 subjects is a cell with a distinct singleton atom in its head. Its reference is a union of two cells with named tails. One workload puts a singleton atom inside the named field and the other puts a union of two atoms there. Each release runs on the same physical core in rotating order within a boot. The two boots contribute nine and six trials per build after warm-up. Develop runs in the second boot. The Dojo timer excludes hashing. Each full result has the same jam digest across builds and boots. [HTML compiler input](https://github.com/tloncorp/tlon-apps/blob/1bf1036c8f0ce1e9256cd75821f17dee069c6d56/desk/lib/de-html/entities.hoon)
+
+| Workload | Develop, ms | Previous review, ms | Review, ms | Change vs previous review |
+|---|---:|---:|---:|---:|
+| Named atom field | 25.472 | 12.945 / 12.776 | 1.329 / 1.429 | 89.7% less / 88.8% less |
+| Named union field | 33.328 | 21.278 / 21.922 | 21.129 / 22.838 | 0.7% less / 4.2% more |
+| Compile HTML entity table | 19,365.470 | 98.856 / 95.234 | 94.229 / 98.001 | 4.7% less / 2.9% more |
+
+A third boot runs during fixture migration. Its named-field median is 23.469 ms on the preceding review and 2.130 ms on this revision (90.9% less).
+
+Median combined king and worker PSS after the HTML command is 312.5 MiB on develop, 243.8 / 247.8 MiB on the preceding review and 243.8 / 246.4 MiB on this revision. The wrapper walk uses existing traversal state.
+
+**Compiler replays.** Each release prepares a checkpoint just before each compiler command. Five trials rotate all three builds and six further trials alternate the two review revisions. The whole-compiler timings use release binaries. A separate six-trial comparison times thread CPU inside the public `+redo` call and counts nested calls once.
+
+| Compiler | Whole compiler, develop / previous / review, s | Paired whole compiler, previous → review, s | Change in paired trials | CPU inside `+redo`, previous → review, ms | Change in `+redo` |
+|---|---:|---:|---:|---:|---:|
+| Hoon | 11.919 / 3.775 / 3.622 | 3.674 → 3.435 | 6.5% less | 1,095.6 → 1,017.1 | 7.2% less |
+| Lull | 10.181 / 2.588 / 2.544 | 2.428 → 2.416 | 0.5% less | 240.8 → 221.8 | 7.9% less |
+| Zuse | 4.007 / 1.401 / 1.394 | 1.380 → 1.379 | within 0.1% | 241.2 → 231.7 | 3.9% less |
+
+Cold replay through event 143 takes 96.38 / 92.56 seconds on the preceding review and 98.18 / 92.82 seconds on this revision in two core-swapped rounds. Median peak process RSS is 816.0 and 816.1 MiB, respectively.
+
+**Correctness.** On each loom width the native local arm and its original Hoon battery agree on 10,820 calls in Hoon, 4,773 in Lull and 3,423 in Zuse. Of these, 1,245, 177 and 385 calls reach wrapped-type emptiness checks. A separate 4,096-case comparison on independent child roads covers one to eight nested faces and hints, atoms, cells, unions, holds and empty types. The wrapper walk runs in 2,304 of these cases. The two paths agree on every returned noun, including 1,472 error traces.
+
+Eight native suites pass on both widths. Each width matches develop’s canonical jam length and SHA-256 for the bootstrap core and all 155 replay products (33.28 GB) and six compiler-window products (1.44 GB). Develop reopens the checkpoint saved by this revision at event 241 and completes events 242–249.
