@@ -207,13 +207,20 @@ _redo_can_open(_redo_walk* walk, u3_noun sut)
   return 1;
 }
 
-/* +miss on equal types, or on %noun, calls +nest with %void. A completed
-** verdict on this road suffices for a non-primitive type. A missing verdict
-** sends the whole +redo to Hoon with its original fan and repetition sets.
+/* +miss on equal types, or on %noun, calls +nest with %void. Faces and
+** hints preserve that verdict. Look up the original type on this road
+** when its payload needs the full nesting test.
+** https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L10460-L10477
 */
 static u3_weak
 _redo_empty(_redo_walk* walk, u3_noun typ)
 {
+  u3_noun ref = typ;
+  while ( walk->fuel && c3y == u3du(typ) &&
+          (u3h(typ) == c3__face || u3h(typ) == c3__hint) &&
+          c3y == u3r_cell(u3t(typ), 0, &typ) ) {
+    --walk->fuel;
+  }
   if ( typ == c3__void ) return c3y;
   if ( typ == c3__noun ) return c3n;
   if ( c3y == u3du(typ) ) {
@@ -221,7 +228,7 @@ _redo_empty(_redo_walk* walk, u3_noun typ)
     if ( tag == c3__cell || tag == c3__atom ||
          (tag == c3__core && c3y == u3du(u3t(typ))) ) return c3n;
   }
-  return u3qfu_nest_find(walk->van, c3__void, typ);
+  return u3qfu_nest_find(walk->van, c3__void, ref);
 }
 
 static u3_weak _redo_miss(_redo_walk*, u3_noun, u3_noun, const _redo_pair*, c3_w);

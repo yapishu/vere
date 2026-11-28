@@ -2242,6 +2242,15 @@ _test_redo(void)
   u3_noun other = u3nt(c3__face, 'b', two);
   _check_redo(u3k(one), u3qf_forq(named, other), u3k(named));
   _check_redo(u3k(atom), u3qf_forq(named, other), 97);
+
+  // Only the inhabited tail supplies a name for the subject field.
+  u3_noun live = u3nt(c3__cell, u3k(one),
+                      u3nt(c3__face, 'x', u3nt(c3__hint, 0, u3k(atom))));
+  u3_noun dead = u3nt(c3__cell, u3k(one),
+                      u3nt(c3__face, 'y', u3nt(c3__hint, 0, c3__void)));
+  _check_redo(u3nt(c3__cell, u3k(one), c3__noun), u3qf_forq(live, dead),
+              u3nt(c3__cell, u3k(one), u3nt(c3__face, 'x', c3__noun)));
+  u3z(live); u3z(dead);
   u3z(named); u3z(other); u3z(one);
 
   _test_redo_recursion();
