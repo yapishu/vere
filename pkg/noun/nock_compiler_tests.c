@@ -467,6 +467,15 @@ _projection_cases(void)
     }
     u3z(subject);
   }
+  // Reconstructing a cell from its children also checks that it is a cell.
+  const c3_w parents[] = {1, 3, 255, 256, 65535, 65536, 0x3fffffff};
+  for ( size_t i = 0; i < c3_array_len(parents); ++i ) {
+    c3_w parent = parents[i];
+    u3_noun pair = u3nc(_slot(2 * parent), _slot(2 * parent + 1));
+    _check(_at_axis(parent, u3nc(17, 23)), u3k(pair));
+    _check(_at_axis(parent, 17), u3k(pair));
+    _check(_at_axis(parent, 17), u3nc(pair, _slot(1)));
+  }
   // Both edges into a wide conditional are reachable. One arm starts
   // with a retained slot and the other with a consuming slot.
   for ( unsigned depth = 8; depth <= 14; depth += 6 ) {

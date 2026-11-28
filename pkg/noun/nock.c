@@ -539,6 +539,7 @@ _n_nock_on(u3_noun bus, u3_noun fol)
   X(PFRD, "pfrd", &&do_pfrd),  /* 95: project two related fields */             \
   X(PFHD, "pfhd", &&do_pfrd),  /* 96: project and test for a cell */           \
   X(PREF, "pref", &&do_pref),  /* 97: prepend literals to the subject */         \
+  X(CELL, "cell", &&do_cell),  /* require a cell at the top of the stack */     \
   X(LAST,   NULL,      NULL),
 
 // Opcodes. Define X to select the enum name from OPCODES.
@@ -1415,6 +1416,38 @@ _n_comp_operands(u3_noun* ops, u3_noun left, u3_noun right, c3_o lose)
 
 #include "nock_bind.inc"
 
+static c3_w
+_n_comp_slot(u3_noun* ops, u3_noun arg, c3_o los_o)
+{
+  if ( c3n == u3ud(arg) ) {
+    u3m_bail(c3__exit);
+    return 0;
+  }
+  switch ( arg ) {
+    case 0:
+      _n_emit(ops, BAIL);
+      break;
+    case 1:
+      if ( c3y == los_o ) return 0;
+      _n_emit(ops, COPY);
+      break;
+    case 2:
+      _n_emit(ops, (c3y == los_o) ? HELD : HEAD);
+      break;
+    case 3:
+      _n_emit(ops, (c3y == los_o) ? TALL : TAIL);
+      break;
+    default: {
+      c3_y op_y = (c3y == los_o)
+                ? (arg <= 0xFF ? FABL : arg <= 0xFFFF ? FASL : FIBL)  // overflows to FISL
+                : (arg <= 0xFF ? FABK : arg <= 0xFFFF ? FASK : FIBK); // overflows to FISK
+      _n_emit(ops, u3nc(op_y, u3k(arg)));
+      break;
+    }
+  }
+  return 1;
+}
+
 /* _n_comp(): compile nock formula to reversed opcode list
  *            ops is a pointer to a list (to be emitted to)
  *            fol is the nock formula to compile. RETAIN.
@@ -1431,38 +1464,20 @@ _n_comp(u3_noun* ops, u3_noun fol, c3_o los_o, c3_o tel_o)
   u3_noun cod, arg, hed, tel;
   u3x_cell(fol, &cod, &arg);
   if ( c3y == u3du(cod) ) {
+    u3_noun left, right;
+    if ( c3y == u3r_p(cod, 0, &left) && _(u3a_is_cat(left)) &&
+         left >= 2 && !(left & 1) && c3y == u3r_p(arg, 0, &right) &&
+         right == left + 1 ) {
+      // Both slots descend from the same cell. An atom at their parent bails.
+      c3_w count = _n_comp_slot(ops, left >> 1, los_o);
+      _n_emit(ops, CELL);
+      return count + 1;
+    }
     tot_w += _n_comp_operands(ops, cod, arg, los_o);
     ++tot_w; _n_emit(ops, (c3y == los_o ) ? AULT : AUTO);
   }
   else switch ( cod ) {
-    case 0:
-      if ( c3n == u3ud(arg) ) {
-        u3m_bail(c3__exit);
-        return 0;
-      }
-      switch ( arg ) {
-        case 0:
-          ++tot_w; _n_emit(ops, BAIL);
-          break;
-        case 1:
-          if ( c3n == los_o ) {
-            ++tot_w; _n_emit(ops, COPY);
-          }
-          break;
-        case 2:
-          ++tot_w; _n_emit(ops, (c3y == los_o) ? HELD : HEAD);
-          break;
-        case 3:
-          ++tot_w; _n_emit(ops, (c3y == los_o) ? TALL : TAIL);
-          break;
-        default:
-          op_y = (c3y == los_o)
-               ? (arg <= 0xFF ? FABL : arg <= 0xFFFF ? FASL : FIBL)  // overflows to FISL
-               : (arg <= 0xFF ? FABK : arg <= 0xFFFF ? FASK : FIBK); // overflows to FISK
-          ++tot_w; _n_emit(ops, u3nc(op_y, u3k(arg)));
-          break;
-      }
-      break;
+    case 0: return _n_comp_slot(ops, arg, los_o);
 
     case 1:
       switch ( arg ) {
@@ -2513,7 +2528,7 @@ _n_check_arm(const u3n_prog* prog)
   for ( c3_w i = 0; i < prog->byc_u.len_w; ) {
     c3_y op = ops[i++];
     switch ( op ) {
-      case PREF: case HALT: case COPY: case SWAP: case TOSS:
+      case CELL: case PREF: case HALT: case COPY: case SWAP: case TOSS:
       case AUTO: case AULT: case SNOC: case SNOL:
       case HEAD: case HELD: case TAIL: case TALL:
       case FABK: case FASK: case FIBK: case FISK:
@@ -2757,6 +2772,10 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm,
 #endif
   BURN();
   {
+    do_cell:
+      _n_kale(*_n_peek(off));
+      BURN();
+
     do_pref:
       top = _n_peek(off);
       *top = _n_prefix(pog_u, *top);
