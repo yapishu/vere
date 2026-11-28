@@ -1703,6 +1703,36 @@ _check_play(u3_noun sut, u3_noun gen, c3_o vet, u3_weak want)
 }
 
 static void
+_test_chip(void)
+{
+  u3_noun ref = u3nt(c3__cell, c3__noun, c3__noun);
+  u3_noun van = u3nt(0, u3k(ref), 0);
+  u3_noun slot = u3nc(0, 1);
+  u3_noun call = u3nt(c3__cncl, u3k(slot), u3nc(u3k(slot), 0));
+  struct { u3_noun gen; u3_weak expected; } cases[] = {
+    {u3nt(c3__dbug, 0, call), ref},
+    {u3nc(c3__wing, u3nc('a', 0)), ref},
+    {u3nt(c3__tsls, u3k(slot), u3k(slot)), ref},
+    {u3nt(c3__dtts, u3k(slot), u3k(slot)), ref},
+    {u3nt(c3__wtts, 0, 0), u3_none},
+    {u3nc(c3__wtzp, u3k(slot)), u3_none},
+    {u3nt(c3__cncl, u3k(slot), u3nc(u3k(slot), 1)), u3_none},
+    {u3nc(c3__dbug, 0), u3_none},
+  };
+  for ( c3_w i = 0; i < sizeof(cases) / sizeof(*cases); ++i ) {
+    for ( c3_w how = 0; how <= 2; ++how ) {
+      u3_noun cor = u3nt(0, u3nc(how, u3k(cases[i].gen)), u3k(van));
+      u3_weak pro = u3wfu_chip_135(cor);
+      u3z(cor);
+      u3_assert(pro == (how <= 1 ? cases[i].expected : u3_none));
+      if ( pro != u3_none ) u3z(pro);
+    }
+    u3z(cases[i].gen);
+  }
+  u3z(slot); u3z(van); u3z(ref);
+}
+
+static void
 _test_open_calls(void)
 {
   for ( c3_w n = 0; n <= 70; ++n ) {
@@ -2366,6 +2396,7 @@ _test_jets(void)
   _test_fond();
   _test_fond_record();
   _test_peek();
+  _test_chip();
   _test_open_calls();
   _test_play();
   _test_toss();

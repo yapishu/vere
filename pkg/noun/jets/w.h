@@ -382,6 +382,7 @@
     u3_noun u3wfp_rake(u3_noun);
 
     u3_noun u3wfu_busk(u3_noun);
+    u3_weak u3wfu_chip_135(u3_noun);
     u3_noun u3wfu_crop(u3_noun);
     u3_weak u3wfu_find_135(u3_noun);
     u3_weak u3wfu_play_135(u3_noun);

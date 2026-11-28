@@ -418,6 +418,7 @@ const c_source_files = [_][]const u8{
     "jets/f/hike.c",
     "jets/f/hint.c",
     "jets/f/loot.c",
+    "jets/f/ut_chip.c",
     "jets/f/ut_crop.c",
     "jets/f/ut_fish.c",
     "jets/f/ut_fond.c",
