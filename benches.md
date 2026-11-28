@@ -2972,6 +2972,8 @@ Both loom widths pass eight native suites and 5,352 hash-jet cases. The bootstra
 
 Across the nine targets, the SHA assembly produces three distinct machine-code sequences after linking. Linux, FreeBSD and macOS have identical compression instructions on each architecture. Windows x86-64 has a different calling convention. A Linux harness executes all three sequences, using the Microsoft ABI for the Windows code and QEMU for AArch64. Each matches Python’s SHA-224 and SHA-256 on a further 1,178 inputs, including empty inputs, every byte length through 512 and a 1 MiB + 1 byte message.
 
+A further 9,216 compression calls per instruction sequence compare all eight state words and the returned input pointer with pinned Nettle C. Inputs vary the initial state, round constants, all 64 byte offsets and block counts from zero through seventeen. The Windows test calls the extracted COFF machine code using the Microsoft x64 ABI. The committed assembly regenerates byte for byte from the pinned source, and the three license files match the originals.
+
 <a id="change-3c0ed69633"></a>
 
 ### Reuse native gate dispatch along registered parent axes
