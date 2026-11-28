@@ -1733,6 +1733,53 @@ _test_chip(void)
 }
 
 static void
+_check_chip_literal(u3_noun van, u3_noun spec, u3_noun wing,
+                    u3_weak gain, u3_weak lose)
+{
+  u3_noun gen = u3nt(c3__wtts, spec, wing);
+  for ( c3_o how = c3y; how <= c3n; ++how ) {
+    u3_weak want = how == c3y ? gain : lose;
+    u3_noun cor = u3nt(0, u3nc(how, u3k(gen)), u3k(van));
+    u3_weak pro = u3wfu_chip_135(cor);
+    u3_assert(pro == want || (pro != u3_none && want != u3_none &&
+                              c3y == u3r_sing(pro, want)));
+    if ( pro != u3_none ) u3z(pro);
+    if ( want != u3_none ) u3z(want);
+    u3z(cor);
+  }
+  u3z(gen); u3z(van);
+}
+
+static void
+_test_chip_literal(void)
+{
+  u3_noun nil = u3nt(c3__atom, 'n', u3nc(0, 0));
+  u3_noun val = u3i_chub(1ULL << 45);
+  u3_noun lit = u3nt(c3__leaf, c3__ud, u3k(val));
+  u3_noun atom = u3nt(c3__atom, c3__ud, u3nc(0, val));
+  u3_noun pair = u3nt(c3__cell, c3__noun, c3__noun);
+  u3_noun fork = u3qf_forq(pair, atom);
+  u3_noun sut = u3nt(c3__cell, u3k(pair), u3nt(c3__face, 'x', fork));
+  u3_noun van = u3nt(0, sut, u3nc(u3nt(0, 0, c3y), 0));
+  _check_chip_literal(u3k(van), u3nt(c3__dbug, 0, u3k(lit)), u3nc('x', 0),
+                      u3nt(c3__cell, u3k(pair), u3nt(c3__face, 'x', u3k(atom))),
+                      u3nt(c3__cell, u3k(pair), u3nt(c3__face, 'x', u3k(pair))));
+  _check_chip_literal(u3k(van), lit, u3nc('y', 0), u3_none, u3_none);
+  u3_noun hol = u3nt(c3__hold, c3__noun, u3nc(c3__rock, 'x'));
+  van = u3i_edit(van, u3x_sam, u3k(hol));
+  u3_noun spec = u3nc(c3__base, c3__null);
+  _check_chip_literal(u3k(van), u3k(spec), 0, u3_none, u3_none);
+  u3_noun key = u3qfu_rest_key(van, hol, u3t(hol));
+  u3z(u3z_save(u3z_memo_toss, u3k(key), u3k(hol)));
+  _check_chip_literal(u3k(van), u3k(spec), 0, u3_none, u3_none);
+  u3z(u3z_save(u3z_memo_toss, key, u3qf_forq(nil, pair)));
+  _check_chip_literal(u3k(van), u3k(spec), 0, u3k(nil), u3k(pair));
+  van = u3i_edit(van, u3qfu_van_fan, u3qdi_put(0, u3t(hol)));
+  _check_chip_literal(van, spec, 0, u3_none, u3_none);
+  u3z(hol); u3z(pair); u3z(atom); u3z(nil);
+}
+
+static void
 _test_open_calls(void)
 {
   for ( c3_w n = 0; n <= 70; ++n ) {
@@ -2397,6 +2444,7 @@ _test_jets(void)
   _test_fond_record();
   _test_peek();
   _test_chip();
+  _test_chip_literal();
   _test_open_calls();
   _test_play();
   _test_toss();

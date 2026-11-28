@@ -1,5 +1,6 @@
 /// @file
 
+#include "jets/k.h"
 #include "jets/q.h"
 #include "jets/w.h"
 #include "noun.h"
@@ -11,10 +12,10 @@
 typedef struct {
   c3_y steps[64];
   c3_w len_w;
-} _toss_path;
+} _take_path;
 
 static u3_weak
-_toss_axis(u3_noun vein, _toss_path* path)
+_take_axis(u3_noun vein, _take_path* path)
 {
   while ( u3_nul != vein ) {
     u3_noun unit = u3h(vein);
@@ -45,36 +46,141 @@ _toss_axis(u3_noun vein, _toss_path* path)
   return axe_w;
 }
 
-/* Rebuild the enclosing types on return. A face consumes a zero step,
-** while a hint preserves the step for the type underneath it.
+/* +cool uses +take to intersect or subtract an atom singleton at a vein.
+** +toss uses the same walk with a constant replacement.
+** https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9181-L9191
+*/
+typedef struct _take_hold {
+  u3_noun sut;
+  const struct _take_hold* prev;
+} _take_hold;
+
+typedef struct {
+  u3_noun van;
+  c3_o how;
+  c3_w fuel;
+  const _take_hold* holds;
+} _take_refine;
+
+static u3_weak
+_take(u3_noun sut, u3_noun ref, const c3_y* steps, c3_w len,
+      c3_w depth, _take_refine* walk);
+
+/* Prepending in left-root-right order gives ~(tap in set) directly. */
+static c3_o
+_take_fork(u3_noun set, u3_noun ref, const c3_y* steps, c3_w len,
+           c3_w depth, _take_refine* walk, u3_noun* types)
+{
+  if ( !set ) return c3y;
+  u3_noun typ, lef, rit;
+  if ( !depth || !walk->fuel || c3n == u3r_trel(set, &typ, &lef, &rit) ) {
+    return c3n;
+  }
+  --walk->fuel;
+  //  Descending into a type can unify siblings in this set.
+  //
+  u3k(typ); u3k(rit);
+  c3_o ok = _take_fork(lef, ref, steps, len, depth-1, walk, types);
+  if ( c3y == ok ) {
+    u3_weak pro = _take(typ, ref, steps, len, depth-1, walk);
+    if ( pro == u3_none ) ok = c3n;
+    else {
+      *types = u3nc(pro, *types);
+      ok = _take_fork(rit, ref, steps, len, depth-1, walk, types);
+    }
+  }
+  u3z(rit); u3z(typ);
+  return ok;
+}
+
+/* +repo calls +rest on the leg. Leave recursion and unknown expansions
+** to Hoon, including its original trace on a loop.
 */
 static u3_weak
-_toss_take(u3_noun sut, u3_noun mur, const c3_y* steps, c3_w len_w, c3_w fuel)
+_take_hold_type(u3_noun sut, u3_noun ref, const c3_y* steps, c3_w len,
+                c3_w depth, _take_refine* walk)
 {
-  if ( !len_w ) return u3k(mur);
-  if ( !fuel ) return u3_none;
+  for ( const _take_hold* at = walk->holds; at; at = at->prev ) {
+    if ( c3y == u3r_sing(at->sut, sut) ) return u3_none;
+  }
+  u3_weak fan = u3r_at(u3qfu_van_fan, walk->van);
+  if ( fan == u3_none || c3n == u3du(u3t(sut)) ||
+       c3y == u3qdi_has(fan, u3t(sut)) ) return u3_none;
+  u3_weak typ = u3qfu_rest_find(walk->van, sut, 135);
+  if ( typ == u3_none ) return u3_none;
+  _take_hold here = {u3k(sut), walk->holds};
+  walk->holds = &here;
+  u3_weak pro = _take(typ, ref, steps, len, depth, walk);
+  walk->holds = here.prev;
+  u3z(here.sut); u3z(typ);
+  return pro;
+}
 
-  c3_y step = steps[len_w-1];
+/* +fuse selects the more specific aura. +crop can remove a singleton
+** from a constant atom, but represents a general atom with its original type.
+*/
+static u3_weak
+_take_literal(u3_noun sut, u3_noun tag, u3_noun p, u3_noun q,
+              u3_noun ref, c3_o how)
+{
+  if ( tag == c3__void ) return c3__void;
+  if ( tag == c3__cell || tag == c3__core ) return how == c3y ? c3__void : u3k(sut);
+  if ( tag == c3__noun ) {
+    if ( how == c3y ) return u3k(ref);
+    return u3kf_fork(u3nt(u3nt(c3__atom, 0, 0),
+                          u3nt(c3__cell, c3__noun, c3__noun), u3_nul));
+  }
+  if ( tag != c3__atom || c3n == u3ud(p) ) return u3_none;
+  u3_noun aura = u3h(u3t(ref)), unit = u3t(u3t(ref));
+  if ( q ) {
+    if ( c3n == u3du(q) || u3h(q) || c3n == u3ud(u3t(q)) ) return u3_none;
+    if ( c3n == u3r_sing(q, unit) ) return how == c3y ? c3__void : u3k(sut);
+  }
+  if ( how == c3n ) return q ? c3__void : u3k(sut);
+  return u3nt(c3__atom, u3k(c3y == u3qf_fitz(aura, p) ? p : aura), u3k(unit));
+}
+
+static u3_weak
+_take(u3_noun sut, u3_noun ref, const c3_y* steps, c3_w len,
+      c3_w depth, _take_refine* walk)
+{
+  if ( !len && !walk ) return u3k(ref);
+  if ( !depth || (walk && !walk->fuel) ) return u3_none;
+  if ( walk ) --walk->fuel;
+
+  c3_y step = len ? steps[len-1] : 0;
   u3_noun tag = sut, p = c3__noun, q = c3__noun;
   if ( sut != c3__noun && sut != c3__void ) {
-    if ( c3n == u3r_trel(sut, &tag, &p, &q) ) return u3_none;
+    if ( c3n == u3r_cell(sut, &tag, &q) ||
+         tag == c3__noun || tag == c3__void ) return u3_none;
+    if ( tag == c3__hold ) {
+      return walk ? _take_hold_type(sut, ref, steps, len, depth-1, walk) : u3_none;
+    }
+    if ( tag == c3__fork ) {
+      u3_noun types = u3_nul;
+      if ( !walk || !q || c3n == _take_fork(q, ref, steps, len, depth-1, walk, &types) ) {
+        u3z(types);
+        return u3_none;
+      }
+      return u3kf_fork(types);
+    }
+    if ( c3n == u3r_cell(q, &p, &q) ) return u3_none;
   }
-
-  if ( c3__face == tag || c3__hint == tag ) {
-    c3_w len = len_w - (c3__face == tag && !step);
-    u3_weak child = _toss_take(q, mur, steps, len, fuel-1);
-    if ( child == u3_none ) return u3_none;
-    u3_noun pro = (c3__face == tag) ? u3qf_face(p, child) : u3qf_hint(p, child);
-    u3z(child);
+  if ( tag == c3__face || tag == c3__hint ) {
+    c3_w next = len - (len && !step && tag == c3__face);
+    u3k(p);
+    u3_weak child = _take(q, ref, steps, next, depth-1, walk);
+    u3_weak pro = child;
+    if ( child != u3_none ) {
+      pro = tag == c3__face ? u3qf_face(p, child) : u3qf_hint(p, child);
+      u3z(child);
+    }
+    u3z(p);
     return pro;
   }
-
-  if ( c3__hold == tag || c3__fork == tag ) return u3_none;
-  if ( !step ) return _toss_take(sut, mur, steps, len_w-1, fuel-1);
-  if ( c3__atom == tag || c3__void == tag ) return c3__void;
-
-  //  +repo of a core exposes a cell with an unrestricted battery.
-  //
+  if ( !len ) return _take_literal(sut, tag, p, q, ref, walk->how);
+  if ( !step ) return _take(sut, ref, steps, len-1, depth-1, walk);
+  if ( tag == c3__atom || tag == c3__void ) return c3__void;
   if ( tag == c3__core && step == 2 ) {
     tag = c3__cell;
     q = p;
@@ -82,14 +188,37 @@ _toss_take(u3_noun sut, u3_noun mur, const c3_y* steps, c3_w len_w, c3_w fuel)
   }
   if ( tag != c3__core && tag != c3__cell && tag != c3__noun ) return u3_none;
 
-  c3_t tail = (tag != c3__core && step == 3);
-  u3_weak child = _toss_take(tail ? q : p, mur, steps, len_w-1, fuel-1);
-  if ( child == u3_none ) return u3_none;
-  if ( tag == c3__core ) {
-    return (child == c3__void) ? c3__void : u3nt(c3__core, child, u3k(q));
+  c3_t tail = tag != c3__core && step == 3;
+  u3_noun other = u3k(tail ? p : q);
+  u3_weak child = _take(tail ? q : p, ref, steps, len-1, depth-1, walk);
+  u3_weak pro = child;
+  if ( child != u3_none && child != c3__void ) {
+    if ( tag == c3__core ) return u3nt(c3__core, child, other);
+    pro = tail ? u3qf_cell(other, child) : u3qf_cell(child, other);
+    u3z(child);
   }
-  u3_noun pro = tail ? u3qf_cell(p, child) : u3qf_cell(child, q);
-  u3z(child);
+  u3z(other);
+  return pro;
+}
+
+u3_weak
+u3qfu_cool_literal(u3_noun van, u3_noun sut, c3_o how, u3_noun wing, u3_noun ref)
+{
+  if ( u3r_at(u3qfu_van_vet, van) > 1 ) return u3_none;
+  u3k(sut); u3k(van);
+  u3_weak port = u3qfu_fond(van, sut, c3__both, wing, 135);
+  u3_weak pro = u3_none;
+  if ( port != u3_none ) {
+    if ( c3y == u3du(port) && c3y == u3h(port) ) {
+      _take_path path = {0};
+      if ( _take_axis(u3h(u3t(port)), &path) != u3_none ) {
+        _take_refine walk = {.van = van, .how = how, .fuel = 512};
+        pro = _take(sut, ref, path.steps, path.len_w, 128, &walk);
+      }
+    }
+    u3z(port);
+  }
+  u3z(van); u3z(sut);
   return pro;
 }
 
@@ -110,10 +239,10 @@ _toss(u3_noun cor, c3_y kel_y)
   u3_weak pro = u3_none;
   if ( port != u3_none ) {
     if ( port != u3_nul && u3h(port) == c3y ) {
-      _toss_path path = {0};
-      u3_weak axe = _toss_axis(u3h(u3t(port)), &path);
+      _take_path path = {0};
+      u3_weak axe = _take_axis(u3h(u3t(port)), &path);
       if ( axe != u3_none ) {
-        u3_weak typ = _toss_take(sut, mur, path.steps, path.len_w, 128);
+        u3_weak typ = _take(sut, mur, path.steps, path.len_w, 128, 0);
         if ( typ != u3_none ) pro = u3nt(axe, u3nc(typ, u3k(foot)), u3_nul);
       }
     }
