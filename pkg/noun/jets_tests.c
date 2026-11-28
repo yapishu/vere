@@ -2142,6 +2142,37 @@ _test_nest(void)
   _test_nest_tags();
 }
 
+/* The trap returns bix so the cycle case exposes the restored subject. */
+static u3_noun
+_fuse_core(u3_noun sut, u3_noun ref, u3_noun repo)
+{
+  u3_noun arm = u3nt(8, u3nc(1, 0),
+                      u3nt(8, u3nc(1, u3nc(0, 6)), u3nt(9, 2, u3nc(0, 1))));
+  u3_noun bat = u3nc(0, u3nc(0, u3nc(repo, 0)));
+  return u3nt(arm, ref, u3nt(bat, sut, u3nc(u3nt(0, 0, c3y), 0)));
+}
+
+static void
+_test_fuse(void)
+{
+  u3_noun a = u3nt(c3__atom, 'u', u3nc(0, 41));
+  u3_noun b = u3nt(c3__atom, 'u', u3nc(0, 42));
+  u3_noun hol = u3nt(c3__hold, c3__noun, 37);
+  u3_noun pair = u3nc(u3k(hol), u3k(b));
+  u3_noun want = u3qdi_put(0, pair);
+  u3_noun cor = _fuse_core(u3k(hol), u3k(b), u3nc(0, 6));
+  u3_noun pro = u3wfu_fuse_135(cor);
+  u3_assert(c3y == u3r_sing(pro, want));
+  u3z(pro); u3z(cor); u3z(want); u3z(pair);
+
+  // A disjoint head still evaluates +repo for the held tail.
+  cor = _fuse_core(u3nt(c3__cell, a, hol), u3nt(c3__cell, u3k(b), b),
+                   u3nc(0, 0));
+  pro = u3m_soft(0, u3wfu_fuse_135, cor);
+  u3_assert(c3__exit == u3h(pro));
+  u3z(pro);
+}
+
 static void
 _check_redo(u3_noun sut, u3_noun ref, u3_noun want)
 {
@@ -2500,6 +2531,7 @@ _test_jets(void)
   _test_play();
   _test_toss();
   _test_nest();
+  _test_fuse();
   _test_redo();
 
   _test_bulk_trees();

@@ -1,5 +1,6 @@
 #include "c3/c3.h"
 #include "jets.h"
+#include "jets/q.h"
 #include "jets/w.h"
 
 
@@ -308,7 +309,7 @@ static u3j_harm _135_pen__ut_crop_a[] = {{".2", u3wfu_crop}, {}};
 static u3j_harm _135_pen__ut_find_a[] = {{".2", u3wfu_find_135}, {}};
 static u3j_harm _135_pen__ut_fish_a[] = {{".2", u3wfu_fish}, {}};
 static u3j_harm _135_pen__ut_fond_a[] = {{".2", u3wfu_fond_135}, {}};
-static u3j_harm _135_pen__ut_fuse_a[] = {{".2", u3wfu_fuse}, {}};
+static u3j_harm _135_pen__ut_fuse_a[] = {{".2", u3wfu_fuse_135}, {}};
 static u3j_harm _135_pen__ut_toss_a[] = {{".2", u3wfu_toss_135}, {}};
 static u3j_harm _135_pen__ut_peek_a[] = {{".2", u3wfu_peek}, {}};
 static u3j_harm _135_pen__ut_play_a[] = {{".2", u3wfu_play_135}, {}};
@@ -394,7 +395,7 @@ static u3j_hood _135_pen__ut_ho[] =
     { "peel",     1526 },
     { "play",     3006 },
     { "peek",     1532 },
-    { "repo",       22 },
+    { "repo",       u3qfu_van_repo_135 },
     { "rest",     6102 },
     { "tack",     6007 },
     { "toss",    24540 },

@@ -293,6 +293,7 @@
     u3_noun u3qi_la_trace_i754(u3_noun, u3_noun, u3_noun);
     u3_noun u3qi_la_mmul_i754(u3_noun, u3_noun, u3_noun, u3_noun, u3_noun);
 
+#   define u3qfu_van_repo_135 22
 #   define u3qfu_van_fan  28
 #   define u3qfu_van_rib  58
 #   define u3qfu_van_vet  59
