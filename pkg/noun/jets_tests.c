@@ -2078,6 +2078,30 @@ _check_nest(u3_noun arm, u3_noun sut, u3_noun ref,
 }
 
 static void
+_test_nest_tags(void)
+{
+  u3_noun a = u3nt(c3__cell, u3nt(c3__atom, 'u', u3nc(0, 1)), c3__noun);
+  u3_noun b = u3nt(c3__cell, u3nt(c3__atom, 'u', u3nc(0, 2)), c3__noun);
+  u3_noun c = u3nt(c3__cell, u3nt(c3__atom, 'u', u3nc(0, 3)), c3__noun);
+  u3_noun fork = u3qf_forq(a, b);
+  u3_noun arm = u3nc(1, c3y);
+
+  // Both negative entries survive the loose search. A strict call on this
+  // road sees the record verdict before it reaches its failure formula.
+  _check_nest(u3k(arm), u3k(fork), u3k(c), u3nt(0, 0, 0), c3n, c3n);
+  _check_nest(u3k(arm), u3k(a), u3k(c), u3nt(0, 0, 0), c3y, c3n);
+  _check_nest(arm, u3k(u3h(u3t(a))), u3k(u3h(u3t(c))),
+              u3nt(0, 0, 0), c3y, c3n);
+
+  // An existing positive head verdict makes the record tails decisive.
+  arm = u3nc(1, 77);
+  u3_noun key = u3z_key_3(141 + c3__dext, u3h(u3t(a)), u3h(u3t(c)), arm);
+  u3z(u3z_save(u3z_memo_toss, key, c3y));
+  _check_nest(arm, fork, c, u3nt(0, 0, 0), c3n, c3y);
+  u3z(a); u3z(b);
+}
+
+static void
 _test_nest(void)
 {
   u3_noun atom = u3nt(c3__atom, 0, 0);
@@ -2115,6 +2139,7 @@ _test_nest(void)
   _check_nest(arm, pair, u3nt(c3__cell, c3__noun, c3__noun),
               u3nt(0, 0, 0), c3y, c3y);
   u3z(atom);
+  _test_nest_tags();
 }
 
 static void

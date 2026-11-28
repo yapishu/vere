@@ -107,6 +107,57 @@ _nest_child(const _nest_walk* wal_u, u3_noun sut, u3_noun ref,
   return _nest_save(key, pro, !clear_t && wal_u->seg_t, !clear_t && wal_u->reg_t);
 }
 
+/* A tagged record has a singleton atom type at the head of a cell. */
+static u3_weak
+_nest_tag(u3_noun typ, u3_noun* hed)
+{
+  u3_noun atm, aura, unit, tag;
+  if ( c3n == u3r_pq(typ, c3__cell, &atm, 0) ||
+       c3n == u3r_pq(atm, c3__atom, &aura, &unit) || c3n == u3ud(aura) ||
+       c3n == u3r_p(unit, 0, &tag) || c3n == u3a_is_cat(tag) ) return u3_none;
+  if ( hed ) *hed = atm;
+  return tag;
+}
+
+/* Each alternative uses the same [ref bat] suffix. Only the two fresh
+** cells need mugs. A miss leaves the complete, owning key for the save.
+*/
+static u3_weak
+_nest_probe(c3_m fun_m, u3_noun sut, u3_noun suffix, u3_noun* key)
+{
+  *key = u3z_key_2(fun_m, sut, suffix);
+  u3a_cell* root = u3a_to_ptr(*key);
+  u3a_cell* pair = u3a_to_ptr(root->tel);
+  pair->mug_w = u3r_mug_cell(sut, suffix);
+  root->mug_w = u3r_mug_both(u3r_mug_word(fun_m), pair->mug_w);
+  u3_weak pro = u3z_find(u3z_memo_toss, *key);
+  if ( pro != u3_none ) u3z(*key);
+  return pro;
+}
+
+/* Distinct tags settle a fresh head check. Honor an existing verdict
+** for either the record or its head, and save both misses in Hoon order.
+** The cleared recursion sets under a cell allow caching a negative head.
+*/
+static u3_noun
+_nest_clash(const _nest_walk* wal_u, u3_noun sut, u3_noun record,
+            u3_noun head, c3_t clear_t, c3_w dep_w)
+{
+  u3_noun key, inner;
+  u3_weak pro = _nest_probe(wal_u->fun_m, sut, record, &key);
+  if ( pro != u3_none ) return pro;
+
+  // A lookup can unify fields. Read the current subject through its key.
+  sut = u3h(u3t(key));
+  pro = _nest_probe(wal_u->fun_m, u3h(u3t(sut)), head, &inner);
+  if ( pro == u3_none ) pro = u3z_save(u3z_memo_toss, inner, c3n);
+  if ( c3y == u3x_loob(pro) ) {
+    u3_noun args = u3t(key), ref = u3h(u3t(args));
+    pro = _nest_child(wal_u, u3t(u3t(u3h(args))), u3t(u3t(ref)), 1, dep_w-1);
+  }
+  return _nest_save(key, pro, !clear_t && wal_u->seg_t, !clear_t && wal_u->reg_t);
+}
+
 static u3_noun
 _nest_fork(const _nest_walk* wal_u, u3_noun sut, u3_noun ref, c3_t some_t,
            c3_t clear_t, c3_w dep_w)
@@ -118,17 +169,32 @@ _nest_fork(const _nest_walk* wal_u, u3_noun sut, u3_noun ref, c3_t some_t,
   u3_noun pro = some_t ? c3n : c3y;
   // +lien tries each subject alternative with tel=|.
   _nest_walk child = *wal_u;
-  if ( some_t ) child.tel_o = c3n;
+  u3_weak tag = u3_none;
+  u3_noun record = 0, head = 0;
+  if ( some_t ) {
+    child.tel_o = c3n;
+    u3_noun atm;
+    if ( dep_w >= 2 && (tag = _nest_tag(ref, &atm)) != u3_none ) {
+      record = u3nc(u3k(ref), u3k(child.bat));
+      head = u3nc(u3k(atm), u3k(child.bat));
+    }
+  }
   while ( list ) {
     u3_noun typ = u3h(list);
-    pro = _nest_child(&child, some_t ? typ : sut, some_t ? ref : typ,
-                      clear_t, dep_w);
+    u3_weak alt = (tag == u3_none) ? u3_none : _nest_tag(typ, 0);
+    if ( alt != u3_none && alt != tag ) {
+      pro = _nest_clash(&child, typ, record, head, clear_t, dep_w);
+    }
+    else {
+      pro = _nest_child(&child, some_t ? typ : sut, some_t ? ref : typ,
+                        clear_t, dep_w);
+    }
     if ( u3x_loob(pro) == (some_t ? c3y : c3n) ) break;
     u3_noun next = u3k(u3t(list));
     u3z(list);
     list = next;
   }
-  u3z(list);
+  u3z(list); u3z(record); u3z(head);
   return pro;
 }
 
