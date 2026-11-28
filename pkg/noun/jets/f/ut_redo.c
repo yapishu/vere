@@ -23,15 +23,15 @@ typedef struct _redo_pair {
   const struct _redo_pair* parent;
 } _redo_pair;
 
-// Only a public call that reaches a long list can register the local arm.
-enum { list_disabled, list_search, list_found };
+// The public gate registers +dext when a traversal needs the local arm.
+enum { local_disabled, local_search, local_needed, local_entry };
 
 typedef struct {
   u3_noun van;
   c3_w fuel;
   c3_y kel;
   u3_noun guard;
-  c3_y list;
+  c3_y local;
 } _redo_walk;
 
 static c3_t
@@ -394,7 +394,7 @@ _redo_list(_redo_walk* walk, u3_noun sut, u3_noun hold, u3_noun set,
       // opposite direction after opening the hold. A head that needs a
       // discarded spine hypothesis must go through the original arm.
       c3_w fuel = c3_min(left, 1024);
-      _redo_walk sub = {walk->van, fuel, walk->kel, hold, list_disabled};
+      _redo_walk sub = {walk->van, fuel, walk->kel, hold, local_disabled};
       u3_weak pro = u3_none;
       if ( _redo_miss(&sub, item, head, 0, 64) == c3n &&
            _redo_miss(&sub, head, item, 0, 64) == c3n ) {
@@ -457,8 +457,8 @@ _redo_sint(_redo_walk* walk, u3_noun sut, u3_noun ref, const _redo_names* hos,
     }
     u3_weak typ = (tag == c3__fork) ? _redo_select(walk, sut, u3t(ref), depth-1)
                                     : u3qfu_rest_find(walk->van, ref, walk->kel);
-    if ( tag == c3__hold && !seen && walk->list && _redo_long_list(sut) ) {
-      walk->list = list_found;
+    if ( tag == c3__hold && !seen && walk->local && _redo_long_list(sut) ) {
+      if ( walk->local == local_search ) walk->local = local_needed;
       u3_noun set;
       if ( typ != u3_none && c3y == u3r_p(typ, c3__fork, &set) ) {
         u3_weak pro = _redo_list(walk, sut, ref, set, hos, har);
@@ -475,7 +475,17 @@ _redo_sint(_redo_walk* walk, u3_noun sut, u3_noun ref, const _redo_names* hos,
     if ( !_redo_can_open(walk, sut) ) return u3_none;
     if ( _redo_seen(seen, sut, ref) ) return _redo_done(sut, hos, har);
     u3_weak typ = u3qfu_rest_find(walk->van, sut, walk->kel);
-    if ( typ == u3_none ) return typ;
+    if ( typ == u3_none ) {
+      if ( walk->local != local_entry ) {
+        if ( walk->local == local_search ) walk->local = local_needed;
+        return u3_none;
+      }
+      // +dext runs +repo under the caller's diagnostic frame and fan.
+      // The comparison below restores the hold if its expansion is unchanged.
+      // https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L10723-L10738
+      u3_noun van = u3i_edit(u3k(walk->van), u3x_sam, u3k(sut));
+      typ = u3j_hook(van, "repo");
+    }
     _redo_pair here = {sut, ref, seen};
     u3_weak pro = _redo_step(walk, typ, ref, hos, har, &here, depth-1);
     if ( pro != u3_none && c3y == u3r_sing(typ, pro) ) {
@@ -564,7 +574,7 @@ _redo_step(_redo_walk* walk, u3_noun sut, u3_noun ref, const _redo_names* hos,
 
 // Folding a local call back to its public gate requires the exact entry
 // subject. Read the literal pushes from the running gate and check its
-// final kick. The static mean hint affects only a bail, for which we punt.
+// final kick. Nock installs the static mean hint before it enters +dext.
 // https://doi.org/10.1145/321992.321996
 //
 static u3_weak
@@ -585,14 +595,13 @@ _redo_worker(u3_noun cor)
 }
 
 u3_weak
-u3wfu_redo_list_135(u3_noun cor)
+u3wfu_redo_dext_135(u3_noun cor)
 {
   u3_noun parent, ref, van, sut;
   if ( (u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ||
-       u3_none == (parent = u3r_at(31, cor)) || c3n == u3du(parent) ||
-       c3n == u3r_mean(parent, {u3x_sam, &ref}, {u3x_con, &van}) ||
-       u3_none == (sut = u3r_at(u3x_sam, van)) ) return u3_none;
-  if ( !_redo_long_list(sut) ) return u3_none;
+       u3_none == (parent = u3r_at(31, cor)) || c3n == u3du(parent) ) return u3_none;
+  // At the local entry, gil and hos are empty. Check the full subject below.
+  if ( u3r_at(6, cor) || u3r_at(30, cor) ) return u3_none;
   u3_weak worker = _redo_worker(parent);
   if ( worker == u3_none ) return u3_none;
   // Compare the entire subject in one operation. Equality can unify fields.
@@ -601,12 +610,13 @@ u3wfu_redo_list_135(u3_noun cor)
   if ( c3n == same ) return u3_none;
   parent = u3x_at(31, cor);
   if ( c3n == u3j_gate_is(parent, u3wfu_redo_135) ) return u3_none;
-  van = u3x_at(u3x_con, parent);
-  sut = u3x_at(u3x_sam, van);
-  ref = u3x_at(u3x_sam, parent);
+  if ( c3n == u3r_mean(parent, {u3x_sam, &ref}, {u3x_con, &van}) ||
+       u3_none == (sut = u3r_at(u3x_sam, van)) ) return u3_none;
 
-  _redo_walk walk = {van, 1024, 135, 0, list_search};
-  return _redo_step(&walk, sut, ref, 0, 0, 0, 80);
+  _redo_walk walk = {u3k(van), 1024, 135, 0, local_entry};
+  u3_weak pro = _redo_step(&walk, sut, ref, 0, 0, 0, 80);
+  u3z(walk.van);
+  return pro;
 }
 
 static u3_noun
@@ -641,9 +651,9 @@ _redo(u3_noun cor, c3_y kel)
             ? u3k(sut) : _redo_plain(sut, ref, 32, &rem_w);
         if ( pro == u3_none ) {
           _redo_walk walk = {u3x_at(u3x_con, cor), 1024, kel, 0,
-                             kel == 135 ? list_search : list_disabled};
+                             kel == 135 ? local_search : local_disabled};
           pro = _redo_step(&walk, sut, ref, 0, 0, 0, 80);
-          if ( pro == u3_none && walk.list == list_found ) {
+          if ( pro == u3_none && walk.local == local_needed ) {
             u3_weak worker = _redo_worker(cor);
             // Axis 127 reaches the same compiler as axis 7 of the public gate.
             if ( worker != u3_none ) {

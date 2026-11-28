@@ -2203,10 +2203,11 @@ _test_redo_list(void)
     u3_assert(c3y == u3r_sing(pro, bad ? 97 : want));
     // Even an exact entry subject from an unrelated gate must punt.
     u3_noun fol = u3nt(11, u3nt(c3__mean, 1, 0), u3nt(9, 22, u3nc(0, 1)));
-    for ( c3_w i = 4; i; --i ) fol = u3nt(8, u3nc(1, i), fol);
+    u3_noun fields[] = {0, u3nt(0, 0, 0), 0, 4};
+    for ( c3_w i = 4; i; --i ) fol = u3nt(8, u3nc(1, u3k(fields[i-1])), fol);
     u3_noun worker = u3nc(fol, u3k(u3t(cor)));
-    for ( c3_w i = 1; i <= 4; ++i ) worker = u3nc(i, worker);
-    u3_assert(u3_none == u3wfu_redo_list_135(worker));
+    for ( c3_w i = 0; i < 4; ++i ) worker = u3nc(fields[i], worker);
+    u3_assert(u3_none == u3wfu_redo_dext_135(worker));
     u3z(worker);
     u3z(pro); u3z(cor); u3z(want);
   }
