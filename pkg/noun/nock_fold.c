@@ -1,3 +1,13 @@
+/// @file
+/// Evaluate recognized two-state tree folds over shared nouns.
+
+#include "nock.h"
+
+#include "noun.h"
+#include "jets/w.h"
+
+#if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
+
 // Recognize a tagged tree fold with a direct or curried binary merge.
 // All fields are borrowed. The opaque arm can contain arbitrary Nock.
 typedef struct {
@@ -82,6 +92,13 @@ _n_fold_read(u3_noun fol, _n_fold_plan* plan)
   return slot == 7;
 }
 
+c3_t
+u3n_is_fold(u3_noun fol)
+{
+  _n_fold_plan plan;
+  return _n_fold_read(fol, &plan);
+}
+
 // A speculative subject may lack a parent. Check each step before following
 // it. A changing sample also requires a first parent independent of axis 6.
 static c3_t
@@ -143,9 +160,23 @@ _n_fold_factory(const u3j_site* site, u3_noun core)
 
 // Scratch borrows from a single live input for the duration of a scan.
 // Incrementing the generation makes all references from older scans inert.
-#define FOLD_SLOTS 8192
-static struct { u3_noun node; c3_w generation; uint16_t choices; } _n_fold_seen[FOLD_SLOTS];
-static c3_w _n_fold_generation;
+enum { FOLD_BITS = 13, FOLD_SLOTS = 1 << FOLD_BITS };
+typedef struct {
+  u3_noun kids;
+  uint16_t generation, choices;
+} _n_fold_entry;
+
+static _n_fold_entry _n_fold_seen[FOLD_SLOTS];
+static uint16_t _n_fold_generation;
+
+static void
+_n_fold_reset(void)
+{
+  if ( !++_n_fold_generation ) {
+    memset(_n_fold_seen, 0, sizeof(_n_fold_seen));
+    ++_n_fold_generation;
+  }
+}
 
 // A rejected merge can recur at every node. These integer identities only
 // throttle probes. Reuse of a loom address can postpone a fresh probe.
@@ -160,38 +191,94 @@ typedef struct {
   c3_w count;
 } _n_fold_scan;
 
-// The walk evaluates each shared subtree once, as in Lohrey and Maneth's
-// treatment of DAG-compressed trees (https://doi.org/10.1016/j.tcs.2006.07.024).
-// Bit t is the answer for binary truth table t. In that table, bits
-// 0..3 give the products for (0,0), (0,1), (1,0), and (1,1).
-static int
-_n_fold_walk(_n_fold_scan* scan, u3_noun node, c3_w depth)
+// Bit t is the product for binary truth table t. Its four bits give the
+// products for (0,0), (0,1), (1,0), (1,1). Combine all 16 tables in parallel.
+static uint16_t
+_n_fold_choices(uint16_t l, uint16_t r)
 {
-  u3_noun tag, data, left, right;
-  if ( depth > 192 || c3n == u3r_cell(node, &tag, &data) ) return -1;
-  if ( tag == scan->plan->leaf ) {
-    if ( !data ) return 0;
-    if ( scan->witness && scan->witness != data ) return -1;
-    scan->witness = data;
-    return UINT16_MAX;
+  return (~l & ~r & 0xaaaa) | (~l & r & 0xcccc) |
+         ( l & ~r & 0xf0f0) | ( l & r & 0xff00);
+}
+
+// Evaluate the DAG in postorder. A frame saves the two children and the
+// left product. Forgetting a table entry can only cost another traversal.
+// Each cache hit allows eight more branch visits, up to the work limit.
+// https://doi.org/10.1016/j.tcs.2006.07.024
+static int
+_n_fold_walk(_n_fold_scan* scan, u3_noun node)
+{
+  enum { depth_limit = 1024, work_limit = 1 << 20 };
+  typedef struct {
+    u3_noun kids;
+    int32_t left;
+    uint16_t slot;
+  } frame;
+  static frame path[depth_limit];
+  c3_w depth = 0, used = 0, budget = FOLD_SLOTS / 2;
+  uint16_t value;
+  u3a_road* road = u3R;
+  while ( road->par_p && c3y == u3a_is_senior(road, node) ) {
+    road = u3to(u3a_road, road->par_p);
   }
-  if ( tag != scan->plan->branch || c3n == u3r_cell(data, &left, &right) ) return -1;
-  c3_w i = (c3_w)vt_hash_integer(node) & (FOLD_SLOTS - 1);
-  while ( _n_fold_seen[i].generation == _n_fold_generation ) {
-    if ( _n_fold_seen[i].node == node ) return _n_fold_seen[i].choices;
-    i = (i + 1) & (FOLD_SLOTS - 1);
+
+  for (;;) {
+    u3_noun tag, data, left, right;
+    if ( c3n == u3r_cell(node, &tag, &data) ) return -1;
+    if ( tag == scan->plan->leaf ) {
+      if ( data && scan->witness && scan->witness != data ) return -1;
+      if ( data ) scan->witness = data;
+      value = data ? UINT16_MAX : 0;
+    }
+    else {
+      if ( tag != scan->plan->branch || c3n == u3r_cell(data, &left, &right) ) return -1;
+      c3_w slot = FOLD_SLOTS;
+      // Multiple paths can meet at the tagged cell or its child pair.
+      // References from a younger road do not count on an older pair.
+      if ( u3a_use(node) > 1 || u3a_use(data) > 1 || c3y == u3a_is_senior(road, data) ) {
+        c3_w home = ((c3_d)data * 11400714819323198485ULL) >> (64 - FOLD_BITS);
+        slot = home;
+        while ( _n_fold_seen[slot].generation == _n_fold_generation ) {
+          if ( _n_fold_seen[slot].kids == data ) {
+            if ( budget < work_limit ) budget += 8;
+            value = _n_fold_seen[slot].choices;
+            goto complete;
+          }
+          slot = (slot + 1) & (FOLD_SLOTS - 1);
+        }
+        if ( used == FOLD_SLOTS / 2 ) {
+          _n_fold_reset();
+          used = 0;
+          slot = home;
+        }
+        ++used;
+        _n_fold_seen[slot].generation = _n_fold_generation;
+        _n_fold_seen[slot].kids = data;
+      }
+      if ( ++scan->count > budget || depth == depth_limit ) return -1;
+      path[depth++] = (frame){data, -1, slot};
+      node = left;
+      continue;
+    }
+  complete:
+    while ( depth ) {
+      frame* top = &path[depth - 1];
+      if ( top->left < 0 ) {
+        top->left = value;
+        node = u3t(top->kids);
+        break;
+      }
+      value = _n_fold_choices(top->left, value);
+      if ( top->slot != FOLD_SLOTS ) {
+        _n_fold_entry* entry = &_n_fold_seen[top->slot];
+        // A child can fill the table and reuse this slot.
+        if ( entry->generation == _n_fold_generation && entry->kids == top->kids ) {
+          entry->choices = value;
+        }
+      }
+      --depth;
+    }
+    if ( !depth ) return value;
   }
-  if ( ++scan->count > FOLD_SLOTS / 2 ) return -1;
-  _n_fold_seen[i].node = node;
-  _n_fold_seen[i].generation = _n_fold_generation;
-  int l = _n_fold_walk(scan, left, depth + 1);
-  if ( l < 0 ) return -1;
-  int r = _n_fold_walk(scan, right, depth + 1);
-  if ( r < 0 ) return -1;
-  uint16_t choices = (~l & ~r & 0xaaaa) | (~l & r & 0xcccc) |
-                     ( l & ~r & 0xf0f0) | ( l & r & 0xff00);
-  _n_fold_seen[i].choices = choices;
-  return choices;
 }
 
 // Evaluate a bounded, effect-free path in an interpreted merge. Unequal
@@ -280,8 +367,8 @@ _n_fold_direct(u3_noun merge, u3_noun witness)
   return (int)table;
 }
 
-static u3_weak
-_n_fold_try(u3_noun core, const u3n_prog* arm)
+u3_weak
+u3n_fold_try(u3_noun core, const u3n_prog* arm)
 {
   _n_fold_plan plan;
   u3_noun bat, tree, context, tag, kids, head, tail;
@@ -295,12 +382,9 @@ _n_fold_try(u3_noun core, const u3n_prog* arm)
   }
   if ( !_n_fold_read(bat, &plan) || tag != plan.branch ) return u3_none;
 
-  if ( !++_n_fold_generation ) {
-    memset(_n_fold_seen, 0, sizeof(_n_fold_seen));
-    ++_n_fold_generation;
-  }
+  _n_fold_reset();
   _n_fold_scan scan = { .plan = &plan };
-  int choices = _n_fold_walk(&scan, tree, 0);
+  int choices = _n_fold_walk(&scan, tree);
   if ( choices < 0 || scan.count < 3 ) return u3_none;
   const u3j_site* sites = arm->cal_u.sit_u;
   const u3j_site *left, *right;
@@ -341,3 +425,5 @@ _n_fold_try(u3_noun core, const u3n_prog* arm)
   u3z(witness);
   return 0;
 }
+
+#endif

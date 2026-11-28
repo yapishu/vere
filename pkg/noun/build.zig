@@ -441,6 +441,7 @@ const c_source_files = [_][]const u8{
     "migrate.c",
     "palloc.c",
     "nock.c",
+    "nock_fold.c",
     "options.c",
     "retrieve.c",
     "ship.c",

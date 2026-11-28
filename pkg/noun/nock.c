@@ -995,8 +995,6 @@ _n_prog_asm(u3_noun ops, u3n_prog* pog_u, u3_noun sip)
 
 #if !defined(U3_MEMORY_DEBUG) && !defined(U3_CPU_DEBUG)
 #define NOCK_FOLD
-#include "jets/w.h"
-#include "nock_fold.inc"
 #endif
 
 /* _n_prog_from_ops(): new program from _n_comp() product
@@ -1015,10 +1013,9 @@ _n_prog_from_ops(u3_noun ops, u3_noun fol)
   ops = _n_thread(ops);
   ops = _n_proj_compile(ops);
 #ifdef NOCK_FOLD
-  _n_fold_plan fold;
   // A jump across zero bytes marks entry while remaining executable by a
   // reader of the ordinary bytecode. All jump offsets are assembled below.
-  if ( _n_fold_read(fol, &fold) ) {
+  if ( u3n_is_fold(fol) ) {
     ops = u3kb_weld(ops, u3nc(u3nc(SBIP, 0), 0));
   }
 #endif
@@ -2495,7 +2492,7 @@ _n_kick(u3_noun cor, u3j_site* sit_u, u3_cue_plan** plan)
     const u3n_prog* arm = u3to(u3n_prog, sit_u->pog_p);
     if ( arm->byc_u.ops_y[0] == SBIP && arm->byc_u.ops_y[1] == 0 ) {
       u3n_arm_effect();
-      pro = _n_fold_try(cor, arm);
+      pro = u3n_fold_try(cor, arm);
       if ( pro != u3_none ) u3z(cor);
     }
   }

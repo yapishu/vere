@@ -74,6 +74,10 @@
       u3p(u3n_prog)
       u3n_find(u3_noun key, u3_noun fol);
 
+    /* Two-state fold recognition and evaluation. Both borrow their inputs. */
+      c3_t u3n_is_fold(u3_noun fol);
+      u3_weak u3n_fold_try(u3_noun cor, const u3n_prog* arm);
+
     /* u3n_burn(): execute u3n_prog with bus as subject.
      */
       u3_noun

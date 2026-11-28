@@ -1579,6 +1579,24 @@ _fold_bit(unsigned table, c3_w axis, unsigned shift)
                                _lit((table >> (shift + 1)) & 1));
 }
 
+// Each leaf pair occurs twice. The distinct pairs fill the table twice.
+static u3_noun
+_fold_wide(c3_w i, u3_noun leaves[2], unsigned table, unsigned* bit)
+{
+  if ( i >= 8192 ) {
+    unsigned side = __builtin_parity(i);
+    unsigned child = (table >> (1 + side)) & 1;
+    *bit = (table >> (3 * child)) & 1;
+    u3_noun pair = u3nt(43, u3k(leaves[side]), u3k(leaves[1 - side]));
+    return u3nt(43, u3k(pair), pair);
+  }
+  unsigned a, b;
+  u3_noun head = _fold_wide(2 * i, leaves, table, &a);
+  u3_noun tail = _fold_wide(2 * i + 1, leaves, table, &b);
+  *bit = (table >> (2 * a + b)) & 1;
+  return u3nt(43, head, tail);
+}
+
 static void
 _fold_tables(u3_noun bat, u3_noun fire)
 {
@@ -1594,7 +1612,24 @@ _fold_tables(u3_noun bat, u3_noun fire)
       a = b;
       b = bit;
     }
+    // The same completed subtree also occurs on both sides of a long spine.
+    u3_noun spine = u3k(tree);
+    unsigned product = b;
+    for ( unsigned i = 0; i < 320; i++ ) {
+      if ( i & 1 ) {
+        spine = u3nt(43, u3k(prev), spine);
+        product = (table >> (2 * a + product)) & 1;
+      }
+      else {
+        spine = u3nt(43, spine, u3k(prev));
+        product = (table >> (2 * product + a)) & 1;
+      }
+    }
     u3z(prev);
+    u3_noun leaves[2] = {u3nc(42, 0), u3nc(42, 1)};
+    unsigned wide_bit;
+    u3_noun wide = _fold_wide(1, leaves, table, &wide_bit);
+    u3z(leaves[0]); u3z(leaves[1]);
     for ( unsigned direct = 0; direct < 2; direct++ ) {
       c3_w lhs = direct ? 2 : 30, rhs = direct ? 3 : 6;
       u3_noun merge = u3nq(6, _slot(lhs), _fold_bit(table, rhs, 0), _fold_bit(table, rhs, 2));
@@ -1607,9 +1642,13 @@ _fold_tables(u3_noun bat, u3_noun fire)
         gate = u3nt(arm, u3k(tree), 0);
       }
       else gate = u3nt(u3k(bat), u3k(tree), _fold_context(merge));
+      u3_noun deep = u3i_edit(u3k(gate), 6, u3k(spine));
+      u3_noun broad = u3i_edit(u3k(gate), 6, u3k(wide));
       u3_assert(u3n_nock_on(gate, u3k(fire)) == b);
+      u3_assert(u3n_nock_on(deep, u3k(fire)) == product);
+      u3_assert(u3n_nock_on(broad, u3k(fire)) == wide_bit);
     }
-    u3z(tree);
+    u3z(wide); u3z(spine); u3z(tree);
   }
 }
 
