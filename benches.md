@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [e39bbbe331](https://github.com/yapishu/vere/commit/e39bbbe331472f252b818d96ab3cce81852178d4) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [f38a0997ef](https://github.com/yapishu/vere/commit/f38a0997efe41630eaf005ce5ce4466dc3d5604f) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+Computing both subject types for 768 parsed predicates in a live Dojo takes **33.8–34.0% less time** than the preceding review across two boots. Replaying 96 calls sampled during Hoon, Lull and Zuse compilation takes **15.7–16.3% less time** on a 32-bit loom.
 
 Expanding both stages of 1,536 parsed gate calls takes **65.2–67.3% less time** than the preceding review across two live Dojo boots. A position-based sample of 76 calls to the macro expander during Hoon, Lull and Zuse compilation takes **24.8–27.2% less time** on a 32-bit loom.
 
@@ -28,7 +30,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -232,6 +234,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [1b502dc345](https://github.com/yapishu/vere/commit/1b502dc34587aeff54cfbc5113ac1daadeb407d9) | scan character runs in stir and share matched tapes | [Incremental](#change-1b502dc345) |
 | [4d63ed61e7](https://github.com/yapishu/vere/commit/4d63ed61e780b2f558500bd5ef54de2756f591de) | infer types directly from resolved wings | [Incremental](#change-4d63ed61e7) |
 | [e39bbbe331](https://github.com/yapishu/vere/commit/e39bbbe331472f252b818d96ab3cce81852178d4) | expand gate call arguments and edits in one pass | [Incremental](#change-e39bbbe331) |
+| [f38a0997ef](https://github.com/yapishu/vere/commit/f38a0997efe41630eaf005ce5ce4466dc3d5604f) | return the subject type directly for non-refining predicates | [Incremental](#change-f38a0997ef) |
 
 ## Measurements by change
 
@@ -3104,3 +3107,28 @@ After the final source workload, combined king and worker PSS is 122.6 and 123.1
 Full cold replay through event 143 takes 109.27 and 110.45 s on the preceding review and 110.33 and 103.56 s on review. The builds exchange cores between pairs. Peak RSS rounds to 816.2 MiB for the preceding review and 816.2 MiB for review.
 
 **Correctness.** On each loom width, the native expansion and the original Hoon arm agree on all 172,468 accepted calls in Hoon compilation, 131,320 in Lull and 61,694 in Zuse. An additional 2,408 comparisons per width cover zero through 300 arguments, compound wings and multiword sample axes. Eight native suites pass on each width. The jets suite also passes on each width under AArch64 emulation. The bootstrap core, 138 cold-replay event products and 17 checkpoint event products match develop by canonical jam length and SHA-256 (33,279,069,693 bytes per width). All six compiler-window products also match develop on each width (1,439,791,403 bytes). Develop opens the candidate checkpoint at event 241 and replays events 242–249.
+
+<a id="change-f38a0997ef"></a>
+
+### Return the subject type directly for non-refining predicates
+
+Hoon calls `+gain` and `+lose` to find the subject type on each side of a conditional. Their shared gate `+chip` can return the original type for predicates such as equality, an ordinary gate call or a field read. The Kelvin 135 jet recognizes these expressions through source-location wrappers. Type tests and logical combinations continue through the Hoon arm. [Kernel definition](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9755-L9774)
+
+In a live fake ~zod, parse 12 predicates with `+ream`, including equality, atom and cell tests, negation, ordinary gate calls and a pair. For each predicate, evaluate both `(~(gain ut %noun) gen)` and `(~(lose ut %noun) gen)`. The first workload repeats the parsed list 64 times. The second repeats the source strings eight times and includes parsing. Each boot rotates all three builds on one physical core, warms once, and checks the SHA-256 of the jam of every complete result list. Times are medians of seven trials on the first boot. The last column gives the change on both independently restored ships.
+
+| Running Dojo | Develop | Previous review `b684e4d7a0` | Review | Time vs previous review, two boots |
+|---|---:|---:|---:|---:|
+| Refine both branches of 768 parsed predicates | 2.836 ms | 1.448 ms | 0.959 ms | 33.8% less / 34.0% less |
+| Parse 96 predicates and refine both branches | 11.367 ms | 6.665 ms | 6.594 ms | 1.1% less / 0.8% less |
+
+Sample every 3,001st `+chip` entry during Hoon compilation, every 2,957th during Lull and every 877th during Zuse, beginning halfway through each interval. Capture 32 complete cores and their original Hoon products from each compiler. This includes calls that need actual type refinement. In a running worker, evaluate each of the 96 cores 24 times per batch and check its product. Cue and product checks sit outside the timer. Across three alternating comparisons on one core, the median total for the 2,304 evaluations is 3.946 ms on the previous review and 3.327 ms on review. The individual comparisons save 15.7–16.3%.
+
+| Whole compilation, four rotated trials | Develop | Previous review | Review |
+|---|---:|---:|---:|
+| Hoon | 10.362 s | 3.559 s | 3.553 s |
+| Lull | 8.197 s | 2.400 s | 2.374 s |
+| Zuse | 3.377 s | 1.331 s | 1.319 s |
+
+Combined king and worker PSS during the source workload is 124.6 and 124.2 MiB on the previous review and 124.2 and 124.6 MiB on review. Two cold replays through event 143 take 108.97 and 116.98 s on the previous review and 113.64 and 104.52 s on review. The builds exchange cores between pairs. Peak RSS is 816.2 and 816.2 MiB, respectively.
+
+On each loom width, the jet and the original Hoon arm return equal nouns on all 45,798 accepted calls in Hoon compilation, 72,088 in Lull and 14,990 in Zuse. Another 1,782 combinations of predicate shape, subject and polarity cover malformed argument lists, nested locations, type tests and non-boolean polarities. The jet accepts 804 and punts on the other 978. All accepted products agree with Hoon. Eight native suites pass on both loom widths, and the jets suite passes on both under AArch64 emulation. The bootstrap core, 138 cold-replay products and 17 checkpoint products match develop by canonical jam length and SHA-256 on each width (33,279,069,693 bytes). All six compiler-window products match on each width (1,439,791,403 bytes). Develop resumes the review checkpoint at event 241 and replays events 242–249.
