@@ -2,35 +2,35 @@
 
 Review branch `review/noun-runtime` through [f5bfb46909](https://github.com/yapishu/vere/commit/f5bfb46909a3ce47f89947a3e1f60c46d1620327) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
 
-Computing both branch types for 768 parsed field tests in a live Dojo takes **37.6–38.3% less time** than the preceding review across two boots. Replaying 96 type tests sampled from three compilers takes **63.2–63.9% less time** on a 32-bit loom.
+Computing both branch types for 768 parsed field tests in a live Dojo takes **37.6–38.3% less time** than the preceding review across two boots. Replaying 96 type tests sampled from three compilers takes **63.2–63.9% less time** on a 32-bit loom. [f5bfb46909](https://github.com/yapishu/vere/commit/f5bfb46909a3ce47f89947a3e1f60c46d1620327)
 
-Computing both subject types for 768 parsed predicates in a live Dojo takes **33.8–34.0% less time** than the preceding review across two boots. Replaying 96 calls sampled during Hoon, Lull and Zuse compilation takes **15.7–16.3% less time** on a 32-bit loom.
+Computing both subject types for 768 parsed predicates in a live Dojo takes **33.8–34.0% less time** than the preceding review across two boots. Replaying 96 calls sampled during Hoon, Lull and Zuse compilation takes **15.7–16.3% less time** on a 32-bit loom. [f38a0997ef](https://github.com/yapishu/vere/commit/f38a0997efe41630eaf005ce5ce4466dc3d5604f)
 
-Expanding both stages of 1,536 parsed gate calls takes **65.2–67.3% less time** than the preceding review across two live Dojo boots. A position-based sample of 76 calls to the macro expander during Hoon, Lull and Zuse compilation takes **24.8–27.2% less time** on a 32-bit loom.
+Expanding both stages of 1,536 parsed gate calls takes **65.2–67.3% less time** than the preceding review across two live Dojo boots. A position-based sample of 76 calls to the macro expander during Hoon, Lull and Zuse compilation takes **24.8–27.2% less time** on a 32-bit loom. [e39bbbe331](https://github.com/yapishu/vere/commit/e39bbbe331472f252b818d96ab3cce81852178d4)
 
-Inferring types for 82 calls sampled during Hoon, Lull and Zuse compilation takes **36.8–37.4% less time** than the preceding review on a 32-bit loom. Across two live Dojo boots, selecting Azimuth library arms takes **73.6–74.8% less time** and selecting the battery arm of `+turn` takes **69.7–70.2% less time**.
+Inferring types for 82 calls sampled during Hoon, Lull and Zuse compilation takes **36.8–37.4% less time** than the preceding review on a 32-bit loom. Across two live Dojo boots, selecting Azimuth library arms takes **73.6–74.8% less time** and selecting the battery arm of `+turn` takes **69.7–70.2% less time**. [4d63ed61e7](https://github.com/yapishu/vere/commit/4d63ed61e780b2f558500bd5ef54de2756f591de)
 
-Across two Kelvin 135 fake ~zod boots, scanning leading spaces on 11,383 Clay and Lull source lines takes **28.1–29.1% less time** than the preceding review. A full match on 25,000 lowercase letters takes **91.1–91.2% less time**.
+Across two Kelvin 135 fake ~zod boots, scanning leading spaces on 11,383 Clay and Lull source lines takes **28.1–29.1% less time** than the preceding review. A full match on 25,000 lowercase letters takes **91.1–91.2% less time**. [1b502dc345](https://github.com/yapishu/vere/commit/1b502dc34587aeff54cfbc5113ac1daadeb407d9)
 
-Across two live Kelvin 135 fake ~zod boots, `+ream` takes **14.4–14.5% less time** to parse Clay and **14.0% less time** to parse Lull than the preceding review. Both workloads parse the complete source file.
+Across two live Kelvin 135 fake ~zod boots, `+ream` takes **14.4–14.5% less time** to parse Clay and **14.0% less time** to parse Lull than the preceding review. Both workloads parse the complete source file. [3c0ed69633](https://github.com/yapishu/vere/commit/3c0ed696331df29829b7959400cb1c78c9e38168)
 
-On an x86-64 CPU with SHA instructions, Clay page hashing takes **74.8–75.0% less time** and the complete Ames packet round-trip test takes **20.6–20.9% less time** than the preceding review, across two live fake ~zod boots.
+On an x86-64 CPU with SHA instructions, Clay page hashing takes **74.8–75.0% less time** and the complete Ames packet round-trip test takes **20.6–20.9% less time** than the preceding review, across two live fake ~zod boots. [9d47dd576c](https://github.com/yapishu/vere/commit/9d47dd576caaceb26116044fc1523f7422edb4dc)
 
-Calling `+sham` on the noun behind the largest salted hash in cold replay takes **51.1 ms** in a live Dojo, down from **55.5 ms** on the preceding review and **65.9 ms** on develop. Reading its 20.8 MiB message in place also saves **19.3 MiB** of peak RSS across the full replay.
+Calling `+sham` on the noun behind the largest salted hash in cold replay takes **51.1 ms** in a live Dojo, down from **55.5 ms** on the preceding review and **65.9 ms** on develop. Reading its 20.8 MiB message in place also saves **19.3 MiB** of peak RSS across the full replay. [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948)
 
-On two live Kelvin 135 boots, deterministic draws using inputs from successful Eyre logins take **23.7–24.2% less time** than the preceding review. Generating an 8 MiB atom reduces peak process RSS from **37.2 to 8.9 MiB** on a 32-bit loom and **49.2 to 8.8 MiB** on a 64-bit loom.
+On two live Kelvin 135 boots, deterministic draws using inputs from successful Eyre logins take **23.7–24.2% less time** than the preceding review. Generating an 8 MiB atom reduces peak process RSS from **37.2 to 8.9 MiB** on a 32-bit loom and **49.2 to 8.8 MiB** on a 64-bit loom. [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff)
 
-Tagging 12,251 prebuilt singleton lists takes **22.3–24.9% less time** and tagging singleton sets takes **19.5–21.3% less time** than on the preceding review across two live Dojo boots. Inside the Hoon compiler, 52,152 calls to the captured set gate take **28.7% less time**, saving a few milliseconds per compile.
+Tagging 12,251 prebuilt singleton lists takes **22.3–24.9% less time** and tagging singleton sets takes **19.5–21.3% less time** than on the preceding review across two live Dojo boots. Inside the Hoon compiler, 52,152 calls to the captured set gate take **28.7% less time**, saving a few milliseconds per compile. [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67)
 
-On 24 complete Arvo file revisions, two source-annotated Clay map gates take **30.1–36.6% less time** across two live Dojo boots. During three desk changes, time inside all 147 map calls falls by **16.8–19.4%** across two replay series.
+On 24 complete Arvo file revisions, two source-annotated Clay map gates take **30.1–36.6% less time** across two live Dojo boots. During three desk changes, time inside all 147 map calls falls by **16.8–19.4%** across two replay series. [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974)
 
-Finding added and removed paths between complete Arvo and Vere revisions takes **14.8–31.7% less time** than on the preceding review across eight live Dojo workloads and two independent boots. Combined king and worker PSS after the comparisons stays within **0.7 MiB** of the preceding review.
+Finding added and removed paths between complete Arvo and Vere revisions takes **14.8–31.7% less time** than on the preceding review across eight live Dojo workloads and two independent boots. Combined king and worker PSS after the comparisons stays within **0.7 MiB** of the preceding review. [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17)
 
-In two live Kelvin 135 Dojos, batches of map deletions captured from cold replay take **27.5–29.2% less time** when the key exists and **43.7–44.1% less time** when it is absent, against the preceding review. Across 806 repeated file removals, the map and set jets each return the original root every time. Ship PSS after the file workloads is within **0.8 MiB** of the preceding review.
+In two live Kelvin 135 Dojos, batches of map deletions captured from cold replay take **27.5–29.2% less time** when the key exists and **43.7–44.1% less time** when it is absent, against the preceding review. Across 806 repeated file removals, the map and set jets each return the original root every time. Ship PSS after the file workloads is within **0.8 MiB** of the preceding review. [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2)
 
-Reusing a private core for prepared native calls cuts the time to sort 8,192 atoms by **22.5–23.6%** and to fold over the Lull source by **27.7–27.8%** against the preceding review. Resident ship PSS after the workloads rises by **2.0–2.7 MiB**.
+Reusing a private core for prepared native calls cuts the time to sort 8,192 atoms by **22.5–23.6%** and to fold over the Lull source by **27.7–27.8%** against the preceding review. Resident ship PSS after the workloads rises by **2.0–2.7 MiB**. [56b5327a55](https://github.com/yapishu/vere/commit/56b5327a5511c2087cdc8783dc5ae9b242686f6b)
 
-At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
+At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay. [c45cfd8d75](https://github.com/yapishu/vere/commit/c45cfd8d752db1a63486c055eb7068f19452e218) · [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362)
 
 [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
@@ -2658,6 +2658,8 @@ Stack parent before this group is [d5f8811878](https://github.com/yapishu/vere/c
 
 A list jet such as `+sort`, `+roll` or `+turn` can prepare its gate once. When that gate calls a native jet, Vere reuses the two cells holding the battery, sample and context while it owns both cells exclusively. A jet that retains either cell keeps its ordinary noun, and the next call gets a fresh core. Each call evaluates the jet with the current sample.
 
+- [56b5327a55](https://github.com/yapishu/vere/commit/56b5327a5511c2087cdc8783dc5ae9b242686f6b) — jets: reuse private cores across prepared native calls
+
 **Live Kelvin 135 Dojo.** Each column gives the medians from two independent fake-`~zod` boots, in order. Each boot has one warm-up and 13 timed rounds per executable. All three builds take turns on the same core. The timer covers the list operation. After each evaluation the driver checks the SHA-256 of the ordered jammed result.
 
 | Workload | Develop `baf98ea9c3`, ms | Previous review `136deb1539`, ms | Review `56b5327a55`, ms | Less time vs previous review |
@@ -2696,6 +2698,8 @@ On a checkpoint replay of events 144–153, nine timed pairs against develop too
 ### Delete keys from persistent maps and sets
 
 When the key is absent, `(~(del by m) key)` and `(~(del in s) key)` return the original root. On a hit, the jet joins the two child treaps by priority and copies the ancestors whose child changes. A single stack holds both search and join paths. The measurements compare this commit with develop `baf98ea9c3` and the preceding review `be2f5d242a` (runtime `56b5327a55`).
+
+- [52bac63838](https://github.com/yapishu/vere/commit/52bac63838d4036cc0793f2837f7f126a980a2f2) — jets: rebuild only the treap path changed by deletion
 
 **Calls from cold replay.** A Kelvin 135 fake `~zod` replay through event 143 makes 2,011 nonempty map deletions. The key is absent 1,014 times. Both set deletions find their key. The sample below comprises 50 input trees, keys and expected results captured by call position. Each live Dojo batch evaluates the indicated group 64 times. The timer covers the Hoon operation, including its list traversal. Each timed result matches develop by SHA-256 of the complete jammed noun. Each pair of figures gives the medians for two independent boots, with one warm-up and 11 timed trials per build on each boot.
 
@@ -2755,6 +2759,8 @@ Nine pairs of checkpoint replays over events 144–153 measure 1.308 → 1.399 s
 
 For `(~(dif by a) b)` and `(~(dif in a) b)`, a matching root key exposes the two child trees directly. A split below the root hands its two results to the recursive calls separately. A sole surviving branch becomes the result. The public `+bif` gate uses the same search and returns its ordinary pair. The comparison uses develop `baf98ea9c3` and the preceding review `76be11f6aa` (runtime `52bac63838`).
 
+- [0aebc87353](https://github.com/yapishu/vere/commit/0aebc873537ea5dc79c04a734e902550c88f9a17) — jets: pass treap partitions directly through difference
+
 **Complete file revisions in a live Dojo.** Use the parent and child Git trees for Arvo `3ce1c00105` under `pkg/arvo/` and Vere `b339b5067a` under `pkg/`. A set holds file paths as lists of components. A map associates each path with its Git object ID. Each batch takes the indicated difference 32 times. The driver independently checks the complete result against Git, including the values on the surviving keys. SHA-256 over each ordered batch of jammed results agrees across all three builds. The table gives medians in µs from two independent Kelvin 135 fake-`~zod` boots. Each boot has one warm-up and 11 timed rounds per build in rotating order on the same core.
 
 | 32 differences | Develop, µs | Previous review, µs | Review, µs | Less time vs previous review |
@@ -2803,6 +2809,8 @@ Across both directions and all 48 revisions, the preceding difference implementa
 
 Vere recognizes a gate that selects one field of its sample and builds a noun around it. Gate preparation records the field axis and the fixed siblings on the path to that field. Each call fills the hole with its own input. The path can contain up to 16 cells. At each level the fixed sibling can sit on either side and can be a literal or a field of the gate’s battery or lexical environment. A missing field takes the ordinary Nock path and reports the original source locations. The comparison uses develop `baf98ea9c3` and the preceding review `1610b3c303` (runtime `0aebc87353`).
 
+- [78c2194073](https://github.com/yapishu/vere/commit/78c2194073d5c2c2e16c52738f42eb2407ddb974) — jets: prepare one-hole constructors for repeated gate calls
+
 **Clay gates in a running ship.** Take the 24 most recent first-parent Arvo commits with deletions under `pkg/arvo/` starting at `5a187feded`, with rename detection off. In chronological order, build one map from each resulting Git tree, keyed by path components with the hexadecimal blob ID as its value. The 24 maps contain 12,251 entries in total. Apply `+run:by` to each with the gate from `+tako-ford` or the changed-file gate at Clay line 1958. The canonical jam of each benchmark battery equals the bytes captured from that gate during desk replay. The control applies the same value constructor without source annotations. Each number is the median of 18 timed evaluations after one warm-up in a fresh Kelvin 135 fake `~zod`. The three builds rotate on one core. The ordered batch products agree by SHA-256.
 
 | Workload on 24 revisions | Develop, µs | Previous review, µs | Review, µs | Time vs previous review |
@@ -2850,6 +2858,8 @@ Separate invocation counts give 54,596 direct constructions for 53,915 prepared 
 ### Prepare short-lived gates without building their fallback
 
 Vere can execute a prepared gate by selecting a field, running a program on the sample, or filling a noun constructor. For an unregistered gate with one of these entry points, it can defer looking up the full Nock program until a call needs it. A constructor with one fixed sibling stores that noun and the field axis directly in the existing call site. Map and set traversals retain the nouns they need across calls. A traversal that borrows interior pointers resolves a constructor’s fallback before borrowing, since program lookup can unify equal nouns. The site has the same size and lifetime as on the preceding review. The preceding review is `9ddd3b8720` and develop is `baf98ea9c3`.
+
+- [0c171e9479](https://github.com/yapishu/vere/commit/0c171e94798b61f9e66b9050b4615465d448ab67) — jets: prepare short-lived gates without building their fallback
 
 **Short traversals in a running ship.** The inputs are the 12,251 path and blob-ID pairs from the same 24 Arvo revisions as the Clay constructor test. The first two rows map the gate `|=(r=[path @t] [%ktcl r])` across 12,251 singleton lists or sets constructed before timing. Its battery also occurs in the compiler. The next three rows include singleton construction in the timed expression. The last two controls amortize preparation over more rows. Each pair of numbers gives the medians from two fresh Kelvin 135 fake ~zod boots. Each boot uses one warm-up and 18 timed Dojo evaluations per build and workload, rotating the three binaries on one core. SHA-256 of the ordered jam product agrees for every evaluation. [Revision selection and map construction](#change-78c2194073).
 
@@ -2903,6 +2913,8 @@ Four paired cold replays rebuild the ship through event 143 and exchange cores b
 
 `+raw:og` writes each 256-bit block into its position in the output atom and keeps the previous digest in a fixed buffer. After mixing the seed, remaining width and previous digest, the SHA input ends at its highest nonzero byte.
 
+- [7f16135a2d](https://github.com/yapishu/vere/commit/7f16135a2d7c37e92245aaf0a52b5172e2537aff) — jets: write og digest blocks directly into the result atom
+
 Twenty successful local logins to a Kelvin 135 fake ~zod each invoke `+raw:og` three times for 128 bits with a 32-byte seed. The first row replays the 60 inputs in order 64 times. Each build also reproduces all 60 recorded draws individually. The remaining rows use `(turn (gulf 1 2.048) shax)` for seeds or, for the single large draw, `(~(raw og 0x3141.5926.5358.9793) 8.388.608)`. Dojo times exclude seed construction and result hashing. Each boot warms once and rotates three builds on one physical core for eight measured trials. Columns show the first boot’s medians.
 
 | Workload | Develop | Previous review | Review | Less time vs previous review, two boots |
@@ -2934,6 +2946,8 @@ Generating an 8 MiB atom from seed `0x53.4f21` in a fresh process gives the foll
 
 Cold replay through event 143 calls `+shas` with the salt `%sham` on messages of 1,417,051 and 21,780,543 bytes. Both are canonical jams. The table times `(sham noun)` on those exact cued inputs in a Kelvin 135 fake ~zod. Each median covers six measured Dojo evaluations per build after warmup, rotating build order on one core.
 
+- [c7aab99a51](https://github.com/yapishu/vere/commit/c7aab99a513337f5fa8472a877054008e9fc4948) — jets: hash shax and shas messages directly from the atom
+
 | Message in the salted hash | Develop | Previous review `a25b3bc11f` | Review | Time vs previous review |
 |---|---:|---:|---:|---:|
 | 1.35 MiB | 3.80 ms | 3.41 ms | 3.29 ms | 3.6% less |
@@ -2952,6 +2966,8 @@ Both loom widths match Python `hashlib` on all 1,482 `+shax` and `+shas` cases, 
 ### Select hardware SHA-256 compression in Nettle
 
 The first compression call selects a routine using the host CPU features. SHA-224 and SHA-256 share this routine. Vere ships assembly generated from Nettle's pinned implementation and selects its C compressor on CPUs without the instructions. [Nettle x86-64 source](https://github.com/gnutls/nettle/blob/nettle_4.0_release_20260205/x86_64/sha_ni/sha256-compress-n.asm) · [Nettle AArch64 source](https://github.com/gnutls/nettle/blob/nettle_4.0_release_20260205/arm64/crypto/sha256-compress-n.asm)
+
+- [9d47dd576c](https://github.com/yapishu/vere/commit/9d47dd576caaceb26116044fc1523f7422edb4dc) — build: use Nettle SHA-256 instructions on capable CPUs
 
 The table shows median Dojo time from the first of two independent Kelvin 135 fake ~zod boots on an i7-12700K. Each case warms once. Builds rotate on one physical core for seven to twelve measured evaluations per boot. All builds return the same checked products.
 
@@ -2980,6 +2996,8 @@ A further 9,216 compression calls per instruction sequence compare all eight sta
 
 When C calls a Hoon gate, Vere can recognize the battery and follow the registered axes to its enclosing core. Each hit checks the batteries along that path and the identity of the enclosing core. A registry change invalidates the table. Every call executes the gate with its current sample. This uses the guarded dispatch technique from [Hölzle, Chambers and Ungar](https://bibliography.selflanguage.org/pics.html).
 
+- [3c0ed69633](https://github.com/yapishu/vere/commit/3c0ed696331df29829b7959400cb1c78c9e38168) — jets: specialize native gate dispatch along registered parent axes
+
 Two Kelvin 135 fake ~zod boots per build use the same checkpoint and installed sources. Each case warms once and runs seven more times. Builds rotate on one physical core. The Dojo timer covers the parse, and the harness hashes the entire parsed noun after the timer stops. The table gives median times from the first boot and the percentage reduction from the preceding review in each boot. A negative percentage is a slowdown.
 
 | Workload | Develop | Previous review `098f8b36a5` | Review | Less time, boot 1 | Less time, boot 2 |
@@ -3005,6 +3023,8 @@ Eight native suites pass on each loom width. A focused test changes which jet re
 ### Scan character runs and share the result of +star
 
 The native `+stir` jet scans a run directly when the prepared parser selects `+just`, `+shim` or a byte-valued `+mask`. It tracks the line and column while scanning. For `+star`, each result is the matched character paired with the remaining results. A full match can therefore return the input tape itself. A partial match copies the prefix up to the first rejected character. Custom reducers receive every matched character in reverse order, as in Hoon. [Krishnaswami and Yallop on specializing parser combinators](https://doi.org/10.1145/3314221.3314625)
+
+- [1b502dc345](https://github.com/yapishu/vere/commit/1b502dc34587aeff54cfbc5113ac1daadeb407d9) — jets: scan single-character runs in stir and share matched tapes
 
 Each build opens a copy of the same Kelvin 135 fake ~zod checkpoint. The table shows median Dojo time from the first of two independent boots. Each case warms once and runs seven times with the builds rotating on one physical core. Each timed call is followed by a SHA-256 check of the entire jammed product. Percentages are the reduction in elapsed time against the preceding review. Negative values indicate a slowdown.
 
@@ -3051,6 +3071,8 @@ Eight native suites pass on each loom width. A differential run of 4,608 parser 
 
 Kelvin 135 `+play` opens a field expression into a wing lookup with an empty edit list. The jet uses `+peek` for an axis and `+fond` for a wing. A leg supplies its type directly. A dry arm yields a hold in its gold context. A wet arm uses the original payload when `+redo` can return it directly. Edits, synthetic ports and complex payload changes go through Hoon. [Hoon wing evaluation](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9199-L9222) · [Arm types](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9563-L9590)
 
+- [4d63ed61e7](https://github.com/yapishu/vere/commit/4d63ed61e780b2f558500bd5ef54de2756f591de) — jets: infer types directly from resolved wings
+
 Each build opens a copy of the same Kelvin 135 fake ~zod checkpoint. Each workload warms once, then runs seven times in rotating build order on one physical core. Times in µs are medians from the first of two independent boots. The Dojo timer covers the traversal and type inference. The full ordered results are hashed after the timer stops.
 
 | Live Dojo workload | Develop | Previous review | Review | Less time vs previous review, two boots |
@@ -3088,6 +3110,8 @@ On each loom width the bootstrap core, 138 cold-replay products and 17 checkpoin
 
 In Kelvin 135, `+open:ap` expands a gate call in two steps. The first assigns each argument its Nock axis in the sample. The second places each edit under the original subject, which occupies slot 3 after the gate is pushed. The runtime builds each result list from head to tail and uses `+peg` for arbitrary-width axes. The gate expression, wing and argument count come from the input. [Kelvin 135 expansion rules](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L8507-L8527)
 
+- [e39bbbe331](https://github.com/yapishu/vere/commit/e39bbbe331472f252b818d96ab3cce81852178d4) — jets: expand gate call arguments and edits in one pass
+
 **Running Dojo.** Parse 12 calls using `+ream` and expand each to `%cnsg`. The inputs call `add`, `shax`, `turn`, `weld`, `put:by:m`, `murn`, `peg`, `levy`, `rap`, `spin`, `cut` and `malt` with one to three arguments. Repeat the input list 128 times for each expansion workload. The source-text workload repeats the 12 strings 32 times and includes parsing and all expansion steps through `%cntr`. Each build opens a copy of the same fake ~zod checkpoint. The three builds rotate on one physical core for a warm-up and seven timed evaluations per boot. The table gives first-boot median times and the time reduction on each boot. Hashing the complete ordered output follows the timer. All builds return the same digest for each workload on both boots.
 
 | Dojo workload | Develop | Previous review `ce5cd198aa` | Review | Less time vs previous review, two boots |
@@ -3119,6 +3143,8 @@ Full cold replay through event 143 takes 109.27 and 110.45 s on the preceding re
 
 Hoon calls `+gain` and `+lose` to find the subject type on each side of a conditional. Their shared gate `+chip` can return the original type for predicates such as equality, an ordinary gate call or a field read. The Kelvin 135 jet recognizes these expressions through source-location wrappers. Type tests and logical combinations continue through the Hoon arm. [Kernel definition](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9755-L9774)
 
+- [f38a0997ef](https://github.com/yapishu/vere/commit/f38a0997efe41630eaf005ce5ce4466dc3d5604f) — jets: return the subject type directly for non-refining predicates
+
 In a live fake ~zod, parse 12 predicates with `+ream`, including equality, atom and cell tests, negation, ordinary gate calls and a pair. For each predicate, evaluate both `(~(gain ut %noun) gen)` and `(~(lose ut %noun) gen)`. The first workload repeats the parsed list 64 times. The second repeats the source strings eight times and includes parsing. Each boot rotates all three builds on one physical core, warms once, and checks the SHA-256 of the jam of every complete result list. Times are medians of seven trials on the first boot. The last column gives the change on both independently restored ships.
 
 | Running Dojo | Develop | Previous review `b684e4d7a0` | Review | Time vs previous review, two boots |
@@ -3143,6 +3169,8 @@ On each loom width, the jet and the original Hoon arm return equal nouns on all 
 ### Refine a field tested against a literal atom
 
 For a test such as `?=(~ xs)`, Kelvin 135's `+chip` computes the subject type that holds when the test succeeds or fails. The jet resolves the field, follows its path through the subject and rebuilds the enclosing types on return. It distributes the test over unions and reads an expansion of a recursive type only when `+rest` has one on the current road. A cycle, missing expansion or exhausted traversal budget returns control to the Hoon gate. Each call computes the requested polarity. This is an instance of occurrence typing, where testing a field narrows its type within the enclosing subject. [Hoon definition](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9755-L9774) · [Tobin-Hochstadt and Felleisen, ICFP 2010](https://www2.ccs.neu.edu/racket/pubs/icfp10-thf.pdf)
+
+- [f5bfb46909](https://github.com/yapishu/vere/commit/f5bfb46909a3ce47f89947a3e1f60c46d1620327) — jets: refine literal type tests along the resolved subject path
 
 A fake ~zod Dojo evaluates `+gain` and `+lose` on a subject containing two lists, a unit and an atom. The twelve predicates include null and numeric literals, atom and cell tests, named fields and the whole subject. The parsed workload repeats them 64 times. The source workload parses each string on every evaluation. Each boot starts from the same checkpoint, warms once and rotates three binaries on one physical core for seven measured trials. Every result list agrees by canonical jam digest.
 
