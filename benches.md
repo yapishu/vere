@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [4d63ed61e7](https://github.com/yapishu/vere/commit/4d63ed61e780b2f558500bd5ef54de2756f591de) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [e39bbbe331](https://github.com/yapishu/vere/commit/e39bbbe331472f252b818d96ab3cce81852178d4) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+Expanding both stages of 1,536 parsed gate calls takes **65.2–67.3% less time** than the preceding review across two live Dojo boots. A position-based sample of 76 calls to the macro expander during Hoon, Lull and Zuse compilation takes **24.8–27.2% less time** on a 32-bit loom.
 
 Inferring types for 82 calls sampled during Hoon, Lull and Zuse compilation takes **36.8–37.4% less time** than the preceding review on a 32-bit loom. Across two live Dojo boots, selecting Azimuth library arms takes **73.6–74.8% less time** and selecting the battery arm of `+turn` takes **69.7–70.2% less time**.
 
@@ -26,7 +28,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay.
 
-[Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -229,6 +231,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [3c0ed69633](https://github.com/yapishu/vere/commit/3c0ed696331df29829b7959400cb1c78c9e38168) | reuse native gate dispatch along registered parent axes | [Incremental](#change-3c0ed69633) |
 | [1b502dc345](https://github.com/yapishu/vere/commit/1b502dc34587aeff54cfbc5113ac1daadeb407d9) | scan character runs in stir and share matched tapes | [Incremental](#change-1b502dc345) |
 | [4d63ed61e7](https://github.com/yapishu/vere/commit/4d63ed61e780b2f558500bd5ef54de2756f591de) | infer types directly from resolved wings | [Incremental](#change-4d63ed61e7) |
+| [e39bbbe331](https://github.com/yapishu/vere/commit/e39bbbe331472f252b818d96ab3cce81852178d4) | expand gate call arguments and edits in one pass | [Incremental](#change-e39bbbe331) |
 
 ## Measurements by change
 
@@ -3070,3 +3073,34 @@ In five additional trials on a second core with the review builds in reverse ord
 Full cold replay through event 143 takes 109.01 and 101.53 s on the preceding review, and 105.03 and 98.42 s on review. The two binaries exchange physical cores between pairs. The hash audits run concurrently on separate cores. Median peak RSS rounds to 816.2 MiB for both builds.
 
 On each loom width the bootstrap core, 138 cold-replay products and 17 checkpoint products match develop in canonical jam length and SHA-256 (33,279,069,693 bytes). All six compiler-window products also match on each width (1,439,791,403 bytes). Develop opens the checkpoint review writes at event 241 and replays events 242–249.
+
+<a id="change-e39bbbe331"></a>
+
+### Expand gate call arguments and edits
+
+In Kelvin 135, `+open:ap` expands a gate call in two steps. The first assigns each argument its Nock axis in the sample. The second places each edit under the original subject, which occupies slot 3 after the gate is pushed. The runtime builds each result list from head to tail and uses `+peg` for arbitrary-width axes. The gate expression, wing and argument count come from the input. [Kelvin 135 expansion rules](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L8507-L8527)
+
+**Running Dojo.** Parse 12 calls using `+ream` and expand each to `%cnsg`. The inputs call `add`, `shax`, `turn`, `weld`, `put:by:m`, `murn`, `peg`, `levy`, `rap`, `spin`, `cut` and `malt` with one to three arguments. Repeat the input list 128 times for each expansion workload. The source-text workload repeats the 12 strings 32 times and includes parsing and all expansion steps through `%cntr`. Each build opens a copy of the same fake ~zod checkpoint. The three builds rotate on one physical core for a warm-up and seven timed evaluations per boot. The table gives first-boot median times and the time reduction on each boot. Hashing the complete ordered output follows the timer. All builds return the same digest for each workload on both boots.
+
+| Dojo workload | Develop | Previous review `ce5cd198aa` | Review | Less time vs previous review, two boots |
+|---|---:|---:|---:|---:|
+| Lay out 1,536 argument lists | 1.204 ms | 0.753 ms | 0.293 ms | 61.1% / 61.5% |
+| Lower 1,536 edit lists | 1.243 ms | 0.981 ms | 0.290 ms | 70.4% / 69.7% |
+| Expand both stages of 1,536 calls | 2.575 ms | 1.778 ms | 0.618 ms | 65.2% / 67.3% |
+| Parse and expand 384 calls from source | 40.144 ms | 23.037 ms | 22.639 ms | 1.7% / 0.8% |
+
+After the final source workload, combined king and worker PSS is 122.6 and 123.1 MiB on the preceding review and 123.2 and 123.5 MiB on review.
+
+**Calls sampled from the compiler.** Capture the complete macro door and expected result at entry 11,711 and every 30,011 entries thereafter, up to 32 per compiler window. This yields 32 Hoon, 31 Lull and 13 Zuse calls, including other macro forms. For each input, time eight batches of 48 evaluations in a live worker. Each batch checks the result against the capture. Exclude the first batch and take the median of the seven round totals across all 76 inputs. Two series reverse the order of the 32-bit builds. The preceding review takes 0.650 and 0.590 ms. Review takes 0.473 and 0.443 ms. The 64-bit build also reproduces all 76 expected products.
+
+**Whole compilations.** The first series rotates three builds on one core over four trials. Replay hash audits run on other cores. The second series alternates the two review builds on one core for five trials after the audits finish. Each trial restores the checkpoint immediately before the recorded Dojo compilation. Times are medians in seconds.
+
+| Compiler | Develop | Previous review | Review | Previous review, second series | Review, second series |
+|---|---:|---:|---:|---:|---:|
+| Hoon | 11.324 | 4.339 | 4.392 | 3.668 | 3.573 |
+| Lull | 9.597 | 2.986 | 2.845 | 2.458 | 2.398 |
+| Zuse | 3.611 | 1.571 | 1.507 | 1.380 | 1.343 |
+
+Full cold replay through event 143 takes 109.27 and 110.45 s on the preceding review and 110.33 and 103.56 s on review. The builds exchange cores between pairs. Peak RSS rounds to 816.2 MiB for the preceding review and 816.2 MiB for review.
+
+**Correctness.** On each loom width, the native expansion and the original Hoon arm agree on all 172,468 accepted calls in Hoon compilation, 131,320 in Lull and 61,694 in Zuse. An additional 2,408 comparisons per width cover zero through 300 arguments, compound wings and multiword sample axes. Eight native suites pass on each width. The jets suite also passes on each width under AArch64 emulation. The bootstrap core, 138 cold-replay event products and 17 checkpoint event products match develop by canonical jam length and SHA-256 (33,279,069,693 bytes per width). All six compiler-window products also match develop on each width (1,439,791,403 bytes). Develop opens the candidate checkpoint at event 241 and replays events 242–249.
