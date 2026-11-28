@@ -384,6 +384,7 @@
     u3_noun u3wfu_busk(u3_noun);
     u3_noun u3wfu_crop(u3_noun);
     u3_weak u3wfu_find_135(u3_noun);
+    u3_weak u3wfu_play_135(u3_noun);
     u3_weak u3wfu_find_137(u3_noun);
     u3_noun u3wfu_fond(u3_noun);
     u3_noun u3wfu_fish(u3_noun);

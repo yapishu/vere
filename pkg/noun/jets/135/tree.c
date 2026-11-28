@@ -310,6 +310,7 @@ static u3j_harm _135_pen__ut_fond_a[] = {{".2", u3wfu_fond_135}, {}};
 static u3j_harm _135_pen__ut_fuse_a[] = {{".2", u3wfu_fuse}, {}};
 static u3j_harm _135_pen__ut_toss_a[] = {{".2", u3wfu_toss_135}, {}};
 static u3j_harm _135_pen__ut_peek_a[] = {{".2", u3wfu_peek}, {}};
+static u3j_harm _135_pen__ut_play_a[] = {{".2", u3wfu_play_135}, {}};
 static u3j_harm _135_pen__ut_redo_list_a[] = {{".22", u3wfu_redo_list_135}, {}};
 static u3j_harm _135_pen__ut_redo_a[] = {{".2", u3wfu_redo_135}, {}};
 static u3j_harm _135_pen__ut_mint_a[] = {{".2", u3wfu_mint}, {}};
@@ -340,6 +341,7 @@ static u3j_core _135_pen__ut_d[] =
     { "fuse", 7, _135_pen__ut_fuse_a, 0, no_hashes },
     { "toss", 7, _135_pen__ut_toss_a, 0, no_hashes },
     { "peek", 7, _135_pen__ut_peek_a, 0, no_hashes },
+    { "play", 7, _135_pen__ut_play_a, 0, no_hashes },
     { "redo-list", 127, _135_pen__ut_redo_list_a, 0, no_hashes },
     { "redo", 7, _135_pen__ut_redo_a, 0, no_hashes },
     { "mint", 7, _135_pen__ut_mint_a, 0, no_hashes },

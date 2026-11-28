@@ -1689,6 +1689,58 @@ _check_peek(u3_noun sut, u3_noun way, u3_atom axe, u3_weak want)
 }
 
 static void
+_check_play(u3_noun sut, u3_noun gen, c3_o vet, u3_weak want)
+{
+  u3_noun van = u3nt(0, sut, u3nc(u3nt(0, 0, vet), 0));
+  u3_noun cor = u3nt(0, gen, van);
+  u3_weak got = u3wfu_play_135(cor);
+  if ( want == u3_none ) u3_assert(got == u3_none);
+  else {
+    u3_assert(got != u3_none && c3y == u3r_sing(want, got));
+    u3z(got); u3z(want);
+  }
+  u3z(cor);
+}
+
+static void
+_test_play(void)
+{
+  u3_noun typ = u3nt(c3__atom, c3__ud, 0);
+  u3_noun rec = u3nt(c3__cell, c3__noun, u3nt(c3__face, 'x', u3k(typ)));
+  _check_play(u3k(rec), u3nc(0, 3), c3n, u3k(u3t(u3t(rec))));
+  _check_play(u3k(rec), u3nc(c3__wing, u3nc('x', 0)), c3n, u3k(typ));
+  _check_play(u3k(rec), u3nt(c3__cnts, u3nc('x', 0), 0), c3n, u3k(typ));
+  _check_play(u3k(rec), u3nt(c3__cnts, 0, u3nc(u3nt(0, 0, 1), 0)), c3n, u3_none);
+  _check_play(rec, u3nc(c3__limb, 'z'), c3n, u3_none);
+
+  u3_noun gen = u3nc(0, 3);
+  u3_noun arms = u3nt(u3nc('x', u3k(gen)), 0, 0);
+  u3_noun dom = u3nt(u3nc(0, arms), 0, 0);
+  u3_noun coil = u3nq(u3nt(0, c3__dry, c3__iron), c3__noun, 0, dom);
+  u3_noun core = u3nt(c3__core, typ, coil);
+  u3_noun read = u3nc(c3__limb, 'x');
+  u3_noun gold = u3i_edit(u3k(coil), 11, c3__gold);
+  u3_noun dry = u3nt(c3__hold, u3nt(c3__core, c3__noun, gold), u3k(gen));
+  _check_play(u3k(core), u3k(read), c3n, u3k(dry));
+  _check_play(u3k(core), u3k(read), c3y, u3_none);
+  u3_noun wet = u3i_edit(u3k(core), 58, c3__wet);
+  u3_noun held = u3nt(c3__hold, u3k(wet), gen);
+  _check_play(u3k(wet), u3k(read), c3n, u3k(held));
+  _check_play(u3qf_forq(core, wet), u3k(read), c3n, u3qf_forq(dry, held));
+  _check_play(u3i_edit(wet, 30, u3nt(c3__cell, c3__noun, c3__noun)),
+              u3k(read), c3n, u3_none);
+  u3z(dry); u3z(held); u3z(core);
+
+  // +fire returns a lone wet identity before refurbishing its payload.
+  //
+  arms = u3nt(u3nc('x', u3nc(0, 1)), 0, 0);
+  dom = u3nt(u3nc(0, arms), 0, 0);
+  coil = u3nq(u3nt(0, c3__wet, c3__lead), c3__noun, 0, dom);
+  core = u3nt(c3__core, c3__void, coil);
+  _check_play(u3k(core), read, c3n, core);
+}
+
+static void
 _test_peek(void)
 {
   u3_noun atom = u3nt(c3__atom, c3__ud, 0);
@@ -2256,6 +2308,7 @@ _test_jets(void)
   _test_fond();
   _test_fond_record();
   _test_peek();
+  _test_play();
   _test_toss();
   _test_nest();
   _test_redo();

@@ -449,3 +449,94 @@ u3wfu_find_137(u3_noun cor)
 {
   return _find_gate(cor, 137);
 }
+
+/* +fire constructs a hold for a dry arm in its gold context.
+** For a wet arm, +redo returns the payload unchanged when it equals
+** the context or the context is a leaf. Only a lone wet identity
+** returns the core itself.
+** https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9563-L9590
+** https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L10670-L10674
+*/
+static u3_weak
+_play_arm(u3_noun arm, c3_t single)
+{
+  u3_noun cor, foot, gen, pol, pay, coil, garb, ctx, dom;
+  if ( c3n == u3r_cell(arm, &cor, &foot) ||
+       c3n == u3r_cell(foot, &pol, &gen) ||
+       c3n == u3r_pq(cor, c3__core, &pay, &coil) ||
+       c3n == u3r_trel(coil, &garb, &ctx, &dom) ) return u3_none;
+
+  if ( pol == c3__wet ) {
+    if ( single && c3y == u3du(gen) && !u3h(gen) && 1 == u3t(gen) ) {
+      return u3k(cor);
+    }
+    if ( ctx != c3__noun && ctx != c3__void &&
+         !(c3y == u3du(ctx) && (u3h(ctx) == c3__atom || u3h(ctx) == c3__core)) &&
+         c3n == u3r_sing(pay, ctx) ) return u3_none;
+    return u3nt(c3__hold, u3k(cor), u3k(gen));
+  }
+  u3_noun nam, mode, met;
+  if ( pol != c3__dry || c3n == u3r_trel(garb, &nam, &mode, &met) ) return u3_none;
+  u3_noun gold = met == c3__gold ? u3k(coil)
+    : u3nt(u3nt(u3k(nam), u3k(mode), c3__gold), u3k(ctx), u3k(dom));
+  return u3nt(c3__hold, u3nt(c3__core, u3k(ctx), gold), u3k(gen));
+}
+
+static u3_weak
+_play_fire(u3_noun van, u3_noun set)
+{
+  u3_noun arm, lef, rit;
+  if ( c3n != u3r_at(u3qfu_van_vet, van) ||
+       c3n == u3r_trel(set, &arm, &lef, &rit) ) return u3_none;
+  if ( !lef && !rit ) return _play_arm(arm, 1);
+
+  u3_noun arms = u3qdi_tap(set), types = u3_nul;
+  for ( u3_noun at = arms; at; at = u3t(at) ) {
+    u3_weak typ = _play_arm(u3h(at), 0);
+    if ( typ == u3_none ) {
+      u3z(types); u3z(arms);
+      return u3_none;
+    }
+    types = u3nc(typ, types);
+  }
+  u3z(arms);
+  return u3kf_fork(u3kb_flop(types));
+}
+
+/* +open lowers a slot, limb or wing to %cnts with an empty edit list.
+** +elbo then returns the leg type or fires the resolved arms.
+*/
+u3_weak
+u3wfu_play_135(u3_noun cor)
+{
+  u3_noun gen, van, sut, tag, arg, wing, rig;
+  if ( c3n == u3r_mean(cor, {u3x_sam, &gen}, {u3x_con, &van}) ||
+       c3n == u3r_cell(gen, &tag, &arg) ||
+       u3_none == (sut = u3r_at(u3x_sam, van)) ) return u3_none;
+
+  switch ( tag ) {
+    case 0: return _peek(sut, c3__read, arg);
+    case c3__limb:
+      if ( c3n == u3ud(arg) ) return u3_none;
+      wing = u3nc(u3k(arg), u3_nul);
+      break;
+    case c3__wing: wing = arg; break;
+    case c3__cnts:
+      if ( c3n == u3r_cell(arg, &wing, &rig) || rig ) return u3_none;
+      break;
+    default: return u3_none;
+  }
+
+  u3_weak port = u3qfu_fond(van, sut, c3__read, wing, 135);
+  if ( tag == c3__limb ) u3z(wing);
+  if ( port == u3_none ) return u3_none;
+
+  u3_noun match, kind, typ;
+  u3_weak pro = u3_none;
+  if ( c3y == u3r_qual(port, &match, 0, &kind, &typ) && match == c3y ) {
+    if ( kind == c3y ) pro = u3k(typ);
+    else if ( kind == c3n && c3y == u3du(typ) ) pro = _play_fire(van, u3t(typ));
+  }
+  u3z(port);
+  return pro;
+}
