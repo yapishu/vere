@@ -1906,7 +1906,13 @@ _check_toss(u3_noun sut, u3_noun wing, u3_noun mur, u3_weak want)
   u3_noun foot = u3nt(c3__dry, 0, 1);
   u3_noun men = u3nc(u3nc(sut, u3k(foot)), 0);
   u3_noun cor = u3nt(0, u3nt(wing, mur, men), u3nt(0, c3__noun, 0));
-  u3_weak got = u3wfu_toss_137(cor);
+  u3_weak got = u3wfu_toss_135(cor);
+  u3_weak other = u3wfu_toss_137(cor);
+  if ( got == u3_none ) u3_assert(other == u3_none);
+  else {
+    u3_assert(other != u3_none && c3y == u3r_sing(got, other));
+    u3z(other);
+  }
   if ( want == u3_none ) u3_assert(got == u3_none);
   else {
     u3_noun out = u3nt(u3k(u3h(want)), u3nc(u3k(u3t(want)), u3k(foot)), 0);
@@ -1933,7 +1939,10 @@ _test_toss(void)
   hint = u3nt(c3__hint, u3k(note), name);
   _check_toss(u3k(pair), u3k(wing), u3k(atom),
               u3nc(3, u3nt(c3__cell, c3__noun, hint)));
-  _check_toss(pair, wing, c3__void, u3nc(3, c3__void));
+  _check_toss(pair, u3k(wing), c3__void, u3nc(3, c3__void));
+  _check_toss(u3k(atom), u3k(wing), c3__noun, u3_none);
+  u3_noun coil = u3nq(u3nt(0, c3__dry, c3__lead), c3__noun, 0, 0);
+  _check_toss(u3nt(c3__core, c3__noun, coil), wing, u3k(atom), u3_none);
   _check_toss(c3__noun, u3nc(u3nc(0, 2), 0), u3k(atom),
               u3nc(2, u3nt(c3__cell, u3k(atom), c3__noun)));
   _check_toss(u3nc(c3__hold, 0), u3nc(u3k(anon), 0), u3k(atom), u3_none);
