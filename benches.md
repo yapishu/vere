@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [0ed82ca73a](https://github.com/yapishu/vere/commit/0ed82ca73ac6bf14f93d0b45a6208ba353e8ca49) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 28 November 2026
+Review branch `review/noun-runtime` through [bddf8ae0dc](https://github.com/yapishu/vere/commit/bddf8ae0dcc0529a3844578fb4660ba26cc957b0) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 28 November 2026
+
+During Hoon, Lull and Zuse compilation, searching for a battery in the jet registry takes **20.2–25.7% less time** than on the preceding review. A search skips child roads with zero registered batteries. [bddf8ae0dc](https://github.com/yapishu/vere/commit/bddf8ae0dcc0529a3844578fb4660ba26cc957b0)
 
 In real Hoon, Lull and Zuse compiler calls, constructing a tuple of quoted heads on the current subject takes **31.7–34.2% less time** than on the preceding review. Cold replay executes the instruction **256.6 million times**. [0ed82ca73a](https://github.com/yapishu/vere/commit/0ed82ca73ac6bf14f93d0b45a6208ba353e8ca49)
 
@@ -48,7 +50,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay. [c45cfd8d75](https://github.com/yapishu/vere/commit/c45cfd8d752db1a63486c055eb7068f19452e218) · [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362)
 
-[Literal subject prefixes](#change-0ed82ca73a) · [Shared tree folds](#change-23f81a0172) · [Type intersection](#change-bb13666ea0) · [Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Jet registry search](#change-bddf8ae0dc) · [Literal subject prefixes](#change-0ed82ca73a) · [Shared tree folds](#change-23f81a0172) · [Type intersection](#change-bb13666ea0) · [Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -263,6 +265,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c) | intersect type trees and resume recursive checks in the Hoon trap | [Incremental](#change-bb13666ea0) |
 | [23f81a0172](https://github.com/yapishu/vere/commit/23f81a0172cc03f50be8740233abce33347112a3) | evaluate two-state folds over shared subtrees with bounded storage | [Incremental](#change-23f81a0172) |
 | [0ed82ca73a](https://github.com/yapishu/vere/commit/0ed82ca73ac6bf14f93d0b45a6208ba353e8ca49) | compile literal prefixes of the Nock subject | [Incremental](#change-0ed82ca73a) |
+| [bddf8ae0dc](https://github.com/yapishu/vere/commit/bddf8ae0dcc0529a3844578fb4660ba26cc957b0) | skip empty child registries when locating a battery | [Incremental](#change-bddf8ae0dc) |
 
 ## Measurements by change
 
@@ -3571,3 +3574,41 @@ Cold fake ~zod replay through event 143 takes **95.28 → 86.37 s** (9.4% less) 
 After comparing adjacent revisions, median combined king and worker PSS is 214.8 → 214.2 MiB on the first boot and 212.6 → 212.8 MiB on the second.
 
 **Correctness.** Eight native suites pass on each loom width. A scalar-Nock comparison checks 4,988 products per width across literal binds, literal cells and mixed spines, including lengths sixteen and seventeen. Another 32 evaluations alternate virtual namespaces while constructing a noun with a scry. The bootstrap core and 155 replay products reproduce develop’s canonical jam lengths and SHA-256 hashes (33.28 GB), as do six compiler-window products (1.44 GB) on both widths. Develop reopens a checkpoint saved by this revision at event 241 and completes events 242–249. A bytecode version change causes each reader to rebuild saved programs when switching binaries.
+
+<a id="change-bddf8ae0dc"></a>
+
+### Search child roads for registered batteries
+
+Vere searches the cold jet registry for a core’s battery to find its registered location. A child road with zero entries advances directly to its parent. A populated road gets the usual lookup, so the nearest registration wins. Each search reads the current entry count. A miss on every child reaches the home registry. [bddf8ae0dc](https://github.com/yapishu/vere/commit/bddf8ae0dcc0529a3844578fb4660ba26cc957b0)
+
+**Compiler traces.** Across three Kelvin 135 fake ~zod compiler commands, 48–57% of sampled runtime hash-table lookups go to empty tables. A common registry search visits three empty child roads on the way to a populated ancestor. The table below times the complete battery search, sampling every 63rd call during event evaluation. The builds agree on the ordered battery mugs and hit or miss at all sampled positions. Ticks are x86-64 timestamp-counter readings. Each trial divides total ticks by sampled searches. The table gives medians across seven paired trials, with percentage reductions calculated within each pair.
+
+| Compiler | Sampled searches | Hits | Preceding review, ticks | Review, ticks | Less time |
+|---|---:|---:|---:|---:|---:|
+| Self-hosted Hoon | 15,669 | 1,018 | 234.1 | 175.4 | 25.7% |
+| Lull | 14,552 | 449 | 214.6 | 167.6 | 20.9% |
+| Zuse | 9,448 | 814 | 202.4 | 162.1 | 20.2% |
+
+During cold replay through event 143, the same instrumentation samples 619,848 registry searches, including 170,110 hits. The sampled searches take 8.6% less time across three pairs.
+
+**Road depth.** The public site-registration check probes 1,024 prehashed batteries 128 times, with equal numbers of hits and misses in the home registry. Hashless mode isolates the cold registry. Each row gives median milliseconds for 131,072 checks across eight alternating pairs, holding the batteries and the home registry fixed. In the populated-child control, each child holds a registration for a different battery.
+
+| Child roads above home | Preceding, 32-bit | Review, 32-bit | Paired change | Preceding, 64-bit | Review, 64-bit | Paired change |
+|---|---:|---:|---:|---:|---:|---:|
+| Home only | 0.960 | 1.030 | 6.7% more | 1.028 | 1.065 | 4.5% more |
+| One empty | 1.511 | 1.134 | 25.2% less | 1.529 | 1.149 | 25.1% less |
+| Three empty | 2.386 | 1.307 | 45.4% less | 2.354 | 1.289 | 45.3% less |
+| Five empty | 3.301 | 1.433 | 56.7% less | 3.246 | 1.393 | 57.4% less |
+| Three populated | 2.408 | 2.469 | 1.9% more | 2.354 | 2.405 | 2.1% more |
+
+**Whole compilers.** Six rounds rotate develop and both review release binaries on one physical core. Each binary starts from its own checkpoint immediately before the command. Seven further pairs compare the two review binaries on the same core after the other replay measurements finish. The timing columns are medians in seconds. The last two columns give the median within-pair change for each series.
+
+| Compiler | Develop, s | Preceding review, s | Review, s | Six rounds | Seven further pairs |
+|---|---:|---:|---:|---:|---:|
+| Self-hosted Hoon | 11.342 | 3.302 | 3.367 | 2.4% more | 0.2% less |
+| Lull | 9.160 | 2.367 | 2.340 | 1.3% less | 0.5% less |
+| Zuse | 3.615 | 1.324 | 1.328 | 0.5% less | 0.4% less |
+
+**Cold replay and memory.** Four pairs of release binaries replay the same fake ~zod log through event 143 without a checkpoint, rotating between two physical cores. Median wall time is 88.82 s on the preceding review and 88.57 s on this revision. The median within-pair change is 0.7% more. Peak RSS is 816.1 and 816.4 MiB respectively. The search adds no fields to the road, table or noun.
+
+**Products.** Nested-road tests give the same battery three different hook products. Lookup selects the innermost registration, finds the parent after a deletion and finds the home registration through empty children. Both loom widths pass eight native suites and match develop’s canonical jam lengths and SHA-256 hashes for the bootstrap core and 155 replay event products (33.28 GB), plus six compiler-window products (1.44 GB). Develop opens the candidate’s checkpoint at event 241 and completes events 242–249.
