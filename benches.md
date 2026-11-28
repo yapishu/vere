@@ -1,6 +1,8 @@
 # Vere runtime benchmarks by commit
 
-Review branch `review/noun-runtime` through [76ff110c0d](https://github.com/yapishu/vere/commit/76ff110c0d44e47518a15ef6f4c52d05b2a370a0) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+Review branch `review/noun-runtime` through [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c) · upstream [develop baf98ea9c3](https://github.com/urbit/vere/commit/baf98ea9c31cfd4f45586d41db02cf4156c11b7b) · 27 November 2026
+
+In self-hosted Hoon compilation, the type intersection gate `+fuse` takes **63.1% less CPU time** than on the preceding review. Intersecting 256 records with a 64-way tagged union in Dojo takes **90.2–90.5% less time on hits** across two boots. [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c)
 
 In a running Dojo, 512 subtype checks against a 128-alternative tagged union take **26.4–27.9% less time on hits** and **26.9–30.8% less on misses** than on the preceding review across two boots. [76ff110c0d](https://github.com/yapishu/vere/commit/76ff110c0d44e47518a15ef6f4c52d05b2a370a0)
 
@@ -42,7 +44,7 @@ Reusing a private core for prepared native calls cuts the time to sort 8,192 ato
 
 At `136deb1539`, the review stack reduces cold replay of the Kelvin 135 fake ~zod through event 143 from **331.21 to 114.06 seconds** and self-hosted Hoon compilation from **12.720 to 4.717 seconds**. Across 30 real application revisions, the two `+loss` commits at that revision cut time in the subsequence operation by **20.8%** and time in the complete Clay text diff by **4.8%**. The same two commits measured 1.0% slower on cold replay. [c45cfd8d75](https://github.com/yapishu/vere/commit/c45cfd8d752db1a63486c055eb7068f19452e218) · [136deb1539](https://github.com/yapishu/vere/commit/136deb15399dc0a52024ab31b00cb98ae9968362)
 
-[Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
+[Type intersection](#change-bb13666ea0) · [Tagged record alternatives](#change-76ff110c0d) · [Strict subtype checks](#change-c752c28e72) · [Named field emptiness](#change-9c79576c45) · [Held type expansion](#change-fce5bc4826) · [Anonymous type edits](#change-9be192a0ee) · [Literal type tests](#change-f5bfb46909) · [Predicate refinement](#change-f38a0997ef) · [Gate call expansion](#change-e39bbbe331) · [Field and arm types](#change-4d63ed61e7) · [Character runs](#change-1b502dc345) · [Native gate dispatch](#change-3c0ed69633) · [Hardware SHA-256](#change-9d47dd576c) · [Hashing atom storage](#change-c7aab99a51) · [Deterministic bit generation](#change-7f16135a2d) · [Short-lived gates](#change-0c171e9479) · [Prepared noun constructors](#change-78c2194073) · [Map and set difference](#change-0aebc87353) · [Map and set deletion](#change-52bac63838) · [Prepared native gate calls](#change-56b5327a55) · [Replay and compilers at `136deb1539`](#tip-totals) · [Boot, memory and public programs](#broader-snapshot) · [Real moon](#real-moon) · [Commit index](#commit-index) · [Measurement notes](#measurement-notes)
 
 <a id="tip-totals"></a>
 
@@ -254,6 +256,7 @@ The index follows the review stack in first-parent order. Commits sharing a meas
 | [9c79576c45](https://github.com/yapishu/vere/commit/9c79576c45d22767e728b97ce090363b92f8b6c2) | test emptiness beneath faces and hints | [Incremental](#change-9c79576c45) |
 | [c752c28e72](https://github.com/yapishu/vere/commit/c752c28e72b0b893ff214089eb9e839d92817b9f) | check strict subtyping with the compiler’s failure continuation | [Incremental](#change-c752c28e72) |
 | [76ff110c0d](https://github.com/yapishu/vere/commit/76ff110c0d44e47518a15ef6f4c52d05b2a370a0) | share the fixed record tag across subtype checks against a union | [Incremental](#change-76ff110c0d) |
+| [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c) | intersect type trees and resume recursive checks in the Hoon trap | [Incremental](#change-bb13666ea0) |
 
 ## Measurements by change
 
@@ -3416,3 +3419,55 @@ Cold replay through event 143 takes 106.34 / 100.26 seconds on the preceding rev
 **Correctness.** On each loom width, 288 compiler union calls sampled across Hoon, Lull and Zuse return the same complete products in five independent child-road trials per revision. Another 4,096 cases on each width compare 2,641 normal returns and 1,455 errors, including complete error nouns. These cover zero and indirect tags, different auras, nested holds, malformed trees, the recursion boundary, active recursion sets and entries already present in the nesting memo. 640 inputs request a second strict check on the same road, 3,584 start with a seeded verdict, and 384 also run the original Hoon arm.
 
 Eight native suites pass on each loom width. Both widths reproduce develop’s canonical jam lengths and SHA-256 for the bootstrap core and 155 replay products (33.28 GB) and all six compiler-window products (1.44 GB). Develop reopens this revision’s saved checkpoint at event 241 and completes events 242–249.
+
+<a id="change-bb13666ea0"></a>
+
+### Type intersection
+
+Hoon uses `+fuse` to compute the type common to two descriptions of a noun. On Kelvin 135, Vere intersects atoms and cell fields directly, distributes over unions in traversal order, and preserves field names and hints. The walker calls the supplied compiler’s `+repo` arm to expand cores and holds. It carries Hoon’s recursion set through those expansions. When the walker encounters a repeated pair, an unrecognized form or its recursion bound, it resumes the original Hoon trap with both types and the current set. The public gate uses its ordinary memo entry. [bb13666ea0](https://github.com/yapishu/vere/commit/bb13666ea04126c243f501a4211fe44e87537d1c) · [Hoon intersection rules](https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L9621-L9658)
+
+The structural approach draws on the use of tree-language intersection in type checking. Here the result also preserves the exact Hoon type noun, including its field names and union representation. [Hosoya and Pierce, *Regular expression pattern matching for XML*](https://doi.org/10.1017/S0956796802004410)
+
+**Live Dojo.** On Kelvin 135 fake ~zods, the timer covers applying `+fuse` to prebuilt input pairs. Each query supplies its own singleton payload type. A 64-way hit selects one matching tag and a miss selects none. In the union-against-union case, twelve of sixteen tags match. Each held type expands to a tagged record. The gate returns a list of types. The workload checks the expected products, then hashes each timed result outside the timer. Absolute medians use six three-way trials after warm-up. Eight paired trials on a separate boot give the second incremental comparison. Releases rotate on one physical core in each series.
+
+| Intersections per command | Develop, ms | Preceding review, ms | Review, ms | Less time vs preceding review, two boots |
+|---|---:|---:|---:|---:|
+| 256 records against 4 alternatives, hit | 1.089 | 0.790 | 0.156 | 80.3–80.7% |
+| 256 records against 64 alternatives, hit | 13.389 | 9.958 | 0.974 | 90.2–90.5% |
+| 256 records against 64 alternatives, miss | 13.370 | 9.969 | 0.989 | 90.0–90.1% |
+| 128 pairs of 16-way and 12-way unions | 20.663 | 16.038 | 1.980 | 87.5–87.7% |
+| 512 held types against records | 1.397 | 0.971 | 0.700 | 28.0–29.9% |
+
+After the held-type command, median combined king and worker PSS is 136.9 MiB on develop, 122.3 MiB on the preceding review and 121.8 MiB on this revision.
+
+**Compiler replays.** Instrumented builds time the outermost `+fuse` jet calls on one core over six alternating trials. Release builds separately time the complete recorded compiler commands. Each build prepares a checkpoint immediately before the command. Five trials rotate all three releases. Two further series alternate the two review builds for six and eight trials.
+
+| Compiler | Calls to `+fuse` | Gate CPU, preceding → review, ms | Less gate time | Whole command, develop / preceding / review, s | Paired whole command, preceding → review, s |
+|---|---:|---:|---:|---:|---:|
+| Hoon | 10,433 | 195.13 → 72.08 | 63.1% | 11.946 / 3.935 / 3.658 | 3.639 → 3.338 / 3.253 → 3.088 |
+| Lull | 7,461 | 34.10 → 30.18 | 11.5% | 9.766 / 2.583 / 2.664 | 2.397 → 2.467 / 2.276 → 2.234 |
+| Zuse | 2,323 | 17.45 → 16.29 | 6.6% | 3.823 / 1.405 / 1.408 | 1.373 → 1.324 / 1.268 → 1.264 |
+
+The complete self-hosted Hoon command takes 5.1–8.3% less time than the preceding review across the three series. Lull and Zuse each move in both directions.
+
+Median peak process RSS for the self-hosted Hoon compile is 217.0 MiB on develop, 217.6 MiB on the preceding review and 217.6 MiB on this revision.
+
+During Hoon compilation, five intersections exceed a traversal bound of 2,048 nodes or 48 levels. A counting pass identifies all five by their call positions and input mugs (31-bit noun hashes). Timing only those positions in six alternating trials gives **62.75 → 9.64 ms** in total (84.6% less). Four distinct innermost `+mint` calls enclose the five intersections. A separate six-trial run times those complete compiler calls and gives **75.07 → 20.36 ms** (72.9% less). Both releases see the same input and product mugs at the measured `+mint` positions.
+
+A broader sample takes 48 evenly spaced public memo misses with a hold or hint against a cell, and 48 other misses, from each compiler. Each actual call runs three times on independent child roads per implementation, with rotating order. Summed per-input medians on the 32-bit loom are 55.18 ms on the preceding review and 52.80 ms on this revision (4.3% less). These times include road entry, cold expansion and return.
+
+For four unmodified Tlon libraries compiled against Zuse, the median of six live `+mint` trials after warm-up is `mop-extensions` 5.94 → 6.16 ms, `sparse` 3.63 → 3.59 ms, `tiny` 25.12 → 24.26 ms, `unicode` 57.89 → 59.98 ms, in preceding-review and current-review order. Each compiled type and formula has the same jam digest. [Tlon sources](https://github.com/tloncorp/tlon-apps/tree/b40110971b0f80f867169de9e2fc4a338ff1aec3/desk/lib)
+
+| Cold fake ~zod replay through event 143 | Develop | Preceding review | Review |
+|---|---:|---:|---:|
+| Wall time, core 1 | 320.54 s | 85.47 s | 83.72 s |
+| Wall time, core 2 | 304.00 s | 90.17 s | 94.22 s |
+| Median peak process RSS | 1145.1 MiB | 816.3 MiB | 816.4 MiB |
+
+Against the preceding review, cold wall time is 2.0% less on the first core and 4.5% more on the second. The full review stack takes 73.9% and 69.0% less time than develop on the same two cores.
+
+Each replay starts from its own copy of the same frozen event log without a checkpoint. Each physical core runs all three binaries, in opposite orders. An earlier pair of core-swapped runs overlaps linking and verification jobs. Those wall times are 212.99 / 180.03 seconds on the preceding review and 112.82 / 176.51 seconds on this revision.
+
+**Correctness.** On both 32- and 64-bit looms, each of the 288 sampled compiler calls matches both the preceding review and direct evaluation of the Hoon arm on complete products. A further 4,096 cases per width match on 3,338 normal returns and 758 errors, including complete error nouns and observed memo values. These cover disjoint heads with failing tails, indirect atoms, faces, hints, unions, malformed trees, recursive holds, altered `+repo` arms and the native depth boundary. The 512 unseeded cases also run the original Hoon arm. The other 3,584 seed existing `+fuse` or `+rest` entries.
+
+Eight native suites pass on each loom width. Each width reproduces develop’s canonical jam length and SHA-256 for the bootstrap core and all 155 replay products (33.28 GB) and all six compiler-window products (1.44 GB). Develop reopens the checkpoint saved at event 241 and completes events 242–249.
