@@ -1483,6 +1483,44 @@ _inherited_registration(void)
 }
 
 static void
+_prefix_cases(void)
+{
+  u3m_hate(0);
+  // Each bit selects a bind or a cell. Distinct heads expose reordered
+  // fields. The subject changes between calls to the same compiled arm.
+  for ( c3_w mask = 0; mask < 32; ++mask ) {
+    u3_noun fol = _slot(1);
+    for ( c3_w i = 0; i < 5; ++i ) {
+      u3_noun head = _lit(u3nc(i, 32 - i));
+      fol = (mask & (1U << i)) ? u3nt(8, head, fol) : u3nc(head, fol);
+    }
+    u3n_prog* prog = u3to(u3n_prog, u3n_find(0, fol));
+    u3_assert(prog->byc_u.len_w == 2 && prog->lit_u.len_w == 5);
+    for ( c3_w i = 0; i < 3; ++i ) {
+      u3_noun core = u3nc(u3k(fol), i);
+      u3_noun expected = _eval(core, fol);
+      u3_noun kick = u3nt(9, 2, _slot(1));
+      u3_noun pair = u3n_nock_on(core, u3nc(kick, _lit(42)));
+      u3_assert(c3y == u3r_sing(expected, u3h(pair)) && u3t(pair) == 42);
+      u3z(expected);
+      u3z(pair);
+    }
+    u3z(fol);
+  }
+
+  u3z(u3m_love(0));
+
+  // The ordinary compiler handles longer spines, computed heads, and
+  // tails that project a field or crash.
+  u3_noun fol = _slot(1);
+  for ( c3_w i = 0; i < 17; ++i ) fol = u3nc(_lit(i), fol);
+  _check(u3nc(3, 5), fol);
+  _check(u3nc(3, 5), u3nt(8, _slot(2), u3nc(_lit(9), _slot(1))));
+  _check(u3nc(3, 5), u3nc(_lit(9), _slot(3)));
+  _check(0, u3nc(_lit(9), _slot(3)));
+}
+
+static void
 _factory_cases(void)
 {
   // A single program crosses both byte-sized pools, including one valid
@@ -1914,6 +1952,7 @@ main(void)
     _check(_tree(4), fol);
   }
   _bind_cases();
+  _prefix_cases();
   _factory_cases();
   _inherited_registration();
   _projection_cases();

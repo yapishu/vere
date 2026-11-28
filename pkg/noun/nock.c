@@ -538,6 +538,7 @@ _n_nock_on(u3_noun bus, u3_noun fol)
   X(KITS, "kits", &&do_kits),  /* 94: c3_s */                                  \
   X(PFRD, "pfrd", &&do_pfrd),  /* 95: project two related fields */             \
   X(PFHD, "pfhd", &&do_pfrd),  /* 96: project and test for a cell */           \
+  X(PREF, "pref", &&do_pref),  /* 97: prepend literals to the subject */         \
   X(LAST,   NULL,      NULL),
 
 // Opcodes. Define X to select the enum name from OPCODES.
@@ -1857,10 +1858,65 @@ _n_print_byc(c3_y* pog, c3_w her_w)
 
 #include "nock_tail.inc"
 
+/* Compile a right spine of literals ending in [0 1]. A bind puts its
+ * head onto the subject on descent. A cell puts its head onto the result
+ * on return. The two ends of the array record that construction order.
+ */
+static u3n_prog*
+_n_prefix_prog(u3_noun fol)
+{
+  u3_noun make, hint, body, tag, axis, cert;
+  u3_weak clue = u3_none;
+  if ( c3y == u3r_pq(fol, 7, &make, &body) ) {
+    if ( c3n == u3r_pq(body, 11, &hint, &tag) ||
+         c3n == u3r_p(tag, 0, &axis) || axis != 1 ||
+         c3n == u3r_p(hint, c3__fast, &cert) ||
+         c3n == u3r_p(cert, 1, &clue) ) return NULL;
+    fol = make;
+  }
+
+  u3_noun heads[16], op, arg, value;
+  c3_w lo = 0, hi = c3_array_len(heads);
+  for (;;) {
+    if ( c3n == u3r_cell(fol, &op, &arg) ) return NULL;
+    if ( op == 0 && arg == 1 ) break;
+    if ( lo == hi ) return NULL;
+
+    if ( op == 8 ) {
+      u3_noun bind;
+      if ( c3n == u3r_cell(arg, &bind, &fol) ||
+           c3n == u3r_p(bind, 1, &value) ) return NULL;
+      heads[lo++] = value;
+    }
+    else {
+      if ( c3n == u3r_p(op, 1, &value) ) return NULL;
+      heads[--hi] = value;
+      fol = arg;
+    }
+  }
+
+  c3_w len = lo + (c3_array_len(heads) - hi);
+  if ( !len ) return NULL;
+  c3_w reg = (clue != u3_none);
+  u3n_prog* prog = _n_prog_new(2, 0, reg, len + reg, 0);
+  prog->byc_u.ops_y[0] = PREF;
+  prog->byc_u.ops_y[1] = HALT;
+  for ( c3_w i = 0; i < lo; ++i ) prog->lit_u.non[i] = u3k(heads[i]);
+  for ( ; lo < len; ++lo ) prog->lit_u.non[lo] = u3k(heads[hi++]);
+  if ( reg ) {
+    prog->lit_u.non[len] = u3k(clue);
+    prog->reg_u.rit_u[0] = (u3j_rite){ .own_o = c3n, .clu = u3_none };
+  }
+  return prog;
+}
+
 /* _n_bite(): compile a nock formula to bytecode. RETAIN.
  */
 static inline u3n_prog*
 _n_bite(u3_noun fol) {
+  u3n_prog* prefix = _n_prefix_prog(fol);
+  if ( prefix ) return prefix;
+
   u3_noun ops  = u3_nul;
   _n_comp(&ops, fol, c3y, c3y);
   // The wide encoding of site zero is an ordinary tail kick in saved
@@ -2457,7 +2513,7 @@ _n_check_arm(const u3n_prog* prog)
   for ( c3_w i = 0; i < prog->byc_u.len_w; ) {
     c3_y op = ops[i++];
     switch ( op ) {
-      case HALT: case COPY: case SWAP: case TOSS:
+      case PREF: case HALT: case COPY: case SWAP: case TOSS:
       case AUTO: case AULT: case SNOC: case SNOL:
       case HEAD: case HELD: case TAIL: case TALL:
       case FABK: case FASK: case FIBK: case FISK:
@@ -2547,6 +2603,25 @@ typedef struct __attribute__((__packed__)) {
 } burnframe;
 
 #include "nock_slots.inc"
+
+static inline u3_noun
+_n_prefix(const u3n_prog* prog, u3_noun subject)
+{
+  const u3_noun* heads = prog->lit_u.non;
+  c3_w len = prog->lit_u.len_w - prog->reg_u.len_w;
+
+  for ( c3_w i = 1; i < len; i += 2 ) {
+    subject = u3nt(u3k(heads[i]), u3k(heads[i - 1]), subject);
+  }
+  if ( len & 1 ) subject = u3nc(u3k(heads[len - 1]), subject);
+
+  if ( prog->reg_u.len_w ) {
+    u3t_off(noc_o);
+    u3j_rite_mine_keep(prog->reg_u.rit_u, heads[len], subject);
+    u3t_on(noc_o);
+  }
+  return subject;
+}
 
 static inline u3_noun
 _n_proj_small(c3_h axis, u3_noun noun)
@@ -2682,6 +2757,11 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm,
 #endif
   BURN();
   {
+    do_pref:
+      top = _n_peek(off);
+      *top = _n_prefix(pog_u, *top);
+      BURN();
+
     do_halt: // [product ...burnframes...]
       x = _n_pep(mov, off);
 #ifdef VERBOSE_BYTECODE
@@ -3219,6 +3299,14 @@ _n_burn(u3n_prog* pog_u, u3_noun bus, c3_ys mov, c3_ys off, c3_t in_arm,
       o     = *top;
       *top = _n_kick(o, sit_u, FINAL_KICK());
       if ( u3_none == *top ) {
+#if !defined(U3_CPU_DEBUG) && !defined(VERBOSE_BYTECODE)
+        // A complete prefix returns to this instruction's caller directly.
+        const u3n_prog* target = u3to(u3n_prog, sit_u->pog_p);
+        if ( target->byc_u.ops_y[0] == PREF ) {
+          *top = _n_prefix(target, o);
+          BURN();
+        }
+#endif
         if ( !in_arm && _n_arm_candidate(sit_u) ) {
           *top = _n_arm_result(o, sit_u, mov, off);
           BURN();
