@@ -2106,7 +2106,14 @@ _test_nest(void)
 
   // The strict gate runs its own continuation.
   //
-  _check_nest(u3nc(1, c3n), c3__noun, pair, u3nt(0, 0, 0), c3y, c3n);
+  _check_nest(u3nc(1, c3n), c3__noun, u3k(pair), u3nt(0, 0, 0), c3y, c3n);
+
+  // The negative branch receives [| child-core] when the head fails.
+  // Slot 510 selects the subject type in that child.
+  u3_noun no = u3nt(5, u3nc(0, 510), u3nc(1, u3k(atom)));
+  arm = u3nt(8, u3nc(0, 0), u3nq(6, u3nc(0, 2), u3nc(1, c3y), no));
+  _check_nest(arm, pair, u3nt(c3__cell, c3__noun, c3__noun),
+              u3nt(0, 0, 0), c3y, c3y);
   u3z(atom);
 }
 

@@ -13,7 +13,30 @@ typedef struct {
   u3_noun cor, bat;
   c3_m    fun_m;
   c3_t    seg_t, reg_t;
+  c3_o    tel_o;
 } _nest_walk;
+
+/* +dext pushes its verdict and branches on slot 2. Keep the negative
+** branch so a strict failure sees [| dext-core] at the point of failure.
+** https://github.com/urbit/urbit/blob/5a187feded/pkg/arvo/sys/hoon.hoon#L10410-L10421
+*/
+static u3_weak
+_nest_failure(u3_noun arm)
+{
+  u3_noun post, test, yes, no, axis, value;
+  if ( c3y == u3r_pq(arm, 8, 0, &post) &&
+       c3y == u3r_pqr(post, 6, &test, &yes, &no) &&
+       c3y == u3r_p(test, 0, &axis) && axis == 2 &&
+       c3y == u3r_p(yes, 1, &value) && value == c3y ) return no;
+  return u3_none;
+}
+
+static u3_noun
+_nest_fail(u3_noun cor)
+{
+  u3_noun fail = u3k(_nest_failure(u3h(cor)));
+  return u3n_nock_on(u3nc(c3n, cor), fail);
+}
 
 static c3_m
 _nest_fun(u3_weak vet)
@@ -46,7 +69,7 @@ _nest_save(u3_noun key, u3_noun pro, c3_t seg_t, c3_t reg_t)
   return pro;
 }
 
-/* +dext with tel=|. Carry the two types through structural rules.
+/* +dext carries the two types through structural rules.
 ** Only a residual call needs a Nock subject. Each child still reads and
 ** saves its own memo entry, with seg and reg cleared under %cell.
 ** https://github.com/urbit/urbit/blob/bd3973dc97c0f4ac8eae5fddfa15c39d522eb8d0/pkg/arvo/sys/hoon.hoon#L10418-L10489
@@ -70,15 +93,15 @@ _nest_child(const _nest_walk* wal_u, u3_noun sut, u3_noun ref,
   sut = u3k(u3h(u3t(key)));
   ref = u3k(u3h(u3t(u3t(key))));
   pro = _nest_struct(wal_u, sut, ref, clear_t, dep_w);
-  if ( u3_none == pro ) {
+  if ( u3_none == pro || (pro == c3n && wal_u->tel_o == c3y) ) {
     u3_noun in = u3t(wal_u->cor), nest = u3t(u3t(in));
     u3_noun van = u3i_edit(u3k(u3t(u3t(nest))), u3x_sam, u3k(sut));
     u3_noun sam = u3h(u3t(in));
     u3_noun set = clear_t ? u3nt(0, 0, u3k(u3t(u3t(sam)))) : u3k(sam);
-    u3_noun sub = u3nt(u3k(u3h(nest)), u3nc(c3n, u3k(ref)), van);
+    u3_noun sub = u3nt(u3k(u3h(nest)), u3nc(wal_u->tel_o, u3k(ref)), van);
     u3_noun arm = u3h(wal_u->cor);
     sub = u3nc(u3k(arm), u3nt(u3k(u3h(in)), set, sub));
-    pro = u3n_nock_on(sub, u3k(arm));
+    pro = (pro == c3n) ? _nest_fail(sub) : u3n_nock_on(sub, u3k(arm));
   }
   u3z(sut); u3z(ref);
   return _nest_save(key, pro, !clear_t && wal_u->seg_t, !clear_t && wal_u->reg_t);
@@ -93,9 +116,12 @@ _nest_fork(const _nest_walk* wal_u, u3_noun sut, u3_noun ref, c3_t some_t,
   //
   u3_noun list = u3qdi_tap(u3t(some_t ? sut : ref));
   u3_noun pro = some_t ? c3n : c3y;
+  // +lien tries each subject alternative with tel=|.
+  _nest_walk child = *wal_u;
+  if ( some_t ) child.tel_o = c3n;
   while ( list ) {
     u3_noun typ = u3h(list);
-    pro = _nest_child(wal_u, some_t ? typ : sut, some_t ? ref : typ,
+    pro = _nest_child(&child, some_t ? typ : sut, some_t ? ref : typ,
                       clear_t, dep_w);
     if ( u3x_loob(pro) == (some_t ? c3y : c3n) ) break;
     u3_noun next = u3k(u3t(list));
@@ -177,7 +203,6 @@ u3wfu_nest_dext1(u3_noun dext_core)
   else {
     u3_weak vet = u3r_at(u3qfu_van_vet, van);
     c3_m  fun_m = _nest_fun(vet);
-    c3_t loose_t = (c3n == u3r_at(u3x_sam_2, nest_core));
     u3_noun key = u3z_key_3(fun_m, sut, ref, bat);
     u3_weak pro = u3z_find(u3z_memo_toss, key);
 
@@ -187,13 +212,16 @@ u3wfu_nest_dext1(u3_noun dext_core)
     }
     else {
       c3_t seg_t = (u3_nul != seg), reg_t = (u3_nul != reg);
-      if ( loose_t && !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) ) {
+      u3_weak tel = u3r_at(u3x_sam_2, nest_core);
+      if ( !(u3C.wag_h & (u3o_trace | u3o_debug_cpu)) &&
+           (tel == c3n || (tel == c3y && _nest_failure(u3h(dext_core)) != u3_none)) ) {
         u3_noun args = u3t(key), rest = u3t(args);
-        _nest_walk wal_u = { dext_core, u3k(u3t(rest)), fun_m, seg_t, reg_t };
+        _nest_walk wal_u = { dext_core, u3k(u3t(rest)), fun_m, seg_t, reg_t, tel };
         sut = u3k(u3h(args)); ref = u3k(u3h(rest));
         // Bound native recursion. Deeper branches continue in Nock.
         pro = _nest_struct(&wal_u, sut, ref, 0, 24);
         u3z(sut); u3z(ref); u3z(wal_u.bat);
+        if ( pro == c3n && tel == c3y ) pro = _nest_fail(u3k(dext_core));
       }
       if ( u3_none == pro ) {
         pro = u3n_nock_on(u3k(dext_core), u3k(u3x_at(u3x_bat, dext_core)));
